@@ -182,11 +182,58 @@ Unit tests cover:
 - animation loading
 - drill schema field integrity
 
-## Build
+## Setup
 
-Use local Gradle installation if wrapper is missing:
+### Prerequisites
+
+- Android Studio (latest stable) with Android SDK 34
+- JDK 17 (the project compiles against Java/Kotlin 17 toolchains)
+- Gradle 8.14+ available on PATH (this repo currently does not include `gradlew`)
+
+### Local run
+
+1. Open the project in Android Studio.
+2. Let Gradle sync and install missing SDK components.
+3. Run the `app` configuration on a physical device (recommended for camera + ML Kit) or emulator with camera support.
+4. Grant camera permission when prompted.
+
+## Build, test, and release
+
+### Unit tests
 
 ```bash
 gradle :app:testDebugUnitTest
+```
+
+### Debug APK
+
+```bash
 gradle :app:assembleDebug
+```
+
+### Release APK (local signing)
+
+Pass signing values as Gradle properties (for example via `~/.gradle/gradle.properties`):
+
+- `RELEASE_STORE_FILE`
+- `RELEASE_STORE_PASSWORD`
+- `RELEASE_KEY_ALIAS`
+- `RELEASE_KEY_PASSWORD`
+- Optional: `APP_VERSION_CODE`, `APP_VERSION_NAME`
+
+Then build:
+
+```bash
+gradle :app:assembleRelease
+```
+
+If release signing properties are omitted, the project falls back to the debug signing config for `release` builds (for local-only validation).
+
+## APK installation flow
+
+- Build locally with `gradle :app:assembleDebug` and install from `app/build/outputs/apk/debug/`.
+- Or download the latest release APK from GitHub using:
+
+```bash
+bash scripts/download-latest-apk.sh <owner/repo> <output_dir>
 ```

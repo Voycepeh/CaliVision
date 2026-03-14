@@ -2,6 +2,7 @@ package com.inversioncoach.app.ui.results
 
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -163,7 +164,15 @@ private fun openVideo(context: android.content.Context, videoUri: String?) {
         setDataAndType(Uri.parse(videoUri), "video/mp4")
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
-    context.startActivity(intent)
+    val canOpen = intent.resolveActivity(context.packageManager) != null
+    if (!canOpen) {
+        Toast.makeText(context, "No video player available to open this file.", Toast.LENGTH_SHORT).show()
+        return
+    }
+    runCatching { context.startActivity(intent) }
+        .onFailure {
+            Toast.makeText(context, "Unable to open video file.", Toast.LENGTH_SHORT).show()
+        }
 }
 
 

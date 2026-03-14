@@ -47,10 +47,16 @@ class CameraSessionManager(
                     }
                 videoCapture = VideoCapture.withOutput(Recorder.Builder().build())
 
+                val cameraSelector = when {
+                    provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA) -> CameraSelector.DEFAULT_BACK_CAMERA
+                    provider.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA) -> CameraSelector.DEFAULT_FRONT_CAMERA
+                    else -> throw IllegalStateException("No available camera on device")
+                }
+
                 provider.unbindAll()
                 val camera = provider.bindToLifecycle(
                     lifecycleOwner,
-                    CameraSelector.DEFAULT_BACK_CAMERA,
+                    cameraSelector,
                     preview,
                     imageAnalysis,
                     videoCapture,
@@ -64,7 +70,7 @@ class CameraSessionManager(
                 camera.cameraControl.setZoomRatio(zoomedOutRatio)
                 Log.i(
                     "CameraSessionManager",
-                    "CameraX bound with KEEP_ONLY_LATEST queueDepth=2 zoomRatio=$zoomedOutRatio (requested=$requestedZoomRatio min=$minZoomRatio max=$maxZoomRatio)",
+                    "CameraX bound selector=$cameraSelector KEEP_ONLY_LATEST queueDepth=2 zoomRatio=$zoomedOutRatio (requested=$requestedZoomRatio min=$minZoomRatio max=$maxZoomRatio)",
                 )
             }.onSuccess {
                 onReady(true, null)

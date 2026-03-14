@@ -19,6 +19,9 @@ import com.inversioncoach.app.ui.settings.DeveloperTuningScreen
 import com.inversioncoach.app.ui.settings.SettingsScreen
 import com.inversioncoach.app.ui.startdrill.StartDrillScreen
 
+private fun parseDrillTypeOrDefault(rawValue: String?, fallback: DrillType): DrillType =
+    rawValue?.let { value -> DrillType.entries.firstOrNull { it.name == value } } ?: fallback
+
 sealed class Route(val value: String) {
     data object Home : Route("home")
     data object Start : Route("start")
@@ -58,7 +61,10 @@ fun AppNavHost(modifier: Modifier = Modifier) {
             )
         }
         composable(Route.DrillDetail.value, arguments = listOf(navArgument("drill") { type = NavType.StringType })) { backStack ->
-            val drill = DrillType.valueOf(backStack.arguments?.getString("drill") ?: DrillType.STANDING_POSTURE_HOLD.name)
+            val drill = parseDrillTypeOrDefault(
+                rawValue = backStack.arguments?.getString("drill"),
+                fallback = DrillType.STANDING_POSTURE_HOLD,
+            )
             DrillDetailScreen(drillType = drill, onBack = { navController.popBackStack() })
         }
         composable(
@@ -73,7 +79,10 @@ fun AppNavHost(modifier: Modifier = Modifier) {
             ),
         ) { backStack ->
             val args = backStack.arguments
-            val drill = DrillType.valueOf(args?.getString("drill") ?: DrillType.CHEST_TO_WALL_HANDSTAND.name)
+            val drill = parseDrillTypeOrDefault(
+                rawValue = args?.getString("drill"),
+                fallback = DrillType.CHEST_TO_WALL_HANDSTAND,
+            )
             val options = LiveSessionOptions(
                 voiceEnabled = args?.getBoolean("voice") ?: true,
                 recordingEnabled = args?.getBoolean("record") ?: true,

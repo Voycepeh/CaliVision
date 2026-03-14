@@ -93,6 +93,7 @@ class IssueEventAggregator(
     private val completed = mutableListOf<AggregatedIssueEvent>()
 
     fun onIssue(ts: Long, issue: String, severity: Int, cue: String?) {
+        closeStaleEvents(ts)
         val existing = openByIssue[issue]
         if (existing == null) {
             openByIssue[issue] = OpenEvent(issue = issue, startMs = ts, endMs = ts, peakSeverity = severity, cue = cue.orEmpty())
@@ -109,8 +110,8 @@ class IssueEventAggregator(
     }
 
     fun flushAll(endMs: Long): List<AggregatedIssueEvent> {
+        closeStaleEvents(endMs)
         openByIssue.keys.toList().forEach {
-            openByIssue[it]?.endMs = maxOf(openByIssue[it]!!.endMs, endMs)
             close(it)
         }
         return completed.toList()
@@ -131,6 +132,14 @@ class IssueEventAggregator(
                 representativeCue = event.cue.ifBlank { "Maintain control" },
             )
         }
+    }
+
+    private fun closeStaleEvents(referenceTs: Long) {
+        openByIssue
+            .filterValues { referenceTs - it.endMs > maxGapMs }
+            .keys
+            .toList()
+            .forEach(::close)
     }
 }
 
