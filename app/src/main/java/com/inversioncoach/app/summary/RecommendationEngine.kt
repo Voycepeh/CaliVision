@@ -7,34 +7,35 @@ class RecommendationEngine {
     fun recommend(drill: DrillType, limitingFactor: String): Recommendation {
         val key = limitingFactor.lowercase()
         return when {
-            "shoulder" in key -> Recommendation(
-                "Chest-to-wall shoulder line holds",
-                "Build shoulder openness and active elevation.",
-                DrillType.CHEST_TO_WALL_HANDSTAND,
+            "rib" in key || "arch" in key || "line" in key -> Recommendation(
+                title = "Hollow body + chest-to-wall line work",
+                reason = "Line-control proxy indicates repeated arching; simpler hollow alignment drills are next.",
+                drillFocus = DrillType.CHEST_TO_WALL_HANDSTAND,
             )
-
-            "banana" in key || "rib" in key -> Recommendation(
-                "Hollow body + chest-to-wall line drill",
-                "Improve rib/pelvis control and reduce arching.",
-                DrillType.CHEST_TO_WALL_HANDSTAND,
+            "shoulder" in key || "scap" in key -> Recommendation(
+                title = "Wall shoulder shrugs",
+                reason = "Shoulder activity proxy dropped frequently; reinforce active elevation first.",
+                drillFocus = DrillType.CHEST_TO_WALL_HANDSTAND,
             )
-
-            "hip" in key && (drill == DrillType.PIKE_PUSH_UP || drill == DrillType.ELEVATED_PIKE_PUSH_UP) -> Recommendation(
-                "Higher pike setup reps",
-                "Increase vertical loading and keep hips stacked.",
-                DrillType.ELEVATED_PIKE_PUSH_UP,
+            "hip_height" in key || "hips" in key -> Recommendation(
+                title = "Pike setup elevation focus",
+                reason = "Hip stack/height stayed low; start with stricter setup before harder pressing.",
+                drillFocus = DrillType.ELEVATED_PIKE_PUSH_UP,
             )
-
-            "descent" in key || "control" in key -> Recommendation(
-                "Slow eccentric wall negatives",
-                "Improve tempo and path consistency under load.",
-                DrillType.NEGATIVE_WALL_HANDSTAND_PUSH_UP,
+            "tempo" in key || "descent" in key -> Recommendation(
+                title = "Tempo negatives (3-count)",
+                reason = "Descent speed is too fast for controlled reps; use counted eccentrics.",
+                drillFocus = DrillType.NEGATIVE_WALL_HANDSTAND_PUSH_UP,
             )
-
+            "elbow" in key || "path" in key -> Recommendation(
+                title = "Narrow-grip technical reps",
+                reason = "Path and elbow tracking were inconsistent; use lighter path-focused sets.",
+                drillFocus = drill,
+            )
             else -> Recommendation(
-                "Repeat same drill with cue focus",
-                "Consolidate gains by isolating one cue next set.",
-                drill,
+                title = "Repeat with single-cue focus",
+                reason = "No single dominant limiter; keep one cue and build consistency.",
+                drillFocus = drill,
             )
         }
     }

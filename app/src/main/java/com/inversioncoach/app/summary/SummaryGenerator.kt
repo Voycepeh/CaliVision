@@ -14,15 +14,17 @@ class SummaryGenerator(
         wins: List<String>,
     ): SessionSummary {
         val recommendation = recommendationEngine.recommend(drillType, score.limitingFactor)
-        val headline = "You maintained ${score.strongestArea.lowercase()} best, with breakdowns in ${score.limitingFactor.lowercase()}."
+        val topIssue = issues.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key
+        val best = wins.firstOrNull() ?: "Best segment showed stable alignment"
+        val worst = issues.firstOrNull() ?: "No major breakdown"
         return SessionSummary(
-            headline = headline,
-            whatWentWell = wins.take(3).ifEmpty { listOf("Consistency improved across the set.") },
-            whatBrokeDown = issues.take(3).ifEmpty { listOf("No major breakdowns detected.") },
-            whereItBrokeDown = "Breakdown appeared most during fatigue and transitions.",
-            nextFocus = "Prioritize ${score.limitingFactor.lowercase()} while keeping cue volume low.",
+            headline = "Score ${score.overall}: strongest ${score.strongestArea.replace('_', ' ')}, limiter ${score.limitingFactor.replace('_', ' ')}.",
+            whatWentWell = listOf("$best.", "Strongest area: ${score.strongestArea.replace('_', ' ')}."),
+            whatBrokeDown = listOf("Primary issue: ${topIssue ?: score.limitingFactor}.", "Most visible in lower-quality segments."),
+            whereItBrokeDown = "Worst moment: $worst.",
+            nextFocus = "Next focus: ${score.limitingFactor.replace('_', ' ')} with one consistent cue.",
             recommendedDrill = recommendation,
-            issueTimeline = issues.take(3).mapIndexed { index, item -> "T+${(index + 1) * 15}s: $item" },
+            issueTimeline = issues.take(5).mapIndexed { i, issue -> "Phase ${i + 1}: $issue" },
         )
     }
 }
