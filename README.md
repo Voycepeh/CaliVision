@@ -84,39 +84,30 @@ The app is currently an MVP focused on live coaching plus basic session persiste
 
 ## 4) Setup / installation
 
-## Primary path (APK-first, for testers)
+## Install for testers (recommended)
 
-> This repository does **not** currently include a packaged APK file.
-> Download the latest APK from **Releases / provided build artifact**.
+1. Open the project's **GitHub Releases** page.
+2. Download the latest APK file (`InversionCoach-<tag>.apk`) to your Android device.
+3. Open the APK and allow install from this source if Android asks.
+4. Install and open **Inversion Coach**.
+5. Grant **Camera** permission when prompted.
 
-1. Download the latest APK to your Android device.
-2. Open the APK and allow installs from the source if Android prompts you.
-3. Install and open **Inversion Coach**.
-4. Grant **Camera** permission when prompted (required for live coaching).
-5. Start using the app.
+## Release process (maintainers)
 
-Notes:
-- Audio cue playback uses Android TTS and does not request microphone permission.
-- Video recording writes to MediaStore; behavior depends on Android version/device policy.
+Push a version tag to automatically build and publish the APK:
 
-### Secondary path (developers: build locally)
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
 
-Prerequisites:
-- Android Studio (recent stable)
-- Android SDK / Gradle toolchain
-- A physical Android device for realistic camera testing
-- `pose_landmarker_lite.task` model file placed at `app/src/main/assets/pose_landmarker_lite.task`
+This triggers `.github/workflows/android-release.yml`, which builds the debug APK from `:app` and uploads it to a GitHub Release for that tag.
 
-Build/install (debug):
+### Local build (optional)
+
 ```bash
 ./gradlew :app:assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
-```
-
-Build/install (release-style local testing):
-```bash
-./gradlew :app:assembleRelease
-adb install -r app/build/outputs/apk/release/app-release.apk
 ```
 
 ---
