@@ -90,6 +90,7 @@ The app is currently an MVP focused on live coaching plus basic session persiste
 > Download the latest APK from **Releases / provided build artifact**.
 
 1. Download the latest APK to your Android device.
+   - CLI option (from this repo): `./scripts/download-latest-apk.sh <owner/repo> [output_dir]`
 2. Open the APK and allow installs from the source if Android prompts you.
 3. Install and open **Inversion Coach**.
 4. Grant **Camera** permission when prompted (required for live coaching).
