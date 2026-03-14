@@ -60,6 +60,7 @@ class LiveCoachingViewModel(
     private var lastFramePersistAt = 0L
     private var rawVideoUri: String? = null
     private var annotatedVideoUri: String? = null
+    private var pendingStopCallback: ((Long) -> Unit)? = null
     private val frameGate = FrameValidityGate(drillType, DrillConfigs.byType(drillType))
     private val issueAggregator = IssueEventAggregator()
     private val invalidReasonCounts = mutableMapOf<String, Int>()
@@ -239,7 +240,14 @@ class LiveCoachingViewModel(
 
     fun stopSession(onSessionFinalized: (Long) -> Unit) {
         viewModelScope.launch {
-            val activeSessionId = sessionId ?: return@launch
+            val activeSessionId = sessionId
+            if (activeSessionId == null) {
+                pendingStopCallback = onSessionFinalized
+                _uiState.value = _uiState.value.copy(
+                    warningMessage = "Preparing session. Stopping as soon as initialization completes.",
+                )
+                return@launch
+            }
             val frameMetrics = repository.observeSessionFrameMetrics(activeSessionId).first()
             val aggregatedIssues = issueAggregator.flushAll(System.currentTimeMillis())
             val validFrameMetrics = frameMetrics.filter { it.confidence >= 0.45f }
@@ -327,6 +335,10 @@ class LiveCoachingViewModel(
                 ),
             )
             sessionId = newSessionId
+            pendingStopCallback?.let { callback ->
+                pendingStopCallback = null
+                stopSession(callback)
+            }
         }
     }
 
