@@ -25,6 +25,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 
 class LiveCoachingViewModel(
@@ -60,6 +62,8 @@ class LiveCoachingViewModel(
     private var lastFramePersistAt = 0L
     private var rawVideoUri: String? = null
     private var annotatedVideoUri: String? = null
+    private var rawVideoPersistJob: Job? = null
+    private var annotatedVideoPersistJob: Job? = null
     private var pendingStopCallback: ((Long) -> Unit)? = null
     private val frameGate = FrameValidityGate(drillType, DrillConfigs.byType(drillType))
     private val issueAggregator = IssueEventAggregator()
@@ -94,15 +98,18 @@ class LiveCoachingViewModel(
     fun onRecordingFinalized(uri: String?) {
         val finalizedUri = uri?.takeIf { it.isNotBlank() } ?: return
         val activeSessionId = sessionId ?: return
-        viewModelScope.launch {
+        rawVideoPersistJob = viewModelScope.launch {
             rawVideoUri = repository.saveRawVideoBlob(activeSessionId, finalizedUri)
+            if (annotatedVideoUri.isNullOrBlank()) {
+                annotatedVideoUri = repository.saveAnnotatedVideoBlob(activeSessionId, finalizedUri)
+            }
         }
     }
 
     fun onAnnotatedRecordingFinalized(uri: String?) {
         val finalizedUri = uri?.takeIf { it.isNotBlank() } ?: return
         val activeSessionId = sessionId ?: return
-        viewModelScope.launch {
+        annotatedVideoPersistJob = viewModelScope.launch {
             annotatedVideoUri = repository.saveAnnotatedVideoBlob(activeSessionId, finalizedUri)
         }
     }
@@ -248,6 +255,7 @@ class LiveCoachingViewModel(
                 )
                 return@launch
             }
+            joinAll(rawVideoPersistJob, annotatedVideoPersistJob)
             val frameMetrics = repository.observeSessionFrameMetrics(activeSessionId).first()
             val aggregatedIssues = issueAggregator.flushAll(System.currentTimeMillis())
             val validFrameMetrics = frameMetrics.filter { it.confidence >= 0.45f }

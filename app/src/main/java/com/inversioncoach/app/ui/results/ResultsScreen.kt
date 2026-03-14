@@ -3,6 +3,7 @@ package com.inversioncoach.app.ui.results
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.core.content.FileProvider
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -32,6 +33,7 @@ import com.inversioncoach.app.storage.ServiceLocator
 import com.inversioncoach.app.ui.components.ScaffoldedScreen
 import com.inversioncoach.app.ui.live.mediaAssetExists
 import kotlinx.coroutines.launch
+import java.io.File
 import kotlin.math.roundToInt
 
 @Composable
@@ -160,8 +162,12 @@ private fun formatElapsed(startedAtMs: Long?, timestampMs: Long?): String {
 
 private fun openVideo(context: android.content.Context, videoUri: String?) {
     if (videoUri.isNullOrBlank()) return
+    val resolvedUri = toSharableVideoUri(context, Uri.parse(videoUri)) ?: run {
+        Toast.makeText(context, "Unable to open video file.", Toast.LENGTH_SHORT).show()
+        return
+    }
     val intent = Intent(Intent.ACTION_VIEW).apply {
-        setDataAndType(Uri.parse(videoUri), "video/mp4")
+        setDataAndType(resolvedUri, "video/mp4")
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     val canOpen = intent.resolveActivity(context.packageManager) != null
@@ -173,6 +179,18 @@ private fun openVideo(context: android.content.Context, videoUri: String?) {
         .onFailure {
             Toast.makeText(context, "Unable to open video file.", Toast.LENGTH_SHORT).show()
         }
+}
+
+private fun toSharableVideoUri(context: android.content.Context, sourceUri: Uri): Uri? {
+    if (sourceUri.scheme != "file") return sourceUri
+    val sourcePath = sourceUri.path ?: return null
+    val sourceFile = File(sourcePath)
+    if (!sourceFile.exists()) return null
+    return FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        sourceFile,
+    )
 }
 
 
