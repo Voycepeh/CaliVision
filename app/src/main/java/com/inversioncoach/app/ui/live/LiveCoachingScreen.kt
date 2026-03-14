@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.inversioncoach.app.camera.CameraSessionManager
+import com.inversioncoach.app.coaching.VoiceCoach
 import com.inversioncoach.app.model.DrillType
 import com.inversioncoach.app.model.UserSettings
 import com.inversioncoach.app.overlay.OverlayRenderer
@@ -52,9 +53,11 @@ fun LiveCoachingScreen(drillType: DrillType, onStop: (Long) -> Unit) {
         )
     }
     val uiState by vm.uiState.collectAsState()
+    val spokenCue by vm.spokenCue.collectAsState()
     val smoothed by vm.smoothedFrame.collectAsState()
     val settings by repository.observeSettings().collectAsState(initial = UserSettings())
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    val voiceCoach = remember(context) { VoiceCoach(context) }
 
     val cameraManager = remember { CameraSessionManager(context) }
     val analyzer = remember {
@@ -77,7 +80,18 @@ fun LiveCoachingScreen(drillType: DrillType, onStop: (Long) -> Unit) {
     }
 
     DisposableEffect(Unit) {
-        onDispose { cameraManager.release() }
+        onDispose {
+            cameraManager.release()
+            voiceCoach.shutdown()
+        }
+    }
+
+
+    LaunchedEffect(spokenCue?.generatedAtMs, settings.audioVolume) {
+        val cue = spokenCue ?: return@LaunchedEffect
+        if (settings.audioVolume <= 0f) return@LaunchedEffect
+        if (cue.generatedAtMs != uiState.currentCueGeneratedAtMs || cue.id != uiState.currentCueId) return@LaunchedEffect
+        voiceCoach.speak(cue, volume = settings.audioVolume)
     }
 
     Box(Modifier.fillMaxSize()) {
