@@ -9,6 +9,7 @@ import androidx.camera.video.PendingRecording
 import androidx.camera.video.Recorder
 import androidx.camera.video.Recording
 import androidx.camera.video.VideoCapture
+import androidx.camera.video.VideoRecordEvent
 
 class SessionRecorder(
     private val context: Context,

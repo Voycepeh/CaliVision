@@ -180,7 +180,7 @@ fun LiveCoachingScreen(drillType: DrillType, options: LiveSessionOptions, onStop
                             sessionRecorder.startRecording(
                                 capture = capture,
                                 title = currentSessionTitle,
-                                onEvent = { event ->
+                                onEvent = { event: VideoRecordEvent ->
                                     if (event is VideoRecordEvent.Finalize) {
                                         vm.onRecordingFinalized(event.outputResults.outputUri.toString())
                                         if (event.hasError()) {
