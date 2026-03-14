@@ -53,7 +53,7 @@ class PoseAnalyzer(
             .setMinPoseDetectionConfidence(0.5f)
             .setMinTrackingConfidence(0.5f)
             .setResultListener(::onResult)
-            .setErrorListener { error, _ ->
+            .setErrorListener { error ->
                 Log.e(TAG, "Pose model error", error)
                 closePendingFrames()
                 onAnalyzerWarning("Pose model error. Reposition camera and retry.")
