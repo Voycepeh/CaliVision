@@ -184,4 +184,5 @@ data class LiveSessionOptions(
     val recordingEnabled: Boolean = true,
     val showSkeletonOverlay: Boolean = true,
     val showIdealLine: Boolean = true,
+    val zoomOutCamera: Boolean = true,
 )

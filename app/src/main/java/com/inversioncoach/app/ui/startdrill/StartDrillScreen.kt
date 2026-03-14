@@ -48,6 +48,7 @@ fun StartDrillScreen(
     val recordOn = remember { mutableStateOf(true) }
     val skeletonOn = remember { mutableStateOf(true) }
     val idealLineOn = remember { mutableStateOf(true) }
+    val zoomOutCameraOn = remember { mutableStateOf(true) }
 
     ScaffoldedScreen(title = "Choose Drill", onBack = onBack) { padding ->
         Column(
@@ -83,6 +84,7 @@ fun StartDrillScreen(
             ToggleRow("Record session", recordOn.value) { recordOn.value = it }
             ToggleRow("Show skeleton overlay", skeletonOn.value) { skeletonOn.value = it }
             ToggleRow("Show ideal line", idealLineOn.value) { idealLineOn.value = it }
+            ToggleRow("Zoom out camera (0.5x if supported)", zoomOutCameraOn.value) { zoomOutCameraOn.value = it }
             Spacer(modifier = Modifier.height(4.dp))
             Button(
                 onClick = {
@@ -93,6 +95,7 @@ fun StartDrillScreen(
                             recordingEnabled = recordOn.value,
                             showSkeletonOverlay = skeletonOn.value,
                             showIdealLine = idealLineOn.value,
+                            zoomOutCamera = zoomOutCameraOn.value,
                         ),
                     )
                 },
