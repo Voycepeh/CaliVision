@@ -18,7 +18,17 @@ class AlignmentMetricsEngine {
 
     fun analyze(config: DrillModeConfig, frame: PoseFrame): AnalysisResult {
         val analyzer = analyzers.getOrPut(config.type) { analyzerFor(config.type) }
-        val result = analyzer.analyzeFrame(frame)
+        val result = analyzer.analyzeFrame(frame) ?: return AnalysisResult(
+            metrics = emptyList(),
+            score = DrillScore(
+                overall = 0,
+                subScores = emptyMap(),
+                strongestArea = "n/a",
+                limitingFactor = "insufficient data",
+            ),
+            angles = emptyList(),
+            fault = null,
+        )
         val metrics = result.score.subScores.map { (key, score) ->
             AlignmentMetric(key = key, value = score / 100f, target = 0.85f, score = score)
         }
