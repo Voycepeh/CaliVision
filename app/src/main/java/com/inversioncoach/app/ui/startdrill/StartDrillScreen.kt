@@ -41,7 +41,7 @@ fun StartDrillScreen(onBack: () -> Unit, onStart: (DrillType, LiveSessionOptions
                     Card(onClick = { selected.value = drill.type }, modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(12.dp)) {
                             Text(drill.label)
-                            Text("Weights: ${drill.weights.joinToString { "${it.key}:${it.weight}" }}")
+                            Text("Weights: ${drill.metrics.joinToString(separator = ", ") { metric -> "${metric.key}:${metric.weight}" }}")
                         }
                     }
                 }
