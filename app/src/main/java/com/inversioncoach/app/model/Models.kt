@@ -134,6 +134,8 @@ data class LiveSessionUiState(
     val drillType: DrillType,
     val score: Int = 0,
     val currentCue: String = "",
+    val currentCueId: String = "",
+    val currentCueGeneratedAtMs: Long = 0L,
     val confidence: Float = 0f,
     val holdSeconds: Int = 0,
     val repCount: Int = 0,

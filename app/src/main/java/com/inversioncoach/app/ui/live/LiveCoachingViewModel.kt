@@ -13,6 +13,7 @@ import com.inversioncoach.app.model.LiveSessionUiState
 import com.inversioncoach.app.model.PoseFrame
 import com.inversioncoach.app.model.SmoothedPoseFrame
 import com.inversioncoach.app.model.UserSettings
+import com.inversioncoach.app.model.CoachingCue
 import com.inversioncoach.app.pose.PoseSmoother
 import com.inversioncoach.app.storage.repository.SessionRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,6 +34,9 @@ class LiveCoachingViewModel(
 
     private val _smoothedFrame = MutableStateFlow<SmoothedPoseFrame?>(null)
     val smoothedFrame: StateFlow<SmoothedPoseFrame?> = _smoothedFrame.asStateFlow()
+
+    private val _spokenCue = MutableStateFlow<CoachingCue?>(null)
+    val spokenCue: StateFlow<CoachingCue?> = _spokenCue.asStateFlow()
 
     private var latestScore: DrillScore = DrillScore(0, emptyMap(), "-", "-")
     private val sessionId = System.currentTimeMillis()
@@ -80,12 +84,18 @@ class LiveCoachingViewModel(
             score = analysis.score.overall,
             confidence = smoothed.confidence,
             currentCue = cue?.text ?: _uiState.value.currentCue,
+            currentCueId = cue?.id ?: _uiState.value.currentCueId,
+            currentCueGeneratedAtMs = cue?.generatedAtMs ?: _uiState.value.currentCueGeneratedAtMs,
             warningMessage = null,
             errorMessage = null,
             showDebugOverlay = settings.debugOverlayEnabled,
             debugMetrics = analysis.metrics,
             debugAngles = analysis.angles,
         )
+
+        if (cue != null) {
+            _spokenCue.value = cue
+        }
 
         persistFrameData(smoothed, analysis.score.overall, analysis.score.limitingFactor, analysis.metrics, analysis.angles, analysis.fault, cue?.severity ?: 1)
     }
