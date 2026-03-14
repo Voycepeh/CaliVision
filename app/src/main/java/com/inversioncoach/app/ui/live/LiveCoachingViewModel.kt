@@ -255,7 +255,7 @@ class LiveCoachingViewModel(
                 )
                 return@launch
             }
-            joinAll(listOf(rawVideoPersistJob, annotatedVideoPersistJob).filterNotNull())
+            listOfNotNull(rawVideoPersistJob, annotatedVideoPersistJob).joinAll()
             val frameMetrics = repository.observeSessionFrameMetrics(activeSessionId).first()
             val aggregatedIssues = issueAggregator.flushAll(System.currentTimeMillis())
             val validFrameMetrics = frameMetrics.filter { it.confidence >= 0.45f }

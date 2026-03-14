@@ -29,7 +29,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.inversioncoach.app.BuildConfig
 import com.inversioncoach.app.storage.ServiceLocator
 import com.inversioncoach.app.ui.components.ScaffoldedScreen
 import com.inversioncoach.app.ui.live.mediaAssetExists
@@ -189,7 +188,7 @@ private fun toSharableVideoUri(context: android.content.Context, sourceUri: Uri)
     if (!sourceFile.exists()) return null
     return FileProvider.getUriForFile(
         context,
-        "${BuildConfig.APPLICATION_ID}.fileprovider",
+        "${context.packageName}.fileprovider",
         sourceFile,
     )
 }
