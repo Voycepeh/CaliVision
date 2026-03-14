@@ -20,6 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.inversioncoach.app.model.UserSettings
 import com.inversioncoach.app.storage.ServiceLocator
@@ -71,7 +72,7 @@ fun HistoryScreen(onBack: () -> Unit, onOpenSession: (Long) -> Unit) {
                             .clickable { onOpenSession(session.id) },
                     ) {
                         Column(Modifier.padding(12.dp)) {
-                            Text(session.title)
+                            Text(session.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text("Session ID: ${session.id}")
                             Text("${session.drillType} • Score ${session.overallScore}")
                             Text("Limiter: ${session.limitingFactor}")
