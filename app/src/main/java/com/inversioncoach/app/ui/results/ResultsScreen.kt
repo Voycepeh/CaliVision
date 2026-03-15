@@ -92,6 +92,7 @@ fun ResultsScreen(sessionId: Long, onDone: () -> Unit) {
             ) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Session ID: $sessionId")
+                    Text("Drill: ${session?.drillType?.displayName ?: "-"}")
                     Text("Started: ${formatSessionDateTime(session?.startedAtMs ?: 0L)}")
                     Text("Duration: ${formatSessionDuration(computeSessionDurationMs(session?.startedAtMs ?: 0L, session?.completedAtMs ?: 0L))}")
                     Text(issueSummarySentence)

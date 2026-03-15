@@ -85,13 +85,13 @@ class LiveCoachingViewModel(
     private val validFrameScores = mutableListOf<Int>()
 
     val sessionTitle: String
-        get() = "${drillType.name.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }} session"
+        get() = "${drillType.displayName} session"
 
     val sessionStartTimestampMs: Long
         get() = sessionStartedAtMs
 
     init {
-        SessionDiagnostics.log("session_started drill=$drillType analyzer=${metricsEngine::class.simpleName} motionPattern=${DrillCatalog.byType(drillType).movementPattern}")
+        SessionDiagnostics.log("session_started drill=${drillType.displayName} analyzer=${metricsEngine::class.simpleName} motionPattern=${DrillCatalog.byType(drillType).movementPattern}")
         startSession()
     }
 

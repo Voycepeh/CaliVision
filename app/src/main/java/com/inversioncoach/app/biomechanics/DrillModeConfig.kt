@@ -6,7 +6,6 @@ data class MetricWeight(val key: String, val weight: Int)
 
 data class DrillModeConfig(
     val type: DrillType,
-    val label: String,
     val sideViewPrimary: Boolean = true,
     val metrics: List<MetricWeight>,
     val faults: Map<String, String>,
@@ -26,14 +25,12 @@ object DrillConfigs {
 
     private fun cfg(
         type: DrillType,
-        label: String,
         cuePriority: List<String>,
         faults: Map<String, String>,
         metrics: List<MetricWeight> = defaultMetrics,
         experimental: Boolean = false,
     ) = DrillModeConfig(
         type = type,
-        label = label,
         metrics = metrics,
         faults = faults,
         cuePriority = cuePriority,
@@ -44,7 +41,6 @@ object DrillConfigs {
     val all = listOf(
         cfg(
             DrillType.FREESTANDING_HANDSTAND_FUTURE,
-            "Free Standing Handstand",
             cuePriority = listOf("line_quality", "scapular_elevation", "rib_pelvis_control"),
             faults = mapOf(
                 "line_quality" to "Stack deviation",
@@ -64,7 +60,6 @@ object DrillConfigs {
         ),
         cfg(
             DrillType.CHEST_TO_WALL_HANDSTAND,
-            "Wall Assisted Handstand",
             cuePriority = listOf("line_quality", "scapular_elevation", "wall_reliance"),
             faults = mapOf(
                 "line_quality" to "Banana line",
@@ -76,7 +71,6 @@ object DrillConfigs {
         ),
         cfg(
             DrillType.PIKE_PUSH_UP,
-            "Pike Push-Up",
             cuePriority = listOf("loading_angle", "depth", "pressing_path"),
             faults = mapOf(
                 "loading_angle" to "Hips too low",
@@ -88,7 +82,6 @@ object DrillConfigs {
         ),
         cfg(
             DrillType.ELEVATED_PIKE_PUSH_UP,
-            "Elevated Pike Push-Up",
             cuePriority = listOf("loading_angle", "depth", "pressing_path"),
             faults = mapOf(
                 "loading_angle" to "Shoulder loading angle off",
@@ -100,7 +93,6 @@ object DrillConfigs {
         ),
         cfg(
             DrillType.PUSH_UP,
-            "Free Standing Handstand Push-Up",
             cuePriority = listOf("line_quality", "depth", "lockout"),
             faults = mapOf(
                 "line_quality" to "Line breaks during rep",
@@ -112,7 +104,6 @@ object DrillConfigs {
         ),
         cfg(
             DrillType.NEGATIVE_WALL_HANDSTAND_PUSH_UP,
-            "Wall Assisted Handstand Push-Up",
             cuePriority = listOf("descent_control", "line_retention", "path_consistency"),
             faults = mapOf(
                 "descent_control" to "Dropping too fast",

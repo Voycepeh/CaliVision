@@ -97,7 +97,7 @@ fun HistoryScreen(onBack: () -> Unit, onOpenSession: (Long) -> Unit) {
                     ) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(session.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
-                            Text("${session.drillType}")
+                            Text(session.drillType.displayName)
                             Text("Started: ${formatSessionDateTime(session.startedAtMs)}", maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(
                                 "Duration: ${formatSessionDuration(computeSessionDurationMs(session.startedAtMs, session.completedAtMs))}",

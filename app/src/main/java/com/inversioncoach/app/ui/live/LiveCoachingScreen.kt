@@ -243,7 +243,7 @@ fun LiveCoachingScreen(drillType: DrillType, options: LiveSessionOptions, onStop
                 .background(Color.Black.copy(alpha = 0.58f)).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text("Side-view mode • ${drillType.name}", color = Color.White)
+            Text("Side-view mode • ${drillType.displayName}", color = Color.White)
             Text("Started: ${formatSessionDateTime(vm.sessionStartTimestampMs)}", color = Color.White)
             Text("Duration: ${formatSessionDuration(sessionDurationMs)}", color = Color.White)
             Text("Cue: ${uiState.currentCue.ifBlank { "Awaiting stable frame..." }}", color = Color.White)
