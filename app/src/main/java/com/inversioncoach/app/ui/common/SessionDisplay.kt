@@ -54,7 +54,7 @@ fun computeSessionDurationMs(startedAtMs: Long, completedAtMs: Long): Long {
 }
 
 fun parseSessionMetrics(metricsJson: String): SessionMetrics {
-    val pairs = metricsJson.split("|")
+    val pairs = metricsJson.split('|')
         .mapNotNull { token ->
             val idx = token.indexOf(':')
             if (idx <= 0) null else token.substring(0, idx) to token.substring(idx + 1)

@@ -39,6 +39,17 @@ Camera input
 - **Live UI**: Displays camera feed, overlays, and coaching status while a drill is active.
 - **Session Tracking**: Stores completed sessions for history and progress views.
 
+
+### Main modules (code map)
+
+- `app/src/main/java/com/inversioncoach/app/ui/` – Compose screens and navigation.
+- `app/src/main/java/com/inversioncoach/app/camera/` – CameraX binding/session orchestration.
+- `app/src/main/java/com/inversioncoach/app/pose/` – ML Kit pose analyzer + smoothing.
+- `app/src/main/java/com/inversioncoach/app/motion/` – movement phases, quality/fault detection, drill catalog.
+- `app/src/main/java/com/inversioncoach/app/biomechanics/` – drill-specific scoring/metrics engines.
+- `app/src/main/java/com/inversioncoach/app/storage/` – Room + blob persistence + repository.
+- `app/src/main/java/com/inversioncoach/app/recording/` – raw and annotated session recording.
+
 ## Page layout architecture
 
 ```mermaid
@@ -83,16 +94,41 @@ flowchart TD
 
 > Tip: If Android blocks installation, re-download the APK and confirm it came from the official repository release assets.
 
-## Optional: Build locally
+## Build locally
 
 If you prefer to build yourself instead of installing from Releases:
 
-- Android Studio (latest stable)
-- Android SDK 34
-- JDK 17
-- Gradle 8.14+
+- Android Studio (latest stable) **or** CLI Gradle 8.14+
+- Android SDK 34 (platform + build tools installed)
+- JDK 17 (recommended; newer JDKs can fail Kotlin/Gradle script compilation)
 
-Open the project in Android Studio, sync, then run the `app` configuration on a physical Android device.
+> Note: this repository currently does **not** include `gradlew`; use a local `gradle` installation.
+
+### CLI setup
+
+```bash
+export JAVA_HOME=/root/.local/share/mise/installs/java/17.0.2
+export PATH="$JAVA_HOME/bin:$PATH"
+gradle --version
+```
+
+### Build + tests
+
+```bash
+gradle :app:assembleDebug
+gradle :app:testDebugUnitTest
+```
+
+### Run on device
+
+1. Connect an Android device (API 28+), enable USB debugging.
+2. Install debug APK:
+
+```bash
+gradle :app:installDebug
+```
+
+3. Launch **Inversion Coach** and grant camera permission.
 
 ## Quality-based coaching layer (new)
 
@@ -139,3 +175,20 @@ The biomechanics scoring layer now uses **banded, drill-aware thresholds** inste
 - Push-up family:
   - Top lockout: valid ≥170, warning 160–169, incomplete <160.
   - Bottom depth: elbow full-depth 80–100, shallow warning >100, collapse warning <75.
+
+
+## Release build
+
+Release signing is driven by Gradle properties in `~/.gradle/gradle.properties` (or passed via `-P`):
+
+- `RELEASE_STORE_FILE`
+- `RELEASE_STORE_PASSWORD`
+- `RELEASE_KEY_ALIAS`
+- `RELEASE_KEY_PASSWORD`
+- optional: `APP_VERSION_CODE`, `APP_VERSION_NAME`
+
+If release signing properties are missing, the app falls back to the debug keystore for local release builds.
+
+```bash
+gradle :app:assembleRelease
+```

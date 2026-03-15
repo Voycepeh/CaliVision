@@ -174,7 +174,7 @@ fun ResultsScreen(sessionId: Long, onDone: () -> Unit) {
                 enabled = !rawUri.isNullOrBlank(),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Replay Raw replay")
+                Text("Replay raw video")
             }
             Button(
                 onClick = {
