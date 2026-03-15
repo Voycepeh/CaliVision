@@ -25,10 +25,18 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.inversioncoach.app.storage.ServiceLocator
+import com.inversioncoach.app.ui.common.computeSessionDurationMs
+import com.inversioncoach.app.ui.common.formatSessionDateTime
+import com.inversioncoach.app.ui.common.formatSessionDuration
 import com.inversioncoach.app.ui.components.ScaffoldedScreen
 
 @Composable
@@ -38,8 +46,13 @@ fun HomeScreen(
     onProgress: () -> Unit,
     onSettings: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val repository = remember { ServiceLocator.repository(context) }
+    val sessions by repository.observeSessions().collectAsState(initial = emptyList())
+    val latestSession = sessions.maxByOrNull { it.startedAtMs }
+
     ScaffoldedScreen(title = "Inversion Coach") { padding ->
-        Content(padding, onStart, onHistory, onProgress, onSettings)
+        Content(padding, onStart, onHistory, onProgress, onSettings, latestSession?.startedAtMs ?: 0L, computeSessionDurationMs(latestSession?.startedAtMs ?: 0L, latestSession?.completedAtMs ?: 0L))
     }
 }
 
@@ -50,6 +63,8 @@ private fun Content(
     onHistory: () -> Unit,
     onProgress: () -> Unit,
     onSettings: () -> Unit,
+    latestSessionStartMs: Long,
+    latestSessionDurationMs: Long,
 ) {
     Column(
         modifier = Modifier
@@ -64,6 +79,14 @@ private fun Content(
             text = "Quickly start a drill, review sessions, and track trends.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+
+        ActionTile(
+            label = "Latest Session",
+            subtitle = "${formatSessionDateTime(latestSessionStartMs)} • ${formatSessionDuration(latestSessionDurationMs)}",
+            icon = { Icon(Icons.Default.History, contentDescription = null) },
+            onClick = onHistory,
         )
 
         ActionTile(

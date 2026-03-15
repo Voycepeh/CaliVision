@@ -35,6 +35,9 @@ import androidx.compose.ui.unit.dp
 import com.inversioncoach.app.model.FrameMetricRecord
 import com.inversioncoach.app.model.IssueEvent
 import com.inversioncoach.app.storage.ServiceLocator
+import com.inversioncoach.app.ui.common.computeSessionDurationMs
+import com.inversioncoach.app.ui.common.formatSessionDateTime
+import com.inversioncoach.app.ui.common.formatSessionDuration
 import com.inversioncoach.app.ui.components.ScaffoldedScreen
 import com.inversioncoach.app.ui.live.mediaAssetExists
 import com.inversioncoach.app.ui.live.selectReplayAsset
@@ -89,6 +92,8 @@ fun ResultsScreen(sessionId: Long, onDone: () -> Unit) {
             ) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Session ID: $sessionId")
+                    Text("Started: ${formatSessionDateTime(session?.startedAtMs ?: 0L)}")
+                    Text("Duration: ${formatSessionDuration(computeSessionDurationMs(session?.startedAtMs ?: 0L, session?.completedAtMs ?: 0L))}")
                     Text(issueSummarySentence)
                     Text(
                         "Top wins: ${session?.wins ?: "No wins captured yet"}",
@@ -174,13 +179,25 @@ fun ResultsScreen(sessionId: Long, onDone: () -> Unit) {
             Button(
                 onClick = {
                     scope.launch {
+                        repository.clearSessionVideos(sessionId)
+                        Toast.makeText(context, "Session videos deleted. Session history kept.", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = annotatedReady || rawReady,
+            ) {
+                Text("Delete videos only (keep session)")
+            }
+            Button(
+                onClick = {
+                    scope.launch {
                         repository.deleteSession(sessionId)
                         onDone()
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Delete this session and videos")
+                Text("Delete this session and all data")
             }
             Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("Done") }
         }

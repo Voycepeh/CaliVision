@@ -30,6 +30,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -47,12 +48,15 @@ import com.inversioncoach.app.pose.PoseAnalyzer
 import com.inversioncoach.app.recording.AnnotatedSessionRecorder
 import com.inversioncoach.app.recording.SessionRecorder
 import com.inversioncoach.app.storage.ServiceLocator
+import com.inversioncoach.app.ui.common.computeSessionDurationMs
+import com.inversioncoach.app.ui.common.formatSessionDateTime
+import com.inversioncoach.app.ui.common.formatSessionDuration
 import java.util.concurrent.Executors
 
 private const val TAG = "LiveCoachingScreen"
 
 @Composable
-fun LiveCoachingScreen(drillType: DrillType, options: LiveSessionOptions, onStop: (Long) -> Unit) {
+fun LiveCoachingScreen(drillType: DrillType, options: LiveSessionOptions, onStop: (SessionStopResult) -> Unit) {
     val context = LocalContext.current
     val repository = remember { ServiceLocator.repository(context) }
 
@@ -87,6 +91,13 @@ fun LiveCoachingScreen(drillType: DrillType, options: LiveSessionOptions, onStop
     val cameraManager = remember { CameraSessionManager(context) }
     val analyzerExecutor = remember { Executors.newSingleThreadExecutor() }
     val currentSettings by rememberUpdatedState(newValue = settings)
+    val sessionDurationMs by produceState(initialValue = 0L, uiState.isRecording) {
+        while (uiState.isRecording) {
+            value = computeSessionDurationMs(vm.sessionStartTimestampMs, System.currentTimeMillis())
+            kotlinx.coroutines.delay(1000L)
+        }
+        value = computeSessionDurationMs(vm.sessionStartTimestampMs, System.currentTimeMillis())
+    }
     val analyzer = remember {
         PoseAnalyzer(
             onPoseFrame = { vm.onPoseFrame(it, currentSettings) },
@@ -233,6 +244,8 @@ fun LiveCoachingScreen(drillType: DrillType, options: LiveSessionOptions, onStop
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text("Side-view mode • ${drillType.name}", color = Color.White)
+            Text("Started: ${formatSessionDateTime(vm.sessionStartTimestampMs)}", color = Color.White)
+            Text("Duration: ${formatSessionDuration(sessionDurationMs)}", color = Color.White)
             Text("Cue: ${uiState.currentCue.ifBlank { "Awaiting stable frame..." }}", color = Color.White)
             Text("Confidence: ${(uiState.confidence * 100).toInt()}%", color = Color.White)
             Text("Phase: ${uiState.currentPhase}", color = Color.White)

@@ -75,6 +75,12 @@ class SessionRepository(
 
     suspend fun deleteSessionBlob(sessionId: Long) = sessionBlobStorage.deleteSessionBlob(sessionId)
 
+    suspend fun clearSessionVideos(sessionId: Long) {
+        val session = sessionDao.getById(sessionId) ?: return
+        sessionBlobStorage.deleteVideoFiles(sessionId)
+        sessionDao.upsert(session.copy(rawVideoUri = null, annotatedVideoUri = null))
+    }
+
     suspend fun deleteSession(sessionId: Long) {
         frameMetricDao.deleteFrameMetricsForSession(sessionId)
         frameMetricDao.deleteIssueEventsForSession(sessionId)
