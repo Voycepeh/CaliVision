@@ -3,12 +3,16 @@ package com.inversioncoach.app.ui.history
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -20,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.inversioncoach.app.model.UserSettings
@@ -55,14 +60,28 @@ fun HistoryScreen(onBack: () -> Unit, onOpenSession: (Long) -> Unit) {
     val maxStorageBytes = settings.maxStorageMb.toLong() * 1024L * 1024L
 
     ScaffoldedScreen(title = "History", onBack = onBack) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Trend: Avg score $avgScore across ${sessions.size} sessions")
-            Text("Most common fault: $topIssue")
-            Text("Storage used: ${formatMb(totalStorageBytes)} MB / ${settings.maxStorageMb} MB")
-            Text("Remaining: ${formatMb((maxStorageBytes - totalStorageBytes).coerceAtLeast(0L))} MB")
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Session insights", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                MetricCard("Avg score", "$avgScore", Modifier.weight(1f))
+                MetricCard("Sessions", "${sessions.size}", Modifier.weight(1f))
+            }
+            MetricCard("Top issue", topIssue, modifier = Modifier.fillMaxWidth())
+            MetricCard(
+                "Storage",
+                "${formatMb(totalStorageBytes)} MB used • ${formatMb((maxStorageBytes - totalStorageBytes).coerceAtLeast(0L))} MB left",
+                modifier = Modifier.fillMaxWidth(),
+            )
+
             LazyColumn(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(sessions) { session ->
                     val sizeMb = formatMb(sessionSizes[session.id] ?: 0L)
@@ -70,18 +89,34 @@ fun HistoryScreen(onBack: () -> Unit, onOpenSession: (Long) -> Unit) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { onOpenSession(session.id) },
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        ),
                     ) {
-                        Column(Modifier.padding(12.dp)) {
-                            Text(session.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("Session ID: ${session.id}")
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(session.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
                             Text("${session.drillType} • Score ${session.overallScore}")
-                            Text("Limiter: ${session.limitingFactor}")
-                            Text("Storage: $sizeMb MB")
-                            Text("Tap to review session")
+                            Text("Limiter: ${session.limitingFactor}", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("Storage: $sizeMb MB", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun MetricCard(title: String, value: String, modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)),
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         }
     }
 }
