@@ -21,6 +21,7 @@ import com.inversioncoach.app.model.SmoothedPoseFrame
 import com.inversioncoach.app.model.UserSettings
 import com.inversioncoach.app.motion.DrillCatalog
 import com.inversioncoach.app.motion.MotionAnalysisPipeline
+import com.inversioncoach.app.motion.RepMode
 import com.inversioncoach.app.pose.PoseSmoother
 import com.inversioncoach.app.storage.repository.SessionRepository
 import com.inversioncoach.app.summary.SummaryGenerator
@@ -52,6 +53,7 @@ class LiveCoachingViewModel(
 ) : ViewModel() {
 
     private val sessionMode = drillType.sessionMode()
+    private val drillDefinition = DrillCatalog.byType(drillType)
 
     private val _uiState = MutableStateFlow(
         LiveSessionUiState(
@@ -97,7 +99,7 @@ class LiveCoachingViewModel(
         get() = sessionStartedAtMs
 
     init {
-        val movementPattern = runCatching { DrillCatalog.byType(drillType).movementPattern.name }.getOrDefault("GENERIC")
+        val movementPattern = runCatching { drillDefinition.movementPattern.name }.getOrDefault("GENERIC")
         SessionDiagnostics.log("session_started drill=$drillType analyzer=${metricsEngine::class.simpleName} motionPattern=$movementPattern")
         startSession()
     }
@@ -144,7 +146,7 @@ class LiveCoachingViewModel(
     fun onPoseFrame(frame: PoseFrame, settings: UserSettings) {
         activeSettings = settings
         val smoothed = smoother.smooth(frame)
-        val motion = if (sessionMode == SessionMode.FREESTYLE) null else motionPipeline.analyze(frame)
+        val motion = if (sessionMode == SessionMode.FREESTYLE) null else motionPipeline.analyze(frame, settings.alignmentStrictness)
         _smoothedFrame.value = smoothed
         val gate = frameGate
         if (gate == null) {
@@ -189,6 +191,11 @@ class LiveCoachingViewModel(
                 debugMetrics = emptyList(),
                 debugAngles = emptyList(),
                 repCount = 0,
+                rawRepCount = 0,
+                totalAlignedDurationMs = 0L,
+                currentAlignedStreakMs = 0L,
+                bestAlignedStreakMs = 0L,
+                totalSessionTrackedMs = 0L,
                 currentPhase = "tracking",
                 activeFault = "",
             )
@@ -217,6 +224,8 @@ class LiveCoachingViewModel(
             minSpacingMs = (settings.cueFrequencySeconds * 1000).toLong(),
         )
 
+        val repTracking = motion?.repTracking
+        val holdTracking = motion?.holdTracking
         _uiState.value = _uiState.value.copy(
             score = analysis.score.overall,
             confidence = smoothed.confidence,
@@ -228,7 +237,12 @@ class LiveCoachingViewModel(
             showDebugOverlay = settings.debugOverlayEnabled,
             debugMetrics = analysis.metrics,
             debugAngles = analysis.angles,
-            repCount = motion?.movement?.completedRepCount ?: 0,
+            repCount = repTracking?.validRepCount ?: 0,
+            rawRepCount = repTracking?.rawRepAttempts ?: 0,
+            totalAlignedDurationMs = holdTracking?.totalAlignedDurationMs ?: _uiState.value.totalAlignedDurationMs,
+            currentAlignedStreakMs = holdTracking?.currentAlignedStreakMs ?: _uiState.value.currentAlignedStreakMs,
+            bestAlignedStreakMs = holdTracking?.bestAlignedStreakMs ?: _uiState.value.bestAlignedStreakMs,
+            totalSessionTrackedMs = holdTracking?.totalSessionDurationMs ?: _uiState.value.totalSessionTrackedMs,
             currentPhase = motion?.movement?.currentPhase?.name?.lowercase() ?: "setup",
             activeFault = motion?.faults?.firstOrNull()?.code ?: "",
         )
@@ -387,6 +401,18 @@ class LiveCoachingViewModel(
                             append(validFrameCount)
                             append("|invalidFrames:")
                             append(invalidFrameCount)
+                            append("|trackingMode:")
+                            append(drillDefinition.repMode.name)
+                            append("|validReps:")
+                            append(_uiState.value.repCount)
+                            append("|rawRepAttempts:")
+                            append(_uiState.value.rawRepCount)
+                            append("|alignedDurationMs:")
+                            append(_uiState.value.totalAlignedDurationMs)
+                            append("|bestAlignedStreakMs:")
+                            append(_uiState.value.bestAlignedStreakMs)
+                            append("|sessionTrackedMs:")
+                            append(_uiState.value.totalSessionTrackedMs)
                             if (invalidReasonSummary.isNotBlank()) {
                                 append("|invalidReasons:")
                                 append(invalidReasonSummary)

@@ -45,6 +45,8 @@ import com.inversioncoach.app.model.LiveSessionOptions
 import com.inversioncoach.app.model.UserSettings
 import com.inversioncoach.app.model.displayName
 import com.inversioncoach.app.model.SessionMode
+import com.inversioncoach.app.motion.DrillCatalog
+import com.inversioncoach.app.motion.RepMode
 import com.inversioncoach.app.overlay.OverlayRenderer
 import com.inversioncoach.app.pose.PoseAnalyzer
 import com.inversioncoach.app.recording.AnnotatedSessionRecorder
@@ -61,6 +63,8 @@ private const val TAG = "LiveCoachingScreen"
 fun LiveCoachingScreen(drillType: DrillType, options: LiveSessionOptions, onStop: (SessionStopResult) -> Unit) {
     val context = LocalContext.current
     val repository = remember { ServiceLocator.repository(context) }
+
+    val trackingMode = remember(drillType) { DrillCatalog.byType(drillType).repMode }
 
     val vm = remember {
         LiveCoachingViewModel(
@@ -253,7 +257,12 @@ fun LiveCoachingScreen(drillType: DrillType, options: LiveSessionOptions, onStop
             }
             Text("Confidence: ${(uiState.confidence * 100).toInt()}%", color = Color.White)
             Text("Phase: ${uiState.currentPhase}", color = Color.White)
-            Text(if (uiState.sessionMode == SessionMode.FREESTYLE) "Reps: Not tracked" else "Reps: ${uiState.repCount}", color = Color.White)
+            if (uiState.sessionMode == SessionMode.FREESTYLE || trackingMode == RepMode.HOLD_BASED) {
+                Text("Aligned hold: ${formatSessionDuration(uiState.totalAlignedDurationMs)}", color = Color.White)
+                Text("Current streak: ${formatSessionDuration(uiState.currentAlignedStreakMs)} • Best: ${formatSessionDuration(uiState.bestAlignedStreakMs)}", color = Color.White)
+            } else {
+                Text("Valid reps: ${uiState.repCount} (raw attempts: ${uiState.rawRepCount})", color = Color.White)
+            }
             if (uiState.sessionMode != SessionMode.FREESTYLE && uiState.activeFault.isNotBlank()) Text("Active fault: ${uiState.activeFault}", color = Color.Yellow)
             if (!uiState.cameraPermissionGranted) {
                 Text("Camera permission required for live coaching.", color = Color.Yellow)

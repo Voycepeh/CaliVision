@@ -101,6 +101,7 @@ fun ResultsScreen(sessionId: Long, onDone: () -> Unit) {
                     Text("Type: ${session?.drillType?.displayName() ?: "-"}")
                     Text("Started: ${formatSessionDateTime(session?.startedAtMs ?: 0L)}")
                     Text("Duration: ${formatSessionDuration(computeSessionDurationMs(session?.startedAtMs ?: 0L, session?.completedAtMs ?: 0L))}")
+                    session?.let { Text(formatPrimaryPerformance(it)) }
                     Text(issueSummarySentence)
                     Text(
                         "Top wins: ${sessionSummaryDisplay.wins}",

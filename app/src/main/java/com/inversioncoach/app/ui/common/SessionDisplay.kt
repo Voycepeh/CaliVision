@@ -14,6 +14,15 @@ data class SessionSummaryDisplay(
     val improvement: String,
 )
 
+data class SessionMetrics(
+    val trackingMode: String? = null,
+    val validReps: Int? = null,
+    val rawRepAttempts: Int? = null,
+    val alignedDurationMs: Long? = null,
+    val bestAlignedStreakMs: Long? = null,
+    val sessionTrackedMs: Long? = null,
+)
+
 fun formatSessionDateTime(timestampMs: Long): String {
     if (timestampMs <= 0L) return "-"
     return DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(timestampMs))
@@ -34,6 +43,37 @@ fun formatSessionDuration(durationMs: Long): String {
 fun computeSessionDurationMs(startedAtMs: Long, completedAtMs: Long): Long {
     if (startedAtMs <= 0L || completedAtMs <= 0L) return 0L
     return (completedAtMs - startedAtMs).coerceAtLeast(0L)
+}
+
+fun parseSessionMetrics(metricsJson: String): SessionMetrics {
+    val pairs = metricsJson.split("|")
+        .mapNotNull { token ->
+            val idx = token.indexOf(':')
+            if (idx <= 0) null else token.substring(0, idx) to token.substring(idx + 1)
+        }
+        .toMap()
+    return SessionMetrics(
+        trackingMode = pairs["trackingMode"],
+        validReps = pairs["validReps"]?.toIntOrNull(),
+        rawRepAttempts = pairs["rawRepAttempts"]?.toIntOrNull(),
+        alignedDurationMs = pairs["alignedDurationMs"]?.toLongOrNull(),
+        bestAlignedStreakMs = pairs["bestAlignedStreakMs"]?.toLongOrNull(),
+        sessionTrackedMs = pairs["sessionTrackedMs"]?.toLongOrNull(),
+    )
+}
+
+fun formatPrimaryPerformance(session: SessionRecord): String {
+    val metrics = parseSessionMetrics(session.metricsJson)
+    return if (metrics.trackingMode == "HOLD_BASED") {
+        val aligned = formatSessionDuration(metrics.alignedDurationMs ?: 0L)
+        val best = formatSessionDuration(metrics.bestAlignedStreakMs ?: 0L)
+        val total = formatSessionDuration(metrics.sessionTrackedMs ?: computeSessionDurationMs(session.startedAtMs, session.completedAtMs))
+        "Hold: $aligned aligned • Best streak: $best • Session: $total"
+    } else {
+        val valid = metrics.validReps ?: 0
+        val raw = metrics.rawRepAttempts ?: valid
+        "Reps: $valid valid${if (raw >= valid) " / $raw attempts" else ""}"
+    }
 }
 
 fun formatLimiterText(session: SessionRecord?): String {
