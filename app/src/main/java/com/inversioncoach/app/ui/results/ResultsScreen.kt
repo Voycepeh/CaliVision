@@ -59,6 +59,10 @@ fun ResultsScreen(sessionId: Long, onDone: () -> Unit) {
     val replaySelection = remember(session) { selectReplayAsset(session) }
     val rawUri = session?.rawVideoUri?.takeIf(::mediaAssetExists)
     val hasReplay = replaySelection.uri != null
+    val showRawVideoButton = shouldShowRawVideoButton(
+        replayUri = replaySelection.uri,
+        rawUri = rawUri,
+    )
     val scope = rememberCoroutineScope()
     var notes by remember { mutableStateOf("") }
 
@@ -169,12 +173,14 @@ fun ResultsScreen(sessionId: Long, onDone: () -> Unit) {
             if (!hasReplay) {
                 Text("No replay asset is available for this session.")
             }
-            Button(
-                onClick = { openVideo(context, rawUri) },
-                enabled = !rawUri.isNullOrBlank(),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Replay raw video")
+            if (showRawVideoButton) {
+                Button(
+                    onClick = { openVideo(context, rawUri) },
+                    enabled = !rawUri.isNullOrBlank(),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Replay raw video")
+                }
             }
             Button(
                 onClick = {
@@ -230,6 +236,9 @@ private data class StabilityBreakdown(
     val stablePercent: Int,
     val poorPercent: Int,
 )
+
+internal fun shouldShowRawVideoButton(replayUri: String?, rawUri: String?): Boolean =
+    !rawUri.isNullOrBlank() && replayUri != rawUri
 
 private fun computeStabilityBreakdown(frameMetrics: List<FrameMetricRecord>): StabilityBreakdown {
     if (frameMetrics.isEmpty()) return StabilityBreakdown(stablePercent = 0, poorPercent = 0)

@@ -1,0 +1,37 @@
+package com.inversioncoach.app.ui.results
+
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class ResultsScreenLogicTest {
+    @Test
+    fun hidesRawButtonWhenPrimaryReplayAlreadyUsesRawVideo() {
+        assertFalse(
+            shouldShowRawVideoButton(
+                replayUri = "file:///sessions/1/raw.mp4",
+                rawUri = "file:///sessions/1/raw.mp4",
+            ),
+        )
+    }
+
+    @Test
+    fun showsRawButtonWhenAnnotatedReplayAndRawVideoBothExist() {
+        assertTrue(
+            shouldShowRawVideoButton(
+                replayUri = "file:///sessions/1/annotated.mp4",
+                rawUri = "file:///sessions/1/raw.mp4",
+            ),
+        )
+    }
+
+    @Test
+    fun hidesRawButtonWhenRawVideoMissing() {
+        assertFalse(
+            shouldShowRawVideoButton(
+                replayUri = "file:///sessions/1/annotated.mp4",
+                rawUri = null,
+            ),
+        )
+    }
+}
