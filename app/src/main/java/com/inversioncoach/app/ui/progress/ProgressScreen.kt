@@ -2,10 +2,14 @@ package com.inversioncoach.app.ui.progress
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.weight
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -15,7 +19,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.inversioncoach.app.storage.ServiceLocator
 import com.inversioncoach.app.ui.components.ScaffoldedScreen
@@ -40,25 +43,31 @@ fun ProgressScreen(onBack: () -> Unit) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Overall trend", style = MaterialTheme.typography.labelLarge)
-                    Text(
-                        "Average score: $averageScore",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text("Sessions tracked: ${sessions.size}", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
+            Text("Progress at a glance", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                ProgressCard("Average", "$averageScore", Modifier.weight(1f))
+                ProgressCard("Sessions", "${sessions.size}", Modifier.weight(1f))
             }
+            ProgressCard("Latest score", "$latestScore", Modifier.fillMaxWidth())
+            ProgressCard(
+                "Delta vs previous",
+                "${if (scoreDelta >= 0) "+" else ""}$scoreDelta",
+                Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
 
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Most recent change", style = MaterialTheme.typography.labelLarge)
-                    Text("Latest score: $latestScore", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("Delta vs previous: ${if (scoreDelta >= 0) "+" else ""}$scoreDelta", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
+@Composable
+private fun ProgressCard(title: String, value: String, modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)),
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         }
     }
 }

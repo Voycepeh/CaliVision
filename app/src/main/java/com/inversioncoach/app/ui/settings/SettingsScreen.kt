@@ -1,15 +1,19 @@
 package com.inversioncoach.app.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,6 +27,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.inversioncoach.app.model.UserSettings
 import com.inversioncoach.app.storage.ServiceLocator
@@ -60,25 +65,36 @@ fun SettingsScreen(onBack: () -> Unit, onDeveloperTuning: () -> Unit) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Voice style: concise / technical / encouraging")
-            Text("Cue frequency: ${"%.1f".format(cueFrequency)}s")
-            Slider(value = cueFrequency, onValueChange = { cueFrequency = it }, valueRange = 1.5f..4f)
-            Text("Overlay intensity: ${"%.1f".format(overlay)}")
-            Slider(value = overlay, onValueChange = { overlay = it }, valueRange = 0.2f..1f)
-            Text("Max video storage: ${maxStorageMb} MB")
-            Slider(
-                value = maxStorageMb.toFloat(),
-                onValueChange = { maxStorageMb = it.toInt().coerceIn(256, 4096) },
-                valueRange = 256f..4096f,
-            )
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Debug overlay (raw metrics/angles)")
-                Checkbox(checked = debug, onCheckedChange = { debug = it })
+            Text("Preferences", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+
+            SettingsCard(title = "Voice cues") {
+                Text("Cue frequency: ${"%.1f".format(cueFrequency)}s")
+                Slider(value = cueFrequency, onValueChange = { cueFrequency = it }, valueRange = 1.5f..4f)
+                Text("Voice style: concise / technical / encouraging")
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Local-only privacy mode")
-                Checkbox(checked = localOnlyPrivacyMode, onCheckedChange = { localOnlyPrivacyMode = it })
+
+            SettingsCard(title = "Overlay") {
+                Text("Overlay intensity: ${"%.1f".format(overlay)}")
+                Slider(value = overlay, onValueChange = { overlay = it }, valueRange = 0.2f..1f)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Debug overlay (raw metrics/angles)")
+                    Checkbox(checked = debug, onCheckedChange = { debug = it })
+                }
             }
+
+            SettingsCard(title = "Storage & privacy") {
+                Text("Max video storage: ${maxStorageMb} MB")
+                Slider(
+                    value = maxStorageMb.toFloat(),
+                    onValueChange = { maxStorageMb = it.toInt().coerceIn(256, 4096) },
+                    valueRange = 256f..4096f,
+                )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Local-only privacy mode")
+                    Checkbox(checked = localOnlyPrivacyMode, onCheckedChange = { localOnlyPrivacyMode = it })
+                }
+            }
+
             Button(
                 onClick = {
                     scope.launch {
@@ -97,11 +113,23 @@ fun SettingsScreen(onBack: () -> Unit, onDeveloperTuning: () -> Unit) {
             ) { Text("Save settings") }
             Button(onClick = onDeveloperTuning, modifier = Modifier.fillMaxWidth()) { Text("Developer threshold tuning") }
             Button(
-                onClick = {
-                    scope.launch { repository.clearAllSessions() }
-                },
+                onClick = { scope.launch { repository.clearAllSessions() } },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Delete all sessions") }
+        }
+    }
+}
+
+@Composable
+private fun SettingsCard(title: String, content: @Composable () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)),
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            content()
         }
     }
 }
