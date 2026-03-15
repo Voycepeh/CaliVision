@@ -43,6 +43,8 @@ import com.inversioncoach.app.coaching.VoiceCoach
 import com.inversioncoach.app.model.DrillType
 import com.inversioncoach.app.model.LiveSessionOptions
 import com.inversioncoach.app.model.UserSettings
+import com.inversioncoach.app.model.displayName
+import com.inversioncoach.app.model.SessionMode
 import com.inversioncoach.app.overlay.OverlayRenderer
 import com.inversioncoach.app.pose.PoseAnalyzer
 import com.inversioncoach.app.recording.AnnotatedSessionRecorder
@@ -233,7 +235,7 @@ fun LiveCoachingScreen(drillType: DrillType, options: LiveSessionOptions, onStop
                     debugAngles = uiState.debugAngles,
                     currentPhase = uiState.currentPhase,
                     activeFault = uiState.activeFault,
-                    cueText = uiState.currentCue,
+                    cueText = if (uiState.sessionMode == SessionMode.FREESTYLE) "" else uiState.currentCue,
                 )
             }
         }
@@ -243,14 +245,16 @@ fun LiveCoachingScreen(drillType: DrillType, options: LiveSessionOptions, onStop
                 .background(Color.Black.copy(alpha = 0.58f)).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text("Side-view mode • ${drillType.name}", color = Color.White)
+            Text("Side-view mode • ${drillType.displayName()}", color = Color.White)
             Text("Started: ${formatSessionDateTime(vm.sessionStartTimestampMs)}", color = Color.White)
             Text("Duration: ${formatSessionDuration(sessionDurationMs)}", color = Color.White)
-            Text("Cue: ${uiState.currentCue.ifBlank { "Awaiting stable frame..." }}", color = Color.White)
+            if (uiState.sessionMode != SessionMode.FREESTYLE) {
+                Text("Cue: ${uiState.currentCue.ifBlank { "Awaiting stable frame..." }}", color = Color.White)
+            }
             Text("Confidence: ${(uiState.confidence * 100).toInt()}%", color = Color.White)
             Text("Phase: ${uiState.currentPhase}", color = Color.White)
-            Text("Reps: ${uiState.repCount}", color = Color.White)
-            if (uiState.activeFault.isNotBlank()) Text("Active fault: ${uiState.activeFault}", color = Color.Yellow)
+            Text(if (uiState.sessionMode == SessionMode.FREESTYLE) "Reps: Not tracked" else "Reps: ${uiState.repCount}", color = Color.White)
+            if (uiState.sessionMode != SessionMode.FREESTYLE && uiState.activeFault.isNotBlank()) Text("Active fault: ${uiState.activeFault}", color = Color.Yellow)
             if (!uiState.cameraPermissionGranted) {
                 Text("Camera permission required for live coaching.", color = Color.Yellow)
             }
