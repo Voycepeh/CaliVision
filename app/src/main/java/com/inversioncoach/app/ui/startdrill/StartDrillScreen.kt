@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -19,6 +20,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -53,12 +55,12 @@ fun StartDrillScreen(
     val drillByType = remember { DrillConfigs.all.associateBy { it.type } }
     val gridItems = remember(drillByType) {
         listOf(
-            DrillGridItem(DrillType.FREESTANDING_HANDSTAND_FUTURE, "Free Handstand", R.drawable.handstand_free),
-            DrillGridItem(DrillType.CHEST_TO_WALL_HANDSTAND, "Wall Handstand", R.drawable.handstand_wall),
-            DrillGridItem(DrillType.PIKE_PUSH_UP, "Pike Push-Up", R.drawable.pike_pushup),
-            DrillGridItem(DrillType.ELEVATED_PIKE_PUSH_UP, "Elevated Pike Push", R.drawable.pike_pushup_elevated),
-            DrillGridItem(DrillType.PUSH_UP, "Handstand Push-Up", R.drawable.handstand_pushup_free),
-            DrillGridItem(DrillType.NEGATIVE_WALL_HANDSTAND_PUSH_UP, "Wall Handstand PU", R.drawable.handstand_pushup_wall),
+            DrillGridItem(DrillType.FREESTANDING_HANDSTAND_FUTURE, "Free Handstand", R.drawable.handstand_free_preview),
+            DrillGridItem(DrillType.CHEST_TO_WALL_HANDSTAND, "Wall Handstand", R.drawable.handstand_wall_preview),
+            DrillGridItem(DrillType.PIKE_PUSH_UP, "Pike Push-Up", R.drawable.pike_pushup_preview),
+            DrillGridItem(DrillType.ELEVATED_PIKE_PUSH_UP, "Elevated Pike Push", R.drawable.pike_pushup_elevated_preview),
+            DrillGridItem(DrillType.PUSH_UP, "Handstand Push-Up", R.drawable.handstand_pushup_free_preview),
+            DrillGridItem(DrillType.NEGATIVE_WALL_HANDSTAND_PUSH_UP, "Wall Handstand PU", R.drawable.handstand_pushup_wall_preview),
         ).filter { drillByType.containsKey(it.type) }
     }
 
@@ -67,19 +69,19 @@ fun StartDrillScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            Text("Choose your flow", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Text(
-                text = "Drill Selection",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.fillMaxWidth(),
+                text = "Tap any drill to begin immediately.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                columns = GridCells.Fixed(2),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(bottom = 12.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
@@ -104,28 +106,31 @@ private fun DrillGridCard(
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Image(
                 painter = painterResource(id = imageRes),
                 contentDescription = label,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(1f),
+                    .aspectRatio(1f)
+                    .clip(RoundedCornerShape(14.dp)),
                 contentScale = ContentScale.Crop,
             )
             Text(
                 text = label,
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.titleSmall,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 2,
+                fontWeight = FontWeight.SemiBold,
             )
         }
     }
