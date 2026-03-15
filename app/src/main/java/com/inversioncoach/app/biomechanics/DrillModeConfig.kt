@@ -43,6 +43,16 @@ object DrillConfigs {
 
     val all = listOf(
         cfg(
+            DrillType.FREESTYLE,
+            "Freestyle Live Coaching",
+            cuePriority = emptyList(),
+            faults = emptyMap(),
+            metrics = listOf(
+                MetricWeight("line_quality", 100),
+            ),
+            experimental = false,
+        ),
+        cfg(
             DrillType.FREESTANDING_HANDSTAND_FUTURE,
             "Free Standing Handstand",
             cuePriority = listOf("line_quality", "scapular_elevation", "rib_pelvis_control"),

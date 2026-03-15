@@ -34,10 +34,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.inversioncoach.app.model.FrameMetricRecord
 import com.inversioncoach.app.model.IssueEvent
+import com.inversioncoach.app.model.displayName
+import com.inversioncoach.app.model.sessionMode
+import com.inversioncoach.app.model.SessionMode
 import com.inversioncoach.app.storage.ServiceLocator
 import com.inversioncoach.app.ui.common.computeSessionDurationMs
 import com.inversioncoach.app.ui.common.formatSessionDateTime
 import com.inversioncoach.app.ui.common.formatSessionDuration
+import com.inversioncoach.app.ui.common.buildSessionSummaryDisplay
 import com.inversioncoach.app.ui.components.ScaffoldedScreen
 import com.inversioncoach.app.ui.live.mediaAssetExists
 import com.inversioncoach.app.ui.live.selectReplayAsset
@@ -69,6 +73,8 @@ fun ResultsScreen(sessionId: Long, onDone: () -> Unit) {
     val collapsedIssueTimeline = remember(issueTimeline, session?.startedAtMs) {
         collapseIssueTimeline(issueTimeline, session?.startedAtMs)
     }
+    val sessionSummaryDisplay = remember(session) { buildSessionSummaryDisplay(session) }
+    val sessionMode = session?.sessionMode()
 
     LaunchedEffect(sessionId) {
         notes = repository.readSessionNotes(sessionId).orEmpty()
@@ -92,21 +98,22 @@ fun ResultsScreen(sessionId: Long, onDone: () -> Unit) {
             ) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Session ID: $sessionId")
+                    Text("Type: ${session?.drillType?.displayName() ?: "-"}")
                     Text("Started: ${formatSessionDateTime(session?.startedAtMs ?: 0L)}")
                     Text("Duration: ${formatSessionDuration(computeSessionDurationMs(session?.startedAtMs ?: 0L, session?.completedAtMs ?: 0L))}")
                     Text(issueSummarySentence)
                     Text(
-                        "Top wins: ${session?.wins ?: "No wins captured yet"}",
+                        "Top wins: ${sessionSummaryDisplay.wins}",
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        "Top issues: ${session?.issues ?: "No issues captured"}",
+                        "Top issues: ${sessionSummaryDisplay.issues}",
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        "Top improvement focus: ${session?.topImprovementFocus ?: "-"}",
+                        "Top improvement focus: ${sessionSummaryDisplay.improvement}",
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -120,7 +127,9 @@ fun ResultsScreen(sessionId: Long, onDone: () -> Unit) {
             ) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Issue timeline summary")
-                    if (collapsedIssueTimeline.isEmpty()) {
+                    if (sessionMode == SessionMode.FREESTYLE) {
+                        Text("Issue timeline is not tracked for freestyle sessions")
+                    } else if (collapsedIssueTimeline.isEmpty()) {
                         Text("No issue events captured for this session")
                     } else {
                         collapsedIssueTimeline.forEach { summary ->

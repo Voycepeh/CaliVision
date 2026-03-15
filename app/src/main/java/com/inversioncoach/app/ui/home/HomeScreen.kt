@@ -16,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowOutward
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
@@ -42,6 +43,7 @@ import com.inversioncoach.app.ui.components.ScaffoldedScreen
 @Composable
 fun HomeScreen(
     onStart: () -> Unit,
+    onStartFreestyle: () -> Unit,
     onHistory: () -> Unit,
     onProgress: () -> Unit,
     onSettings: () -> Unit,
@@ -52,7 +54,16 @@ fun HomeScreen(
     val latestSession = sessions.maxByOrNull { it.startedAtMs }
 
     ScaffoldedScreen(title = "Inversion Coach") { padding ->
-        Content(padding, onStart, onHistory, onProgress, onSettings, latestSession?.startedAtMs ?: 0L, computeSessionDurationMs(latestSession?.startedAtMs ?: 0L, latestSession?.completedAtMs ?: 0L))
+        Content(
+            padding = padding,
+            onStart = onStart,
+            onStartFreestyle = onStartFreestyle,
+            onHistory = onHistory,
+            onProgress = onProgress,
+            onSettings = onSettings,
+            latestSessionStartMs = latestSession?.startedAtMs ?: 0L,
+            latestSessionDurationMs = computeSessionDurationMs(latestSession?.startedAtMs ?: 0L, latestSession?.completedAtMs ?: 0L),
+        )
     }
 }
 
@@ -60,6 +71,7 @@ fun HomeScreen(
 private fun Content(
     padding: PaddingValues,
     onStart: () -> Unit,
+    onStartFreestyle: () -> Unit,
     onHistory: () -> Unit,
     onProgress: () -> Unit,
     onSettings: () -> Unit,
@@ -72,29 +84,36 @@ private fun Content(
             .padding(padding)
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Text("Train smarter", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Text(
-            text = "Quickly start a drill, review sessions, and track trends.",
+            text = "Start live posture tracking instantly, or launch a drill-based coached session.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
+        ActionTile(
+            label = "Start Live Coaching",
+            subtitle = "Generic posture tracking",
+            icon = { Icon(Icons.Default.FitnessCenter, contentDescription = null) },
+            onClick = onStartFreestyle,
+            featured = true,
+            hero = true,
+        )
+
+        ActionTile(
+            label = "Choose Drill",
+            subtitle = "Guided drill-specific coaching",
+            icon = { Icon(Icons.Default.PlayArrow, contentDescription = null) },
+            onClick = onStart,
+        )
 
         ActionTile(
             label = "Latest Session",
             subtitle = "${formatSessionDateTime(latestSessionStartMs)} • ${formatSessionDuration(latestSessionDurationMs)}",
             icon = { Icon(Icons.Default.History, contentDescription = null) },
             onClick = onHistory,
-        )
-
-        ActionTile(
-            label = "Choose Drill",
-            subtitle = "Start a guided session",
-            icon = { Icon(Icons.Default.PlayArrow, contentDescription = null) },
-            onClick = onStart,
-            featured = true,
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -131,6 +150,7 @@ private fun ActionTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     featured: Boolean = false,
+    hero: Boolean = false,
 ) {
     val colors = if (featured) {
         CardDefaults.cardColors(
@@ -147,13 +167,13 @@ private fun ActionTile(
     Card(
         onClick = onClick,
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(if (hero) 28.dp else 24.dp),
         colors = colors,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 18.dp),
+                .padding(horizontal = if (hero) 20.dp else 16.dp, vertical = if (hero) 24.dp else 18.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -162,21 +182,25 @@ private fun ActionTile(
                     shape = RoundedCornerShape(12.dp),
                     tonalElevation = 0.dp,
                 ) {
-                    Row(modifier = Modifier.padding(8.dp)) {
+                    Row(modifier = Modifier.padding(if (hero) 10.dp else 8.dp)) {
                         icon()
                     }
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(text = label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        text = label,
+                        style = if (hero) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
                     Text(
                         text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
+                        style = if (hero) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
             Spacer(modifier = Modifier.width(10.dp))
-            Icon(imageVector = Icons.Default.ArrowOutward, contentDescription = null, modifier = Modifier.size(18.dp))
+            Icon(imageVector = Icons.Default.ArrowOutward, contentDescription = null, modifier = Modifier.size(if (hero) 22.dp else 18.dp))
         }
     }
 }

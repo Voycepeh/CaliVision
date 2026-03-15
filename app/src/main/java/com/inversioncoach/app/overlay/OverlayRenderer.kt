@@ -207,6 +207,7 @@ private fun Color.toArgbCompat(): Int {
 
 private fun idealLineXForDrill(drillType: DrillType, joints: List<JointPoint>): Float {
     val jointPriority = when (drillType) {
+        DrillType.FREESTYLE,
         DrillType.WALL_FACING_HANDSTAND_HOLD,
         DrillType.CHEST_TO_WALL_HANDSTAND,
         DrillType.BACK_TO_WALL_HANDSTAND,

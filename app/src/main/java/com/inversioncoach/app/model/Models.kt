@@ -4,6 +4,7 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 
 enum class DrillType {
+    FREESTYLE,
     WALL_PUSH_UP,
     INCLINE_OR_KNEE_PUSH_UP,
     BODYWEIGHT_SQUAT,
@@ -28,6 +29,20 @@ enum class DrillType {
     NEGATIVE_WALL_HANDSTAND_PUSH_UP,
     FREESTANDING_HANDSTAND_FUTURE,
 }
+
+enum class SessionMode {
+    DRILL,
+    FREESTYLE,
+}
+
+fun DrillType.sessionMode(): SessionMode = if (this == DrillType.FREESTYLE) SessionMode.FREESTYLE else SessionMode.DRILL
+
+fun DrillType.displayName(): String = when (this) {
+    DrillType.FREESTYLE -> "Freestyle Live Coaching"
+    else -> name.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
+}
+
+fun DrillType.isFreestyle(): Boolean = sessionMode() == SessionMode.FREESTYLE
 
 data class JointPoint(
     val name: String,
@@ -130,6 +145,8 @@ data class IssueEvent(
     val severity: Int,
 )
 
+fun SessionRecord.sessionMode(): SessionMode = drillType.sessionMode()
+
 data class SessionSummary(
     val headline: String,
     val whatWentWell: List<String>,
@@ -156,6 +173,7 @@ data class UserSettings(
 
 data class LiveSessionUiState(
     val drillType: DrillType,
+    val sessionMode: SessionMode = drillType.sessionMode(),
     val score: Int = 0,
     val currentCue: String = "",
     val currentCueId: String = "",
@@ -187,4 +205,14 @@ data class LiveSessionOptions(
     val showSkeletonOverlay: Boolean = true,
     val showIdealLine: Boolean = true,
     val zoomOutCamera: Boolean = true,
-)
+) {
+    companion object {
+        fun freestyleDefaults(): LiveSessionOptions = LiveSessionOptions(
+            voiceEnabled = false,
+            recordingEnabled = true,
+            showSkeletonOverlay = true,
+            showIdealLine = true,
+            zoomOutCamera = true,
+        )
+    }
+}

@@ -52,6 +52,14 @@ fun AppNavHost(modifier: Modifier = Modifier) {
         composable(Route.Home.value) {
             HomeScreen(
                 onStart = { navController.navigate(Route.Start.value) },
+                onStartFreestyle = {
+                    navController.navigate(
+                        Route.Live.create(
+                            DrillType.FREESTYLE,
+                            LiveSessionOptions.freestyleDefaults(),
+                        ),
+                    )
+                },
                 onHistory = { navController.navigate(Route.History.value) },
                 onProgress = { navController.navigate(Route.Progress.value) },
                 onSettings = { navController.navigate(Route.Settings.value) },

@@ -275,6 +275,7 @@ object DrillCatalog {
     )
 
     private val drills = listOf(
+        def(DrillType.FREESTYLE, "Freestyle Live Coaching", "live coaching", DrillLevel.BEGINNER, listOf("none"), listOf("tracking"), listOf(), listOf(), RepMode.HOLD_BASED, holdSpec("freestyle_live", inverted = true)),
         def(DrillType.FREESTANDING_HANDSTAND_FUTURE, "Free Standing Handstand", "handstand", DrillLevel.INTERMEDIATE, listOf("none"), listOf("neutral", "start", "hold", "top"), listOf("banana_line", "passive_shoulder", "head_poke"), listOf("Push tall", "Stack ribs over pelvis", "Squeeze legs together"), RepMode.HOLD_BASED, holdSpec("free_standing_handstand", inverted = true)),
         def(DrillType.CHEST_TO_WALL_HANDSTAND, "Wall Assisted Handstand", "handstand", DrillLevel.BEGINNER, listOf("wall"), listOf("neutral", "start", "hold", "top"), listOf("banana_line", "passive_shoulder", "wall_reliance"), listOf("Push through shoulders", "Keep ribs tucked", "Use light heel pressure"), RepMode.HOLD_BASED, holdSpec("wall_assisted_handstand", inverted = true)),
         def(DrillType.PIKE_PUSH_UP, "Pike Push-Up", "handstand push", DrillLevel.BEGINNER, listOf("floor"), listOf("neutral", "start", "mid_eccentric", "bottom", "mid_concentric", "top"), listOf("hips_low", "elbow_flare", "head_path_forward"), listOf("Hips high", "Tripod head path", "Push away hard"), RepMode.REP_BASED, pikeSpec("pike_push_up")),

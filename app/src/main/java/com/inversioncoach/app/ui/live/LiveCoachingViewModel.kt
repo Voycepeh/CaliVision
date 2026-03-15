@@ -11,7 +11,10 @@ import com.inversioncoach.app.model.DrillType
 import com.inversioncoach.app.model.FrameMetricRecord
 import com.inversioncoach.app.model.IssueEvent
 import com.inversioncoach.app.model.LiveSessionOptions
+import com.inversioncoach.app.model.displayName
+import com.inversioncoach.app.model.sessionMode
 import com.inversioncoach.app.model.LiveSessionUiState
+import com.inversioncoach.app.model.SessionMode
 import com.inversioncoach.app.model.PoseFrame
 import com.inversioncoach.app.model.SessionRecord
 import com.inversioncoach.app.model.SmoothedPoseFrame
@@ -48,9 +51,12 @@ class LiveCoachingViewModel(
     private val motionPipeline: MotionAnalysisPipeline = MotionAnalysisPipeline(drillType),
 ) : ViewModel() {
 
+    private val sessionMode = drillType.sessionMode()
+
     private val _uiState = MutableStateFlow(
         LiveSessionUiState(
             drillType = drillType,
+            sessionMode = sessionMode,
             isRecording = false,
             showOverlay = options.showSkeletonOverlay,
             showIdealLine = options.showIdealLine,
@@ -85,13 +91,14 @@ class LiveCoachingViewModel(
     private val validFrameScores = mutableListOf<Int>()
 
     val sessionTitle: String
-        get() = "${drillType.name.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }} session"
+        get() = if (sessionMode == SessionMode.FREESTYLE) "Freestyle Live Coaching session" else "${drillType.displayName()} session"
 
     val sessionStartTimestampMs: Long
         get() = sessionStartedAtMs
 
     init {
-        SessionDiagnostics.log("session_started drill=$drillType analyzer=${metricsEngine::class.simpleName} motionPattern=${DrillCatalog.byType(drillType).movementPattern}")
+        val movementPattern = runCatching { DrillCatalog.byType(drillType).movementPattern.name }.getOrDefault("GENERIC")
+        SessionDiagnostics.log("session_started drill=$drillType analyzer=${metricsEngine::class.simpleName} motionPattern=$movementPattern")
         startSession()
     }
 
@@ -137,7 +144,7 @@ class LiveCoachingViewModel(
     fun onPoseFrame(frame: PoseFrame, settings: UserSettings) {
         activeSettings = settings
         val smoothed = smoother.smooth(frame)
-        val motion = motionPipeline.analyze(frame)
+        val motion = if (sessionMode == SessionMode.FREESTYLE) null else motionPipeline.analyze(frame)
         _smoothedFrame.value = smoothed
         val gate = frameGate
         if (gate == null) {
@@ -169,6 +176,34 @@ class LiveCoachingViewModel(
         }
         validFrameCount += 1
 
+        if (sessionMode == SessionMode.FREESTYLE) {
+            _uiState.value = _uiState.value.copy(
+                score = 0,
+                confidence = smoothed.confidence,
+                currentCue = "",
+                currentCueId = "",
+                currentCueGeneratedAtMs = 0L,
+                warningMessage = null,
+                errorMessage = null,
+                showDebugOverlay = settings.debugOverlayEnabled,
+                debugMetrics = emptyList(),
+                debugAngles = emptyList(),
+                repCount = 0,
+                currentPhase = "tracking",
+                activeFault = "",
+            )
+            persistFrameData(
+                smoothed = smoothed,
+                overallScore = 0,
+                limitingFactor = "not_tracked",
+                metrics = emptyList(),
+                angles = emptyList(),
+                fault = null,
+                cueSeverity = 0,
+            )
+            return
+        }
+
         val config = drillConfig ?: run {
             _uiState.value = _uiState.value.copy(errorMessage = "Unsupported drill: $drillType")
             return
@@ -185,7 +220,7 @@ class LiveCoachingViewModel(
         _uiState.value = _uiState.value.copy(
             score = analysis.score.overall,
             confidence = smoothed.confidence,
-            currentCue = cue?.text ?: motion.cue?.text ?: _uiState.value.currentCue.ifBlank { "Human detected. Hold steady for drill scoring." },
+            currentCue = cue?.text ?: motion?.cue?.text ?: _uiState.value.currentCue.ifBlank { "Human detected. Hold steady for drill scoring." },
             currentCueId = cue?.id ?: _uiState.value.currentCueId,
             currentCueGeneratedAtMs = cue?.generatedAtMs ?: _uiState.value.currentCueGeneratedAtMs,
             warningMessage = null,
@@ -193,12 +228,13 @@ class LiveCoachingViewModel(
             showDebugOverlay = settings.debugOverlayEnabled,
             debugMetrics = analysis.metrics,
             debugAngles = analysis.angles,
-            repCount = motion.movement.completedRepCount,
-            currentPhase = motion.movement.currentPhase.name.lowercase(),
-            activeFault = motion.faults.firstOrNull()?.code ?: "",
+            repCount = motion?.movement?.completedRepCount ?: 0,
+            currentPhase = motion?.movement?.currentPhase?.name?.lowercase() ?: "setup",
+            activeFault = motion?.faults?.firstOrNull()?.code ?: "",
         )
-        if (motion.faults.isNotEmpty()) {
-            SessionDiagnostics.log("raw_faults drill=$drillType faults=${motion.faults.map { it.code }}")
+        val motionFaults = motion?.faults.orEmpty()
+        if (motionFaults.isNotEmpty()) {
+            SessionDiagnostics.log("raw_faults drill=$drillType faults=${motionFaults.map { it.code }}")
         }
 
         if (cue != null) {
@@ -299,8 +335,8 @@ class LiveCoachingViewModel(
                     .take(3)
                     .joinToString(", ") { "${it.issue} (${it.durationMs / 1000.0}s)" }
                     .ifBlank { if (sessionComputation.status == "invalid") "insufficient_data" else "No major issues detected" }
-                val wins = sessionComputation.summaryWins
-                val summary = summaryGenerator.generate(
+                val wins = if (sessionMode == SessionMode.FREESTYLE) "Not tracked" else sessionComputation.summaryWins
+                val summary = if (sessionMode == SessionMode.FREESTYLE) null else summaryGenerator.generate(
                     drillType = drillType,
                     score = sessionComputation.score,
                     issues = aggregatedIssues.map { it.issue },
@@ -336,13 +372,15 @@ class LiveCoachingViewModel(
                         drillType = drillType,
                         startedAtMs = sessionStartedAtMs,
                         completedAtMs = completedAtMs,
-                        overallScore = sessionComputation.score.overall,
-                        strongestArea = sessionComputation.strongestArea,
-                        limitingFactor = sessionComputation.score.limitingFactor,
-                        issues = topIssues,
-                        wins = summary.whatWentWell.joinToString(" "),
+                        overallScore = if (sessionMode == SessionMode.FREESTYLE) 0 else sessionComputation.score.overall,
+                        strongestArea = if (sessionMode == SessionMode.FREESTYLE) "Not tracked" else sessionComputation.strongestArea,
+                        limitingFactor = if (sessionMode == SessionMode.FREESTYLE) "not_tracked" else sessionComputation.score.limitingFactor,
+                        issues = if (sessionMode == SessionMode.FREESTYLE) "" else topIssues,
+                        wins = if (sessionMode == SessionMode.FREESTYLE) "Not tracked" else summary?.whatWentWell?.joinToString(" ").orEmpty(),
                         metricsJson = buildString {
-                            append(sessionComputation.score.subScores.entries.joinToString(",") { "${it.key}:${it.value}" })
+                            if (sessionMode != SessionMode.FREESTYLE) {
+                                append(sessionComputation.score.subScores.entries.joinToString(",") { "${it.key}:${it.value}" })
+                            }
                             append("|status:")
                             append(sessionComputation.status)
                             append("|validFrames:")
@@ -359,7 +397,11 @@ class LiveCoachingViewModel(
                         notesUri = null,
                         bestFrameTimestampMs = bestFrame,
                         worstFrameTimestampMs = worstFrame,
-                        topImprovementFocus = if (sessionComputation.status == "invalid") sessionComputation.topImprovementFocus else summary.nextFocus,
+                        topImprovementFocus = when {
+                            sessionMode == SessionMode.FREESTYLE -> "Not tracked"
+                            sessionComputation.status == "invalid" -> sessionComputation.topImprovementFocus
+                            else -> summary?.nextFocus.orEmpty()
+                        },
                     ),
                 )
                 onSessionFinalized(
