@@ -34,6 +34,11 @@ class SessionBlobStorage(
         sessionDir(sessionId).deleteRecursively()
     }
 
+    fun deleteVideoFiles(sessionId: Long) {
+        sessionDir(sessionId).resolve(RAW_VIDEO_FILE_NAME).delete()
+        sessionDir(sessionId).resolve(ANNOTATED_VIDEO_FILE_NAME).delete()
+    }
+
     fun deleteAllBlobs() {
         rootDir().deleteRecursively()
     }

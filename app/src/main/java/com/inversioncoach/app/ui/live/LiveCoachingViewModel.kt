@@ -29,6 +29,14 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 
+
+data class SessionStopResult(
+    val sessionId: Long,
+    val wasDiscardedForShortDuration: Boolean,
+    val elapsedSessionMs: Long,
+    val minSessionDurationSeconds: Int,
+)
+
 class LiveCoachingViewModel(
     private val drillType: DrillType,
     private val metricsEngine: AlignmentMetricsEngine,
@@ -64,7 +72,7 @@ class LiveCoachingViewModel(
     private var annotatedVideoUri: String? = null
     private var rawVideoPersistJob: Job? = null
     private var annotatedVideoPersistJob: Job? = null
-    private var pendingStopCallback: ((Long) -> Unit)? = null
+    private var pendingStopCallback: ((SessionStopResult) -> Unit)? = null
     private var isSessionFinalizing = false
     private var activeSettings: UserSettings = UserSettings()
     private var sessionHadAnyVideo = false
@@ -78,6 +86,9 @@ class LiveCoachingViewModel(
 
     val sessionTitle: String
         get() = "${drillType.name.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }} session"
+
+    val sessionStartTimestampMs: Long
+        get() = sessionStartedAtMs
 
     init {
         SessionDiagnostics.log("session_started drill=$drillType analyzer=${metricsEngine::class.simpleName} motionPattern=${DrillCatalog.byType(drillType).movementPattern}")
@@ -257,7 +268,7 @@ class LiveCoachingViewModel(
         _uiState.value = _uiState.value.copy(isRecording = isRecording)
     }
 
-    fun stopSession(onSessionFinalized: (Long) -> Unit) {
+    fun stopSession(onSessionFinalized: (SessionStopResult) -> Unit) {
         viewModelScope.launch {
             if (isSessionFinalizing) return@launch
             val activeSessionId = sessionId
@@ -302,7 +313,14 @@ class LiveCoachingViewModel(
                 )
                 if (shouldDeleteSession) {
                     repository.deleteSession(activeSessionId)
-                    onSessionFinalized(activeSessionId)
+                    onSessionFinalized(
+                        SessionStopResult(
+                            sessionId = activeSessionId,
+                            wasDiscardedForShortDuration = true,
+                            elapsedSessionMs = (completedAtMs - sessionStartedAtMs).coerceAtLeast(0L),
+                            minSessionDurationSeconds = activeSettings.minSessionDurationSeconds,
+                        ),
+                    )
                     return@launch
                 }
                 repository.saveSession(
@@ -338,7 +356,14 @@ class LiveCoachingViewModel(
                         topImprovementFocus = if (sessionComputation.status == "invalid") sessionComputation.topImprovementFocus else summary.nextFocus,
                     ),
                 )
-                onSessionFinalized(activeSessionId)
+                onSessionFinalized(
+                    SessionStopResult(
+                        sessionId = activeSessionId,
+                        wasDiscardedForShortDuration = false,
+                        elapsedSessionMs = (completedAtMs - sessionStartedAtMs).coerceAtLeast(0L),
+                        minSessionDurationSeconds = activeSettings.minSessionDurationSeconds,
+                    ),
+                )
             } finally {
                 isSessionFinalizing = false
             }

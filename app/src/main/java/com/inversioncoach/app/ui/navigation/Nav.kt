@@ -15,6 +15,7 @@ import com.inversioncoach.app.ui.home.HomeScreen
 import com.inversioncoach.app.ui.live.LiveCoachingScreen
 import com.inversioncoach.app.ui.progress.ProgressScreen
 import com.inversioncoach.app.ui.results.ResultsScreen
+import com.inversioncoach.app.ui.results.SessionTooShortScreen
 import com.inversioncoach.app.ui.settings.DeveloperTuningScreen
 import com.inversioncoach.app.ui.settings.SettingsScreen
 import com.inversioncoach.app.ui.startdrill.StartDrillScreen
@@ -34,6 +35,9 @@ sealed class Route(val value: String) {
     }
     data object Results : Route("results/{sessionId}") {
         fun create(sessionId: Long) = "results/$sessionId"
+    }
+    data object SessionTooShort : Route("session-too-short/{elapsedMs}/{minSeconds}") {
+        fun create(elapsedMs: Long, minSeconds: Int) = "session-too-short/$elapsedMs/$minSeconds"
     }
     data object History : Route("history")
     data object Progress : Route("progress")
@@ -93,7 +97,13 @@ fun AppNavHost(modifier: Modifier = Modifier) {
             LiveCoachingScreen(
                 drillType = drill,
                 options = options,
-                onStop = { sessionId -> navController.navigate(Route.Results.create(sessionId)) },
+                onStop = { result ->
+                    if (result.wasDiscardedForShortDuration) {
+                        navController.navigate(Route.SessionTooShort.create(result.elapsedSessionMs, result.minSessionDurationSeconds))
+                    } else {
+                        navController.navigate(Route.Results.create(result.sessionId))
+                    }
+                },
             )
         }
         composable(Route.Results.value, arguments = listOf(navArgument("sessionId") { type = NavType.LongType })) { backStack ->
@@ -109,7 +119,24 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                 onOpenSession = { sessionId -> navController.navigate(Route.Results.create(sessionId)) },
             )
         }
-        composable(Route.Progress.value) { ProgressScreen(onBack = { navController.popBackStack() }) }
+        composable(Route.Progress.value) {
+            ProgressScreen(
+                onBack = { navController.popBackStack() },
+                onOpenSession = { sessionId -> navController.navigate(Route.Results.create(sessionId)) },
+            )
+        }
+        composable(Route.SessionTooShort.value, arguments = listOf(
+            navArgument("elapsedMs") { type = NavType.LongType },
+            navArgument("minSeconds") { type = NavType.IntType },
+        )) { backStack ->
+            val elapsedMs = backStack.arguments?.getLong("elapsedMs") ?: 0L
+            val minSeconds = backStack.arguments?.getInt("minSeconds") ?: 0
+            SessionTooShortScreen(
+                elapsedSessionMs = elapsedMs,
+                minSessionDurationSeconds = minSeconds,
+                onBackToHome = { navController.popBackStack(Route.Home.value, false) },
+            )
+        }
         composable(Route.Settings.value) {
             SettingsScreen(
                 onBack = { navController.popBackStack() },
