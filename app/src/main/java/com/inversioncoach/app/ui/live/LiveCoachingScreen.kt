@@ -26,10 +26,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -86,10 +84,10 @@ fun LiveCoachingScreen(drillType: DrillType, options: LiveSessionOptions, onStop
     val hostActivity = context as? Activity
     val currentSessionTitle by rememberUpdatedState(newValue = vm.sessionTitle)
     val isRecordingNow by rememberUpdatedState(newValue = uiState.isRecording)
-    var pendingStopAfterRecordingFinalize by remember { mutableStateOf(false) }
 
     fun stopRecordingsAndPersist() {
         sessionRecorder.stopRecording()
+        vm.onRecordingFinalized(sessionRecorder.fallbackOutputUri())
         annotatedRecorder.stopRecording()?.let(vm::onAnnotatedRecordingFinalized)
     }
 
@@ -181,10 +179,6 @@ fun LiveCoachingScreen(drillType: DrillType, options: LiveSessionOptions, onStop
                         vm.onRecordingFinalized(sessionRecorder.fallbackOutputUri())
                     } else {
                         vm.onRecordingFinalized(event.outputResults.outputUri.toString())
-                    }
-                    if (pendingStopAfterRecordingFinalize) {
-                        pendingStopAfterRecordingFinalize = false
-                        vm.stopSession(onStop)
                     }
                 }
             },
@@ -284,9 +278,9 @@ fun LiveCoachingScreen(drillType: DrillType, options: LiveSessionOptions, onStop
         ) {
             FilledTonalButton(onClick = {
                 if (uiState.isRecording) {
-                    pendingStopAfterRecordingFinalize = true
                     stopRecordingsAndPersist()
                     vm.setRecording(false)
+                    vm.stopSession(onStop)
                 } else {
                     vm.stopSession(onStop)
                 }

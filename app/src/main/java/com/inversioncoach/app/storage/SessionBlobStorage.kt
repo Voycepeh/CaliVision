@@ -2,6 +2,7 @@ package com.inversioncoach.app.storage
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import java.io.File
 
 class SessionBlobStorage(
@@ -43,7 +44,7 @@ class SessionBlobStorage(
         rootDir().deleteRecursively()
     }
 
-    private fun persistVideo(sessionId: Long, sourceUri: String, targetFileName: String): String? {
+    private fun persistVideo(sessionId: Long, sourceUri: String, targetFileName: String): String? = runCatching {
         val targetFile = sessionDir(sessionId).resolve(targetFileName)
         targetFile.parentFile?.mkdirs()
         val uri = Uri.parse(sourceUri)
@@ -53,8 +54,10 @@ class SessionBlobStorage(
                 inStream.copyTo(outStream)
             }
         }
-        return targetFile.toURI().toString()
-    }
+        targetFile.toURI().toString()
+    }.onFailure { throwable ->
+        Log.w(TAG, "Unable to persist video blob for session=$sessionId source=$sourceUri", throwable)
+    }.getOrNull()
 
     private fun directorySizeBytes(dir: File): Long {
         if (!dir.exists()) return 0L
@@ -68,6 +71,7 @@ class SessionBlobStorage(
     private fun sessionDir(sessionId: Long): File = File(rootDir(), "session_$sessionId")
 
     companion object {
+        private const val TAG = "SessionBlobStorage"
         private const val ROOT_DIRECTORY = "session_blobs"
         private const val RAW_VIDEO_FILE_NAME = "raw.mp4"
         private const val ANNOTATED_VIDEO_FILE_NAME = "annotated.mp4"
