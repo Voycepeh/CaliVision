@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -29,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.inversioncoach.app.model.AlignmentStrictness
 import com.inversioncoach.app.model.UserSettings
 import com.inversioncoach.app.storage.ServiceLocator
 import com.inversioncoach.app.ui.components.ScaffoldedScreen
@@ -46,6 +48,7 @@ fun SettingsScreen(onBack: () -> Unit, onDeveloperTuning: () -> Unit) {
     var localOnlyPrivacyMode by remember { mutableStateOf(true) }
     var maxStorageMb by remember { mutableIntStateOf(1024) }
     var minSessionDurationSeconds by remember { mutableIntStateOf(3) }
+    var alignmentStrictness by remember { mutableStateOf(AlignmentStrictness.EASY) }
 
     LaunchedEffect(Unit) {
         repository.observeSettings().collect { s ->
@@ -55,6 +58,7 @@ fun SettingsScreen(onBack: () -> Unit, onDeveloperTuning: () -> Unit) {
             localOnlyPrivacyMode = s.localOnlyPrivacyMode
             maxStorageMb = s.maxStorageMb
             minSessionDurationSeconds = s.minSessionDurationSeconds
+            alignmentStrictness = s.alignmentStrictness
         }
     }
 
@@ -105,6 +109,22 @@ fun SettingsScreen(onBack: () -> Unit, onDeveloperTuning: () -> Unit) {
                 }
             }
 
+            SettingsCard(title = "Alignment") {
+                Text("Alignment strictness: ${alignmentStrictness.name.lowercase().replaceFirstChar { it.uppercase() }}")
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AlignmentStrictness.entries.forEach { level ->
+                        Button(
+                            onClick = { alignmentStrictness = level },
+                            modifier = Modifier.weight(1f),
+                            enabled = alignmentStrictness != level,
+                        ) {
+                            Text(level.name.lowercase().replaceFirstChar { it.uppercase() })
+                        }
+                    }
+                }
+                Text("Easy is forgiving and recommended for beginners.")
+            }
+
             SettingsCard(title = "Storage & privacy") {
                 Text("Max video storage: ${maxStorageMb} MB")
                 Slider(
@@ -129,6 +149,7 @@ fun SettingsScreen(onBack: () -> Unit, onDeveloperTuning: () -> Unit) {
                                 localOnlyPrivacyMode = localOnlyPrivacyMode,
                                 maxStorageMb = maxStorageMb,
                                 minSessionDurationSeconds = minSessionDurationSeconds,
+                                alignmentStrictness = alignmentStrictness,
                             ),
                         )
                     }

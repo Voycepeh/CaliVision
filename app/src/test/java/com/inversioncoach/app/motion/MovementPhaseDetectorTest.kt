@@ -32,6 +32,7 @@ class MovementPhaseDetectorTest {
                     pelvicTiltDeg = 0f,
                     lineDeviationNorm = 0f,
                 ),
+                isAligned = true,
             )
         }
 

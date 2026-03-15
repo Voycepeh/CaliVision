@@ -89,6 +89,8 @@ data class DrillScore(
 
 enum class CueStyle { CONCISE, TECHNICAL, ENCOURAGING }
 
+enum class AlignmentStrictness { EASY, STANDARD, STRICT }
+
 data class CoachingCue(
     val id: String,
     val text: String,
@@ -169,6 +171,7 @@ data class UserSettings(
     val debugOverlayEnabled: Boolean = false,
     val maxStorageMb: Int = 1024,
     val minSessionDurationSeconds: Int = 3,
+    val alignmentStrictness: AlignmentStrictness = AlignmentStrictness.EASY,
 )
 
 data class LiveSessionUiState(
@@ -181,6 +184,11 @@ data class LiveSessionUiState(
     val confidence: Float = 0f,
     val holdSeconds: Int = 0,
     val repCount: Int = 0,
+    val rawRepCount: Int = 0,
+    val totalAlignedDurationMs: Long = 0L,
+    val currentAlignedStreakMs: Long = 0L,
+    val bestAlignedStreakMs: Long = 0L,
+    val totalSessionTrackedMs: Long = 0L,
     val currentPhase: String = "setup",
     val activeFault: String = "",
     val isRecording: Boolean = false,

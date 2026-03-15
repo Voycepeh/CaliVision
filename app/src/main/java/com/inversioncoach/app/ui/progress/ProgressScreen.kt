@@ -217,6 +217,7 @@ private fun SessionSummaryRow(session: SessionRecord, onOpenSession: (Long) -> U
             Text("Type: ${session.drillType.displayName()}")
             Text("Started: ${formatSessionDateTime(session.startedAtMs)}")
             Text("Duration: ${formatSessionDuration(durationMs)}")
+            Text(formatPrimaryPerformance(session))
             Text("Summary: ${session.issues.ifBlank { "No major issues" }}")
             OutlinedButton(onClick = { onOpenSession(session.id) }) {
                 Text("Open session details / video")

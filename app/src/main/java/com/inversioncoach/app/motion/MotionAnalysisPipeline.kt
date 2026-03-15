@@ -1,7 +1,8 @@
 package com.inversioncoach.app.motion
 
-import com.inversioncoach.app.model.PoseFrame as LegacyPoseFrame
+import com.inversioncoach.app.model.AlignmentStrictness
 import com.inversioncoach.app.model.DrillType
+import com.inversioncoach.app.model.PoseFrame as LegacyPoseFrame
 
 class MotionAnalysisPipeline(
     drillType: DrillType = DrillType.FREESTANDING_HANDSTAND_FUTURE,
@@ -18,6 +19,7 @@ class MotionAnalysisPipeline(
         ),
         trackedAngle = trackedAngleFor(drillDefinition.movementPattern),
     )
+    private val holdTracker = HoldAlignmentTracker()
     private val faultEngine = FaultDetectionEngine(
         movementPattern = drillDefinition.movementPattern,
         allowedFaultCodes = drillDefinition.commonFaults,
@@ -28,11 +30,14 @@ class MotionAnalysisPipeline(
         val smoothed: SmoothedPoseFrame,
         val angles: AngleFrame,
         val movement: MovementState,
+        val repTracking: RepTrackingSnapshot?,
+        val holdTracking: HoldTrackingSnapshot?,
+        val isAligned: Boolean,
         val faults: List<FaultEvent>,
         val cue: LiveCue?,
     )
 
-    fun analyze(frame: LegacyPoseFrame): Output {
+    fun analyze(frame: LegacyPoseFrame, strictness: AlignmentStrictness = AlignmentStrictness.EASY): Output {
         val motionFrame = PoseFrame(
             timestampMs = frame.timestampMs,
             landmarks = frame.joints.mapNotNull { raw ->
@@ -43,11 +48,32 @@ class MotionAnalysisPipeline(
 
         val smoothed = smoother.smooth(motionFrame)
         val angles = angleEngine.compute(smoothed)
-        val movement = phaseDetector.update(angles)
+        val isAligned = angles.lineDeviationNorm <= AlignmentPolicy.forStrictness(strictness).lineDeviationNormMax
+        val movement = if (drillDefinition.repMode == RepMode.REP_BASED) {
+            phaseDetector.update(angles, isAligned)
+        } else {
+            holdTracker.update(frame.timestampMs, isAligned)
+            MovementState(
+                currentPhase = MovementPhase.HOLD,
+                repProgress = if (isAligned) 1f else 0f,
+                confidence = 0.8f,
+                startedAt = frame.timestampMs,
+                completedRepCount = 0,
+            )
+        }
         val faults = faultEngine.detect(angles, movement)
         val cue = feedbackEngine.selectCue(faults, frame.timestampMs)
 
-        return Output(smoothed, angles, movement, faults, cue)
+        return Output(
+            smoothed = smoothed,
+            angles = angles,
+            movement = movement,
+            repTracking = if (drillDefinition.repMode == RepMode.REP_BASED) phaseDetector.snapshot() else null,
+            holdTracking = if (drillDefinition.repMode == RepMode.HOLD_BASED) holdTracker.snapshot() else null,
+            isAligned = isAligned,
+            faults = faults,
+            cue = cue,
+        )
     }
 
     private fun mapJoint(name: String): JointId? = when (name) {

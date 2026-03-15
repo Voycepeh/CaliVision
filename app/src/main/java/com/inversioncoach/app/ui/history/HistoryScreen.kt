@@ -34,6 +34,7 @@ import com.inversioncoach.app.ui.common.computeSessionDurationMs
 import com.inversioncoach.app.ui.common.formatSessionDateTime
 import com.inversioncoach.app.ui.common.formatSessionDuration
 import com.inversioncoach.app.ui.common.formatLimiterText
+import com.inversioncoach.app.ui.common.formatPrimaryPerformance
 import com.inversioncoach.app.ui.components.ScaffoldedScreen
 
 @Composable
@@ -111,6 +112,7 @@ fun HistoryScreen(onBack: () -> Unit, onOpenSession: (Long) -> Unit) {
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
+                            Text(formatPrimaryPerformance(session), maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text("Storage: $sizeMb MB", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
