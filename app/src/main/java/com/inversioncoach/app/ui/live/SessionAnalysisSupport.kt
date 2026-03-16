@@ -3,12 +3,14 @@ package com.inversioncoach.app.ui.live
 import android.net.Uri
 import android.util.Log
 import com.inversioncoach.app.biomechanics.DrillModeConfig
+import com.inversioncoach.app.model.AnnotatedExportStatus
 import com.inversioncoach.app.model.DrillScore
 import com.inversioncoach.app.model.DrillType
 import com.inversioncoach.app.model.PoseFrame
 import com.inversioncoach.app.model.SessionRecord
 import com.inversioncoach.app.overlay.DrillCameraSide
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.abs
 
 data class AggregatedIssueEvent(
@@ -390,8 +392,9 @@ fun resolvePreferredReplayUri(
     session: SessionRecord?,
     isReadable: (String?) -> Boolean = ::mediaAssetExists,
 ): PreferredReplayUri {
+    val annotatedReady = session?.annotatedExportStatus == AnnotatedExportStatus.ANNOTATED_READY
     val annotatedUri = session?.annotatedFinalUri ?: session?.annotatedVideoUri
-    if (isReadable(annotatedUri)) {
+    if (annotatedReady && isReadable(annotatedUri)) {
         return PreferredReplayUri(uri = annotatedUri, source = "annotated")
     }
     val rawUri = session?.rawFinalUri ?: session?.rawVideoUri ?: session?.rawMasterUri
@@ -424,4 +427,18 @@ object SessionDiagnostics {
                 "failureReason=${failureReason.orEmpty()}",
         )
     }
+}
+
+object AnnotatedExportJobTracker {
+    private val activeSessionIds = ConcurrentHashMap.newKeySet<Long>()
+
+    fun markStarted(sessionId: Long) {
+        activeSessionIds += sessionId
+    }
+
+    fun markFinished(sessionId: Long) {
+        activeSessionIds -= sessionId
+    }
+
+    fun isActive(sessionId: Long): Boolean = activeSessionIds.contains(sessionId)
 }
