@@ -49,6 +49,11 @@ class SessionRepository(
         sessionDao.upsert(session.copy(annotatedExportStatus = status))
     }
 
+    suspend fun updateAnnotatedExportFailureReason(sessionId: Long, reason: String?) {
+        val session = sessionDao.getById(sessionId) ?: return
+        sessionDao.upsert(session.copy(annotatedExportFailureReason = reason))
+    }
+
     suspend fun saveSessionNotes(sessionId: Long, notes: String): String {
         val notesUri = sessionBlobStorage.persistNotes(sessionId, notes)
         val session = sessionDao.getById(sessionId)
@@ -86,7 +91,14 @@ class SessionRepository(
     suspend fun clearSessionVideos(sessionId: Long) {
         val session = sessionDao.getById(sessionId) ?: return
         sessionBlobStorage.deleteVideoFiles(sessionId)
-        sessionDao.upsert(session.copy(rawVideoUri = null, annotatedVideoUri = null, annotatedExportStatus = AnnotatedExportStatus.NOT_STARTED))
+        sessionDao.upsert(
+            session.copy(
+                rawVideoUri = null,
+                annotatedVideoUri = null,
+                annotatedExportStatus = AnnotatedExportStatus.NOT_STARTED,
+                annotatedExportFailureReason = null,
+            ),
+        )
     }
 
     suspend fun deleteSession(sessionId: Long) {

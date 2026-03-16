@@ -90,6 +90,16 @@ enum class AnnotatedExportStatus {
     FAILED,
 }
 
+enum class AnnotatedExportFailureReason {
+    RAW_URI_EMPTY,
+    OVERLAY_FRAMES_EMPTY,
+    EXPORT_RETURNED_NULL,
+    OUTPUT_FILE_MISSING,
+    OUTPUT_FILE_ZERO_BYTES,
+    OUTPUT_METADATA_UNREADABLE,
+    EXPORT_TIMED_OUT,
+}
+
 enum class CueStyle { CONCISE, TECHNICAL, ENCOURAGING }
 
 enum class AlignmentStrictness { BEGINNER, STANDARD, ADVANCED, CUSTOM }
@@ -123,6 +133,7 @@ data class SessionRecord(
     val annotatedVideoUri: String?,
     val rawVideoUri: String?,
     val annotatedExportStatus: AnnotatedExportStatus = AnnotatedExportStatus.NOT_STARTED,
+    val annotatedExportFailureReason: String? = null,
     val notesUri: String?,
     val bestFrameTimestampMs: Long?,
     val worstFrameTimestampMs: Long?,

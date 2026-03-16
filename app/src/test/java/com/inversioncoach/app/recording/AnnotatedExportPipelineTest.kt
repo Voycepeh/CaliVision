@@ -1,5 +1,6 @@
 package com.inversioncoach.app.recording
 
+import com.inversioncoach.app.model.AnnotatedExportFailureReason
 import com.inversioncoach.app.model.AnnotatedExportStatus
 import com.inversioncoach.app.model.DrillType
 import com.inversioncoach.app.model.SessionMode
@@ -30,7 +31,8 @@ class AnnotatedExportPipelineTest {
             )
         }
 
-        assertNull(exported)
+        assertNull(exported.persistedUri)
+        assertEquals(AnnotatedExportFailureReason.OVERLAY_FRAMES_EMPTY, exported.failureReason)
         assertEquals(listOf(AnnotatedExportStatus.FAILED), statuses)
     }
 
@@ -53,7 +55,8 @@ class AnnotatedExportPipelineTest {
             )
         }
 
-        assertEquals("file:///persisted_annotated.mp4", exported)
+        assertEquals("file:///persisted_annotated.mp4", exported.persistedUri)
+        assertNull(exported.failureReason)
         assertEquals(listOf(AnnotatedExportStatus.PROCESSING, AnnotatedExportStatus.READY), statuses)
     }
 
@@ -62,10 +65,11 @@ class AnnotatedExportPipelineTest {
         landmarks = emptyList(),
         smoothedLandmarks = emptyList(),
         confidence = 0.9f,
+        sessionMode = SessionMode.DRILL,
+        drillCameraSide = DrillCameraSide.LEFT,
         bodyVisible = true,
-        drawSkeleton = true,
-        drawIdealLine = true,
-        orientation = SessionMode.DRILL,
+        showSkeleton = true,
+        showIdealLine = true,
         mirrorMode = false,
     )
 }

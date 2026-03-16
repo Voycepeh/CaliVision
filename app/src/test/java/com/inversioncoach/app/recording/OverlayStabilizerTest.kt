@@ -3,6 +3,7 @@ package com.inversioncoach.app.recording
 import com.inversioncoach.app.model.JointPoint
 import com.inversioncoach.app.model.SessionMode
 import com.inversioncoach.app.model.SmoothedPoseFrame
+import com.inversioncoach.app.overlay.DrillCameraSide
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -29,8 +30,8 @@ class OverlayStabilizerTest {
             joints = good.joints.map { it.copy(visibility = 0.1f) },
         )
 
-        val first = stabilizer.stabilize(good, SessionMode.DRILL)
-        val second = stabilizer.stabilize(bad, SessionMode.DRILL)
+        val first = stabilizer.stabilize(good, SessionMode.DRILL, DrillCameraSide.LEFT, true, true)
+        val second = stabilizer.stabilize(bad, SessionMode.DRILL, DrillCameraSide.LEFT, true, true)
 
         assertTrue(first.smoothedLandmarks.isNotEmpty())
         assertTrue(second.smoothedLandmarks == first.smoothedLandmarks)

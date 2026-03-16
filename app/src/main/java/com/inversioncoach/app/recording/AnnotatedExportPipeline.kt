@@ -1,6 +1,7 @@
 package com.inversioncoach.app.recording
 
 import android.util.Log
+import com.inversioncoach.app.model.AnnotatedExportFailureReason
 import com.inversioncoach.app.model.AnnotatedExportStatus
 import com.inversioncoach.app.model.DrillType
 import com.inversioncoach.app.model.JointPoint
@@ -17,10 +18,11 @@ data class AnnotatedOverlayFrame(
     val landmarks: List<JointPoint>,
     val smoothedLandmarks: List<JointPoint>,
     val confidence: Float,
+    val sessionMode: SessionMode,
+    val drillCameraSide: DrillCameraSide?,
     val bodyVisible: Boolean,
-    val drawSkeleton: Boolean,
-    val drawIdealLine: Boolean,
-    val orientation: SessionMode,
+    val showSkeleton: Boolean,
+    val showIdealLine: Boolean,
     val mirrorMode: Boolean,
 )
 
@@ -28,7 +30,13 @@ class OverlayStabilizer {
     private var lastGood: List<JointPoint> = emptyList()
     private var lastGoodTimestampMs: Long = 0L
 
-    fun stabilize(frame: SmoothedPoseFrame, sessionMode: SessionMode): AnnotatedOverlayFrame {
+    fun stabilize(
+        frame: SmoothedPoseFrame,
+        sessionMode: SessionMode,
+        drillCameraSide: DrillCameraSide?,
+        showIdealLine: Boolean,
+        showSkeleton: Boolean,
+    ): AnnotatedOverlayFrame {
         val visibilityGood = frame.joints.count { it.visibility >= MIN_VISIBILITY } >= MIN_VISIBLE_JOINTS
         val confidenceGood = frame.confidence >= MIN_CONFIDENCE
         val jumpy = isJumpy(frame.joints)
@@ -46,10 +54,11 @@ class OverlayStabilizer {
             landmarks = frame.joints,
             smoothedLandmarks = stable,
             confidence = frame.confidence,
+            sessionMode = sessionMode,
+            drillCameraSide = drillCameraSide,
             bodyVisible = visibilityGood,
-            drawSkeleton = drawSkeleton,
-            drawIdealLine = true,
-            orientation = sessionMode,
+            showSkeleton = drawSkeleton && showSkeleton,
+            showIdealLine = showIdealLine,
             mirrorMode = false,
         )
     }
@@ -82,6 +91,11 @@ class AnnotatedExportPipeline(
             compositor.export(rawUri, drill, side, frames, debug)
         },
 ) {
+
+    data class ExportResult(
+        val persistedUri: String? = null,
+        val failureReason: AnnotatedExportFailureReason? = null,
+    )
     constructor(
         repository: SessionRepository,
         compositor: AnnotatedVideoCompositor,
@@ -111,11 +125,11 @@ class AnnotatedExportPipeline(
         drillType: DrillType,
         drillCameraSide: DrillCameraSide,
         overlayFrames: List<AnnotatedOverlayFrame>,
-    ): String? {
+    ): ExportResult {
         if (overlayFrames.isEmpty()) {
             updateExportStatus(sessionId, AnnotatedExportStatus.FAILED)
             Log.w(TAG, "export_failure sessionId=$sessionId reason=overlay_frames_empty")
-            return null
+            return ExportResult(failureReason = AnnotatedExportFailureReason.OVERLAY_FRAMES_EMPTY)
         }
         updateExportStatus(sessionId, AnnotatedExportStatus.PROCESSING)
         Log.d(
@@ -133,16 +147,17 @@ class AnnotatedExportPipeline(
         if (renderedUri.isNullOrBlank()) {
             updateExportStatus(sessionId, AnnotatedExportStatus.FAILED)
             Log.w(TAG, "export_failure sessionId=$sessionId reason=rendered_uri_empty")
-            return null
+            return ExportResult(failureReason = AnnotatedExportFailureReason.EXPORT_RETURNED_NULL)
         }
         val persisted = persistAnnotatedVideo(sessionId, renderedUri)
         val status = if (persisted.isNullOrBlank()) AnnotatedExportStatus.FAILED else AnnotatedExportStatus.READY
         updateExportStatus(sessionId, status)
         if (persisted.isNullOrBlank()) {
             Log.w(TAG, "export_failure sessionId=$sessionId reason=persist_annotated_failed")
+            return ExportResult(failureReason = AnnotatedExportFailureReason.EXPORT_RETURNED_NULL)
         } else {
             Log.d(TAG, "export_complete sessionId=$sessionId persistedUri=$persisted")
+            return ExportResult(persistedUri = persisted)
         }
-        return persisted
     }
 }

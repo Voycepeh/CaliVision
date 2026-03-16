@@ -163,7 +163,14 @@ fun ResultsScreen(sessionId: Long, onDone: () -> Unit) {
             }
             if (session?.annotatedExportStatus == com.inversioncoach.app.model.AnnotatedExportStatus.FAILED && !rawUri.isNullOrBlank()) {
                 Text("Annotated replay unavailable, showing raw replay")
+                if (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+                    Text("Reason: ${session.annotatedExportFailureReason.orEmpty()}")
+                }
             }
+            Text(
+                if (replaySelection.label == "Annotated replay") "Annotated Replay Ready" else "Raw Only",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             if (showRawVideoButton) {
                 Button(
                     onClick = { openVideo(context, rawUri) },
@@ -186,7 +193,7 @@ fun ResultsScreen(sessionId: Long, onDone: () -> Unit) {
                     shareVideoOnly(
                         context = context,
                         rawVideoUri = rawUri,
-                        annotatedVideoUri = replaySelection.uri,
+                        annotatedVideoUri = session?.annotatedVideoUri?.takeIf(::mediaAssetExists),
                     )
                 },
                 modifier = Modifier.fillMaxWidth(),

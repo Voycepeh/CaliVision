@@ -175,9 +175,9 @@ class AnnotatedVideoCompositor(
         val joints = overlay.smoothedLandmarks.ifEmpty { overlay.landmarks }
         val renderModel = OverlayGeometry.build(
             drillType = drillType,
-            sessionMode = overlay.orientation,
+            sessionMode = overlay.sessionMode,
             joints = joints,
-            drillCameraSide = drillCameraSide,
+            drillCameraSide = overlay.drillCameraSide ?: drillCameraSide,
         )
         OverlayFrameRenderer.drawAndroid(
             canvas = canvas,
@@ -185,8 +185,8 @@ class AnnotatedVideoCompositor(
             height = height,
             model = renderModel,
             frame = OverlayDrawingFrame(
-                drawSkeleton = overlay.drawSkeleton,
-                drawIdealLine = overlay.drawIdealLine,
+                drawSkeleton = overlay.showSkeleton,
+                drawIdealLine = overlay.showIdealLine,
             ),
         )
     }

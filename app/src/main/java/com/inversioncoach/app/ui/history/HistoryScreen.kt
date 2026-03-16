@@ -39,6 +39,7 @@ import com.inversioncoach.app.ui.components.ScaffoldedScreen
 @Composable
 fun HistoryScreen(onBack: () -> Unit, onOpenSession: (Long) -> Unit) {
     val context = LocalContext.current
+    val isDebuggable = (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
     val repository = remember { ServiceLocator.repository(context) }
     val sessions by repository.observeSessions().collectAsState(initial = emptyList())
     val settings by repository.observeSettings().collectAsState(initial = UserSettings())
@@ -112,6 +113,13 @@ fun HistoryScreen(onBack: () -> Unit, onOpenSession: (Long) -> Unit) {
                                 overflow = TextOverflow.Ellipsis,
                             )
                             Text(formatPrimaryPerformance(session), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                if (!session.annotatedVideoUri.isNullOrBlank()) "Annotated Replay Ready" else "Raw Only",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            if (isDebuggable && session.annotatedExportStatus.name == "FAILED") {
+                                Text("Reason: ${session.annotatedExportFailureReason.orEmpty()}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                             Text("Storage: $sizeMb MB", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
