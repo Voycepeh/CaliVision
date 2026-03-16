@@ -13,7 +13,7 @@ class FrameValidityGateTest {
 
     @Test
     fun rejectsHandstandFrameWhenRequiredWristsAreMissing() {
-        val drillType = DrillType.CHEST_TO_WALL_HANDSTAND
+        val drillType = DrillType.WALL_HANDSTAND
         val gate = FrameValidityGate(drillType, DrillConfigs.byType(drillType))
 
         val frame = PoseFrame(
@@ -37,7 +37,7 @@ class FrameValidityGateTest {
 
     @Test
     fun acceptsReasonableHandstandFrameWhenRequiredJointsPresent() {
-        val drillType = DrillType.CHEST_TO_WALL_HANDSTAND
+        val drillType = DrillType.WALL_HANDSTAND
         val gate = FrameValidityGate(drillType, DrillConfigs.byType(drillType))
 
         val frame = PoseFrame(

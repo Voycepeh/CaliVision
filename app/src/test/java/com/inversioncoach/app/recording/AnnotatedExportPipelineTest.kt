@@ -24,12 +24,43 @@ class AnnotatedExportPipelineTest {
         )
 
         val exported = runBlocking {
-            pipeline.export(7L, "file:///raw.mp4", DrillType.CHEST_TO_WALL_HANDSTAND, DrillCameraSide.LEFT, emptyList())
+            pipeline.export(
+                sessionId = 7L,
+                rawVideoUri = "file:///raw.mp4",
+                drillType = DrillType.WALL_HANDSTAND,
+                drillCameraSide = DrillCameraSide.LEFT,
+                overlayFrames = emptyList(),
+            )
         }
 
         assertNull(exported.persistedUri)
         assertEquals(AnnotatedExportFailureReason.OVERLAY_FRAMES_EMPTY.name, exported.failureReason)
-        assertEquals(listOf(AnnotatedExportStatus.ANNOTATED_FAILED), statuses)
+        assertEquals(listOf(AnnotatedExportStatus.FAILED), statuses)
+    }
+
+    @Test
+    fun successfulExportMarksReadyAndReturnsPersistedUri() {
+        val statuses = mutableListOf<AnnotatedExportStatus>()
+        val pipeline = AnnotatedExportPipeline(
+            persistAnnotatedVideo = { _, _ -> "file:///persisted_annotated.mp4" },
+            updateExportStatus = { _, status -> statuses += status },
+            renderAnnotatedVideo = { _, _, _, _, _ -> "file:///rendered_annotated.mp4" },
+        )
+
+        val exported = runBlocking {
+            pipeline.export(
+                sessionId = 7L,
+                rawVideoUri = "file:///raw.mp4",
+                drillType = DrillType.WALL_HANDSTAND,
+                drillCameraSide = DrillCameraSide.LEFT,
+                overlayFrames = listOf(testFrame(1000L)),
+            )
+        }
+
+        assertEquals("file:///persisted_annotated.mp4", exported.persistedUri)
+        assertNull(exported.failureReason)
+        assertEquals(AnnotatedExportPipeline.VerificationStatus.PASSED, exported.verificationStatus)
+        assertEquals(listOf(AnnotatedExportStatus.PROCESSING, AnnotatedExportStatus.READY), statuses)
     }
 
     @Test
@@ -45,7 +76,13 @@ class AnnotatedExportPipelineTest {
         )
 
         val exported = runBlocking {
-            pipeline.export(7L, "file:///raw.mp4", DrillType.CHEST_TO_WALL_HANDSTAND, DrillCameraSide.LEFT, listOf(testFrame(1000L)))
+            pipeline.export(
+                sessionId = 7L,
+                rawVideoUri = "file:///raw.mp4",
+                drillType = DrillType.WALL_HANDSTAND,
+                drillCameraSide = DrillCameraSide.LEFT,
+                overlayFrames = listOf(testFrame(1000L)),
+            )
         }
 
         assertEquals(AnnotatedExportFailureReason.ANNOTATED_EXPORT_TIMED_OUT.name, exported.failureReason)
@@ -60,7 +97,13 @@ class AnnotatedExportPipelineTest {
         )
 
         val exported = runBlocking {
-            pipeline.export(7L, "file:///raw.mp4", DrillType.CHEST_TO_WALL_HANDSTAND, DrillCameraSide.LEFT, listOf(testFrame(1000L)))
+            pipeline.export(
+                sessionId = 7L,
+                rawVideoUri = "file:///raw.mp4",
+                drillType = DrillType.WALL_HANDSTAND,
+                drillCameraSide = DrillCameraSide.LEFT,
+                overlayFrames = listOf(testFrame(1000L)),
+            )
         }
 
         assertEquals("EXCEPTION_IllegalStateException", exported.failureReason)

@@ -3,7 +3,7 @@
 This patch adds three beginner-friendly activities and updates baseline thresholds for existing drills:
 
 - `STANDING_POSTURE_HOLD`
-- `PUSH_UP`
+- `HANDSTAND_PUSH_UP`
 - `SIT_UP`
 
 Calibration choices were tuned conservatively for real-world phone-camera noise and beginner form variability:

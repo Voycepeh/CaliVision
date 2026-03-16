@@ -22,21 +22,21 @@ Legend:
 | L_SIT_HOLD | ✅ | ❌ | ❌ | ❌ | ❌ | Future / quarantine |
 | BURPEE | ✅ | ❌ | ❌ | ❌ | ❌ | Future / quarantine |
 | STANDING_POSTURE_HOLD | ✅ | ❌ | ❌ | ❌ | ❌ | Remove from active path (done) |
-| PUSH_UP | ✅ | ✅ | ✅ | ✅ | ✅ | Keep |
+| HANDSTAND_PUSH_UP | ✅ | ✅ | ✅ | ✅ | ✅ | Keep |
 | SIT_UP | ✅ | ❌ | ❌ | ❌ | ❌ | Remove from active path (done) |
-| CHEST_TO_WALL_HANDSTAND | ✅ | ✅ | ✅ | ✅ | ✅ | Keep |
+| WALL_HANDSTAND | ✅ | ✅ | ✅ | ✅ | ✅ | Keep |
 | BACK_TO_WALL_HANDSTAND | ✅ | ❌ | ❌ | ❌ | ❌ | Merge into config-driven wall parameter when reintroduced |
 | ELEVATED_PIKE_PUSH_UP | ✅ | ✅ | ✅ | ✅ | ✅ | Keep |
-| NEGATIVE_WALL_HANDSTAND_PUSH_UP | ✅ | ✅ | ✅ | ✅ | ✅ | Keep |
-| FREESTANDING_HANDSTAND_FUTURE | ✅ | ✅ | ✅ | ✅ | ✅ | Keep as **experimental placeholder** |
+| WALL_HANDSTAND_PUSH_UP | ✅ | ✅ | ✅ | ✅ | ✅ | Keep |
+| FREE_HANDSTAND | ✅ | ✅ | ✅ | ✅ | ✅ | Keep as **experimental placeholder** |
 
 ## Notes
 
 - Active drills intentionally preserved:
-  - `FREESTANDING_HANDSTAND_FUTURE`
-  - `CHEST_TO_WALL_HANDSTAND`
+  - `FREE_HANDSTAND`
+  - `WALL_HANDSTAND`
   - `PIKE_PUSH_UP`
   - `ELEVATED_PIKE_PUSH_UP`
-  - `PUSH_UP`
-  - `NEGATIVE_WALL_HANDSTAND_PUSH_UP`
+  - `HANDSTAND_PUSH_UP`
+  - `WALL_HANDSTAND_PUSH_UP`
 - Unsupported drills are now explicit unsupported paths instead of silently falling back to standing-posture logic.

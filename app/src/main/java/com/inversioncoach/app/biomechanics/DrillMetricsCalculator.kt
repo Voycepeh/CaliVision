@@ -10,7 +10,7 @@ object DrillProfiles {
     private const val STRICTNESS_STACK_DELTA_NORM = 0.02f
 
     private val baselineThreshold = DrillThresholdProfile(
-        drillType = DrillType.CHEST_TO_WALL_HANDSTAND,
+        drillType = DrillType.WALL_HANDSTAND,
         holdStartStableMs = 700,
         visualPersistFrames = 5,
         spokenPersistFrames = 12,
@@ -76,7 +76,7 @@ object DrillProfiles {
     }
 
     private fun thresholdFor(drill: DrillType): DrillThresholdProfile = when (drill) {
-        DrillType.PUSH_UP -> baselineThreshold.copy(
+        DrillType.HANDSTAND_PUSH_UP -> baselineThreshold.copy(
             drillType = drill,
             holdStartStableMs = 350,
             visualPersistFrames = 4,
@@ -89,12 +89,12 @@ object DrillProfiles {
             bodyLinePoorNorm = 0.22f,
         )
 
-        DrillType.CHEST_TO_WALL_HANDSTAND,
-        DrillType.FREESTANDING_HANDSTAND_FUTURE -> baselineThreshold.copy(drillType = drill)
+        DrillType.WALL_HANDSTAND,
+        DrillType.FREE_HANDSTAND -> baselineThreshold.copy(drillType = drill)
 
         DrillType.PIKE_PUSH_UP -> baselineThreshold.copy(drillType = drill, hipAboveShoulderNormMin = 0.18f)
         DrillType.ELEVATED_PIKE_PUSH_UP -> baselineThreshold.copy(drillType = drill, hipAboveShoulderNormMin = 0.20f)
-        DrillType.NEGATIVE_WALL_HANDSTAND_PUSH_UP -> baselineThreshold.copy(
+        DrillType.WALL_HANDSTAND_PUSH_UP -> baselineThreshold.copy(
             drillType = drill,
             descentGoodSec = 1.6f,
             descentAcceptableSec = 1.1f,
@@ -142,13 +142,13 @@ object DrillProfiles {
 
 class DrillMetricsCalculator {
     fun computeSubscores(drill: DrillType, metrics: DerivedMetrics, calibration: DrillCalibrationProfile): Map<String, Int> = when (drill) {
-        DrillType.CHEST_TO_WALL_HANDSTAND,
-        DrillType.FREESTANDING_HANDSTAND_FUTURE -> chest(metrics, calibration.thresholds)
+        DrillType.WALL_HANDSTAND,
+        DrillType.FREE_HANDSTAND -> chest(metrics, calibration.thresholds)
 
-        DrillType.PUSH_UP -> pushUp(metrics, calibration.thresholds)
+        DrillType.HANDSTAND_PUSH_UP -> pushUp(metrics, calibration.thresholds)
         DrillType.PIKE_PUSH_UP -> pike(metrics, calibration.thresholds)
         DrillType.ELEVATED_PIKE_PUSH_UP -> elevatedPike(metrics, calibration.thresholds)
-        DrillType.NEGATIVE_WALL_HANDSTAND_PUSH_UP -> negative(metrics, calibration.thresholds)
+        DrillType.WALL_HANDSTAND_PUSH_UP -> negative(metrics, calibration.thresholds)
         else -> throw IllegalArgumentException("Unsupported drill for score computation: $drill")
     }
 

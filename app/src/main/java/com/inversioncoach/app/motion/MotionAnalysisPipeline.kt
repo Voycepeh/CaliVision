@@ -5,7 +5,7 @@ import com.inversioncoach.app.model.DrillType
 import com.inversioncoach.app.model.PoseFrame as LegacyPoseFrame
 
 class MotionAnalysisPipeline(
-    drillType: DrillType = DrillType.FREESTANDING_HANDSTAND_FUTURE,
+    drillType: DrillType = DrillType.FREE_HANDSTAND,
 ) {
     private val smoother = TemporalPoseSmoother()
     private val angleEngine = AngleEngine()

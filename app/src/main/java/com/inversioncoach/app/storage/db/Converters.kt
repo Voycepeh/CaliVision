@@ -12,7 +12,7 @@ import com.inversioncoach.app.model.RetainedAssetType
 
 class Converters {
     @TypeConverter
-    fun drillTypeFromString(raw: String): DrillType = DrillType.valueOf(raw)
+    fun drillTypeFromString(raw: String): DrillType = DrillType.fromStoredName(raw) ?: DrillType.FREESTYLE
 
     @TypeConverter
     fun drillTypeToString(value: DrillType): String = value.name

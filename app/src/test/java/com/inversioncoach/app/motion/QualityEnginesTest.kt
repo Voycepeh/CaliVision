@@ -11,7 +11,7 @@ class QualityEnginesTest {
     fun alignmentScoring_variesByDrillProfile() {
         val frame = AngleFrame(1000L, mapOf("left_elbow_flexion" to 165f, "right_elbow_flexion" to 166f, "left_knee_flexion" to 170f, "right_knee_flexion" to 170f, "wrist_to_shoulder_line" to 12f), 8f, 6f, 0.08f)
         val standard = UserCalibrationSettings(AlignmentStrictness.STANDARD)
-        val handstand = AlignmentScoringEngine(DrillQualityProfiles.byType(DrillType.FREESTANDING_HANDSTAND_FUTURE), standard)
+        val handstand = AlignmentScoringEngine(DrillQualityProfiles.byType(DrillType.FREE_HANDSTAND), standard)
         val pike = AlignmentScoringEngine(DrillQualityProfiles.byType(DrillType.PIKE_PUSH_UP), standard)
 
         val holdScore = handstand.score(frame, emptyList())
