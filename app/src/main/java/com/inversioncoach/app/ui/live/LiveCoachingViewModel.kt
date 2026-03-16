@@ -6,6 +6,7 @@ import com.inversioncoach.app.biomechanics.AlignmentMetricsEngine
 import com.inversioncoach.app.biomechanics.DrillConfigs
 import com.inversioncoach.app.coaching.CueEngine
 import com.inversioncoach.app.model.AnnotatedExportStatus
+import com.inversioncoach.app.model.AnnotatedExportFailureReason
 import com.inversioncoach.app.model.CoachingCue
 import com.inversioncoach.app.model.DrillScore
 import com.inversioncoach.app.model.DrillType
@@ -16,6 +17,7 @@ import com.inversioncoach.app.model.sessionMode
 import com.inversioncoach.app.model.LiveSessionUiState
 import com.inversioncoach.app.model.SessionMode
 import com.inversioncoach.app.model.PoseFrame
+import com.inversioncoach.app.model.RawPersistStatus
 import com.inversioncoach.app.model.SessionRecord
 import com.inversioncoach.app.model.SmoothedPoseFrame
 import com.inversioncoach.app.model.UserSettings
@@ -63,6 +65,15 @@ class LiveCoachingViewModel(
     private val annotatedExportPipeline: AnnotatedExportPipeline,
 ) : ViewModel() {
 
+    enum class ReplayBuildState {
+        IDLE,
+        RAW_FINALIZED,
+        RAW_PERSISTED,
+        ANNOTATED_EXPORTING,
+        ANNOTATED_READY,
+        ANNOTATED_FAILED,
+    }
+
     private val sessionMode = drillType.sessionMode()
     private val drillDefinition = DrillCatalog.byType(drillType)
 
@@ -89,10 +100,15 @@ class LiveCoachingViewModel(
     private var sessionStartedAtMs: Long = 0L
     private var lastFramePersistAt = 0L
     private var rawVideoUri: String? = null
+    private var rawPersistStatus: RawPersistStatus = RawPersistStatus.NOT_STARTED
+    private var rawPersistFailureReason: String? = null
     private var annotatedVideoUri: String? = null
     private var annotatedExportStatus: AnnotatedExportStatus = AnnotatedExportStatus.NOT_STARTED
+    private var replayBuildState: ReplayBuildState = ReplayBuildState.IDLE
+    private var annotatedExportFailureReason: String? = null
     private var lastOverlayCaptureTsMs: Long = 0L
     private var rawVideoPersistJob: Job? = null
+    private var annotatedExportJob: Job? = null
     private val overlayFrames = mutableListOf<com.inversioncoach.app.recording.AnnotatedOverlayFrame>()
     private var pendingStopCallback: ((SessionStopResult) -> Unit)? = null
     private var isSessionFinalizing = false
@@ -114,7 +130,15 @@ class LiveCoachingViewModel(
 
     init {
         val movementPattern = runCatching { drillDefinition.movementPattern.name }.getOrDefault("GENERIC")
-        SessionDiagnostics.log("session_started drill=$drillType analyzer=${metricsEngine::class.simpleName} motionPattern=$movementPattern")
+        SessionDiagnostics.logStructured(
+            event = "session_started",
+            sessionId = sessionId,
+            drillType = drillType,
+            rawUri = null,
+            annotatedUri = null,
+            overlayFrameCount = 0,
+            failureReason = "analyzer=${metricsEngine::class.simpleName};movementPattern=$movementPattern",
+        )
         startSession()
     }
 
@@ -134,43 +158,59 @@ class LiveCoachingViewModel(
     }
 
     fun onRecordingFinalized(uri: String?) {
-        val finalizedUri = uri?.takeIf { it.isNotBlank() } ?: return
+        val finalizedUri = uri?.takeIf { it.isNotBlank() }
         val activeSessionId = sessionId ?: return
+        replayBuildState = ReplayBuildState.RAW_FINALIZED
         sessionHadAnyVideo = true
-        SessionDiagnostics.log("recording_finalized sessionId=$activeSessionId uri=$finalizedUri")
+        if (finalizedUri.isNullOrBlank()) {
+            annotatedExportStatus = AnnotatedExportStatus.FAILED
+            replayBuildState = ReplayBuildState.ANNOTATED_FAILED
+            annotatedExportFailureReason = AnnotatedExportFailureReason.RAW_URI_EMPTY.name
+            rawPersistStatus = RawPersistStatus.FAILED
+            rawPersistFailureReason = "RAW_PERSIST_FAILED"
+            SessionDiagnostics.logStructured(
+                event = "recording_finalized",
+                sessionId = activeSessionId,
+                drillType = drillType,
+                rawUri = null,
+                annotatedUri = null,
+                overlayFrameCount = overlayFrames.size,
+                failureReason = annotatedExportFailureReason,
+            )
+            return
+        }
+        SessionDiagnostics.logStructured(
+            event = "recording_finalized",
+            sessionId = activeSessionId,
+            drillType = drillType,
+            rawUri = finalizedUri,
+            annotatedUri = null,
+            overlayFrameCount = overlayFrames.size,
+        )
         rawVideoPersistJob = viewModelScope.launch {
+            rawPersistStatus = RawPersistStatus.PROCESSING
+            repository.updateRawPersistStatus(activeSessionId, RawPersistStatus.PROCESSING)
+            SessionDiagnostics.logStructured("raw_persist_started", activeSessionId, drillType, finalizedUri, annotatedVideoUri, overlayFrames.size)
             rawVideoUri = repository.saveRawVideoBlob(activeSessionId, finalizedUri)
             if (rawVideoUri.isNullOrBlank()) {
-                annotatedExportStatus = AnnotatedExportStatus.FAILED
-                SessionDiagnostics.log("raw_video_persist_failed sessionId=$activeSessionId")
+                rawPersistStatus = RawPersistStatus.FAILED
+                rawPersistFailureReason = "RAW_PERSIST_FAILED"
+                repository.updateRawPersistStatus(activeSessionId, RawPersistStatus.FAILED)
+                repository.updateRawPersistFailureReason(activeSessionId, rawPersistFailureReason)
+                SessionDiagnostics.logStructured("raw_persist_failed", activeSessionId, drillType, rawVideoUri, annotatedVideoUri, overlayFrames.size, rawPersistFailureReason)
                 onAnalyzerWarning("Raw replay could not be saved")
-                repository.updateAnnotatedExportStatus(activeSessionId, AnnotatedExportStatus.FAILED)
                 return@launch
             }
-            SessionDiagnostics.log("raw_video_persisted sessionId=$activeSessionId rawUri=$rawVideoUri")
-            val exportFrames = exportFramesForSession()
-            SessionDiagnostics.log(
-                "overlay_frames_collected sessionId=$activeSessionId count=${exportFrames.size} " +
-                    "firstTs=${exportFrames.firstOrNull()?.timestampMs ?: -1L} lastTs=${exportFrames.lastOrNull()?.timestampMs ?: -1L}",
-            )
-            annotatedExportStatus = AnnotatedExportStatus.PROCESSING
-            SessionDiagnostics.log("annotated_export_started sessionId=$activeSessionId")
-            annotatedVideoUri = annotatedExportPipeline.export(
-                sessionId = activeSessionId,
-                rawVideoUri = rawVideoUri!!,
-                drillType = drillType,
-                drillCameraSide = options.drillCameraSide,
-                overlayFrames = exportFrames,
-            )
-            annotatedExportStatus = if (annotatedVideoUri.isNullOrBlank()) AnnotatedExportStatus.FAILED else AnnotatedExportStatus.READY
-            if (annotatedVideoUri.isNullOrBlank()) {
-                SessionDiagnostics.log("annotated_export_failed sessionId=$activeSessionId reason=export_returned_empty")
-                onAnalyzerWarning("Annotated replay unavailable, showing raw replay")
-            } else {
-                SessionDiagnostics.log("annotated_export_finished sessionId=$activeSessionId annotatedUri=$annotatedVideoUri")
-            }
+            rawPersistStatus = RawPersistStatus.SUCCEEDED
+            rawPersistFailureReason = null
+            repository.updateRawPersistStatus(activeSessionId, RawPersistStatus.SUCCEEDED)
+            repository.updateRawPersistFailureReason(activeSessionId, null)
+            replayBuildState = ReplayBuildState.RAW_PERSISTED
+            SessionDiagnostics.logStructured("raw_persist_succeeded", activeSessionId, drillType, rawVideoUri, annotatedVideoUri, overlayFrames.size)
+            annotatedExportJob = launchAnnotatedExport(activeSessionId)
         }
     }
+
 
 
     fun onPoseFrame(frame: PoseFrame, settings: UserSettings) {
@@ -198,8 +238,24 @@ class LiveCoachingViewModel(
         val motion = if (motionEligible) motionPipeline.analyze(frameForSession, settings.alignmentStrictness, calibration) else null
         _smoothedFrame.value = smoothed
         if (shouldCaptureOverlayFrame(smoothed.timestampMs)) {
-            overlayFrames += overlayStabilizer.stabilize(smoothed, sessionMode)
+            overlayFrames += overlayStabilizer.stabilize(
+                frame = smoothed,
+                sessionMode = sessionMode,
+                drillCameraSide = if (sessionMode == SessionMode.FREESTYLE) null else options.drillCameraSide,
+                showIdealLine = options.showIdealLine,
+                showSkeleton = options.showSkeletonOverlay,
+            )
             lastOverlayCaptureTsMs = smoothed.timestampMs
+            if (overlayFrames.size % OVERLAY_FRAME_LOG_INTERVAL == 0) {
+                SessionDiagnostics.logStructured(
+                    event = "overlay_frames_count",
+                    sessionId = sessionId,
+                    drillType = drillType,
+                    rawUri = rawVideoUri,
+                    annotatedUri = annotatedVideoUri,
+                    overlayFrameCount = overlayFrames.size,
+                )
+            }
         }
         if (sessionMode == SessionMode.DRILL && readiness == null) {
             _uiState.value = _uiState.value.copy(errorMessage = "Unsupported drill: $drillType")
@@ -440,7 +496,7 @@ class LiveCoachingViewModel(
             }
             isSessionFinalizing = true
             try {
-                listOfNotNull(rawVideoPersistJob).joinAll()
+                listOfNotNull(rawVideoPersistJob, annotatedExportJob).joinAll()
                 val frameMetrics = repository.observeSessionFrameMetrics(activeSessionId).first()
                 val aggregatedIssues = issueAggregator.flushAll(System.currentTimeMillis())
                 val validFrameMetrics = frameMetrics.filter { it.confidence >= 0.45f }
@@ -486,6 +542,15 @@ class LiveCoachingViewModel(
                     rawVideoUri = rawVideoUri,
                     annotatedVideoUri = annotatedVideoUri,
                     exportStatus = annotatedExportStatus,
+                )
+                SessionDiagnostics.logStructured(
+                    event = "replay_uri_selected",
+                    sessionId = activeSessionId,
+                    drillType = drillType,
+                    rawUri = finalVideos.rawVideoUri,
+                    annotatedUri = finalVideos.annotatedVideoUri,
+                    overlayFrameCount = overlayFrames.size,
+                    failureReason = annotatedExportFailureReason,
                 )
                 repository.saveSession(
                     SessionRecord(
@@ -550,7 +615,11 @@ class LiveCoachingViewModel(
                         },
                         annotatedVideoUri = finalVideos.annotatedVideoUri,
                         rawVideoUri = finalVideos.rawVideoUri,
+                        rawPersistStatus = rawPersistStatus,
+                        rawPersistFailureReason = rawPersistFailureReason,
                         annotatedExportStatus = finalVideos.annotatedExportStatus,
+                        annotatedExportFailureReason = annotatedExportFailureReason,
+                        overlayFrameCount = overlayFrames.size,
                         notesUri = null,
                         bestFrameTimestampMs = bestFrame,
                         worstFrameTimestampMs = worstFrame,
@@ -568,6 +637,15 @@ class LiveCoachingViewModel(
                         elapsedSessionMs = (completedAtMs - sessionStartedAtMs).coerceAtLeast(0L),
                         minSessionDurationSeconds = activeSettings.minSessionDurationSeconds,
                     ),
+                )
+                SessionDiagnostics.logStructured(
+                    event = "session_finalized",
+                    sessionId = activeSessionId,
+                    drillType = drillType,
+                    rawUri = rawVideoUri,
+                    annotatedUri = annotatedVideoUri,
+                    overlayFrameCount = overlayFrames.size,
+                    failureReason = annotatedExportFailureReason,
                 )
             } finally {
                 isSessionFinalizing = false
@@ -599,7 +677,11 @@ class LiveCoachingViewModel(
                     metricsJson = "",
                     annotatedVideoUri = null,
                     rawVideoUri = null,
+                    rawPersistStatus = RawPersistStatus.NOT_STARTED,
+                    rawPersistFailureReason = null,
                     annotatedExportStatus = AnnotatedExportStatus.NOT_STARTED,
+                    annotatedExportFailureReason = null,
+                    overlayFrameCount = 0,
                     notesUri = null,
                     bestFrameTimestampMs = null,
                     worstFrameTimestampMs = null,
@@ -624,13 +706,66 @@ class LiveCoachingViewModel(
     private fun SmoothedPoseFrame.toPoseFrame(): PoseFrame = PoseFrame(timestampMs, joints, confidence)
 
     private fun shouldCaptureOverlayFrame(timestampMs: Long): Boolean {
+        if (timestampMs < lastOverlayCaptureTsMs) return false
         return overlayFrames.isEmpty() || (timestampMs - lastOverlayCaptureTsMs) >= MAX_EXPORT_FRAME_INTERVAL_MS
     }
 
     private fun exportFramesForSession(): List<com.inversioncoach.app.recording.AnnotatedOverlayFrame> {
-        if (overlayFrames.isNotEmpty()) return overlayFrames.toList()
-        val fallbackFrame = _smoothedFrame.value?.let { overlayStabilizer.stabilize(it, sessionMode) }
-        return listOfNotNull(fallbackFrame)
+        if (overlayFrames.isEmpty()) return emptyList()
+        return overlayFrames.toList().sortedBy { it.timestampMs }
+    }
+
+    private fun launchAnnotatedExport(activeSessionId: Long): Job = viewModelScope.launch {
+        val rawUri = rawVideoUri
+        if (rawUri.isNullOrBlank()) {
+            annotatedExportStatus = AnnotatedExportStatus.FAILED
+            replayBuildState = ReplayBuildState.ANNOTATED_FAILED
+            annotatedExportFailureReason = AnnotatedExportFailureReason.RAW_URI_EMPTY.name
+            repository.updateAnnotatedExportFailureReason(activeSessionId, annotatedExportFailureReason)
+            return@launch
+        }
+        val exportFrames = exportFramesForSession()
+        SessionDiagnostics.logStructured("overlay_frame_first_ts", activeSessionId, drillType, rawUri, annotatedVideoUri, exportFrames.size, exportFrames.firstOrNull()?.timestampMs?.toString())
+        SessionDiagnostics.logStructured("overlay_frame_last_ts", activeSessionId, drillType, rawUri, annotatedVideoUri, exportFrames.size, exportFrames.lastOrNull()?.timestampMs?.toString())
+        if (exportFrames.isEmpty()) {
+            annotatedExportStatus = AnnotatedExportStatus.FAILED
+            replayBuildState = ReplayBuildState.ANNOTATED_FAILED
+            annotatedExportFailureReason = "ANNOTATED_EXPORT_FAILED:${AnnotatedExportFailureReason.OVERLAY_FRAMES_EMPTY.name}"
+            repository.updateAnnotatedExportStatus(activeSessionId, AnnotatedExportStatus.FAILED)
+            repository.updateAnnotatedExportFailureReason(activeSessionId, annotatedExportFailureReason)
+            SessionDiagnostics.logStructured("annotated_export_failed", activeSessionId, drillType, rawUri, null, 0, annotatedExportFailureReason)
+            onAnalyzerWarning("Annotated replay unavailable, showing raw replay")
+            return@launch
+        }
+        replayBuildState = ReplayBuildState.ANNOTATED_EXPORTING
+        annotatedExportStatus = AnnotatedExportStatus.PROCESSING
+        repository.updateAnnotatedExportFailureReason(activeSessionId, null)
+        SessionDiagnostics.logStructured("annotated_export_started", activeSessionId, drillType, rawUri, null, exportFrames.size)
+        val exportResult = annotatedExportPipeline.export(
+            sessionId = activeSessionId,
+            rawVideoUri = rawUri,
+            drillType = drillType,
+            drillCameraSide = options.drillCameraSide,
+            overlayFrames = exportFrames,
+        )
+        if (exportResult.persistedUri != null && exportResult.verificationStatus == AnnotatedExportPipeline.VerificationStatus.PASSED) {
+            annotatedVideoUri = exportResult.persistedUri
+            annotatedExportStatus = AnnotatedExportStatus.READY
+            replayBuildState = ReplayBuildState.ANNOTATED_READY
+            annotatedExportFailureReason = null
+            repository.updateAnnotatedExportStatus(activeSessionId, AnnotatedExportStatus.READY)
+            repository.updateAnnotatedExportFailureReason(activeSessionId, null)
+            SessionDiagnostics.logStructured("annotated_export_succeeded", activeSessionId, drillType, rawUri, annotatedVideoUri, exportFrames.size)
+        } else {
+            annotatedVideoUri = null
+            annotatedExportStatus = AnnotatedExportStatus.FAILED
+            replayBuildState = ReplayBuildState.ANNOTATED_FAILED
+            annotatedExportFailureReason = exportResult.failureReason?.let { "ANNOTATED_EXPORT_FAILED:$it" } ?: "ANNOTATED_EXPORT_FAILED"
+            repository.updateAnnotatedExportStatus(activeSessionId, AnnotatedExportStatus.FAILED)
+            repository.updateAnnotatedExportFailureReason(activeSessionId, annotatedExportFailureReason)
+            SessionDiagnostics.logStructured("annotated_export_failed", activeSessionId, drillType, rawUri, exportResult.persistedUri, exportFrames.size, annotatedExportFailureReason)
+            onAnalyzerWarning("Annotated replay unavailable, showing raw replay")
+        }
     }
 
     override fun onCleared() {
@@ -641,6 +776,7 @@ class LiveCoachingViewModel(
     companion object {
         private const val FRAME_PERSIST_INTERVAL_MS = 250L
         private const val MAX_EXPORT_FRAME_INTERVAL_MS = 50L
+        private const val OVERLAY_FRAME_LOG_INTERVAL = 60
     }
 }
 
@@ -649,8 +785,8 @@ internal fun resolveSessionVideoOutcome(
     annotatedVideoUri: String?,
     exportStatus: AnnotatedExportStatus,
 ): SessionVideoOutcome {
-    val annotated = annotatedVideoUri?.takeIf { it.isNotBlank() }
-    return if (annotated != null) {
+    val annotated = annotatedVideoUri?.takeIf(::mediaAssetExists)
+    return if (!annotated.isNullOrBlank()) {
         SessionVideoOutcome(
             rawVideoUri = rawVideoUri,
             annotatedVideoUri = annotated,
@@ -658,7 +794,7 @@ internal fun resolveSessionVideoOutcome(
         )
     } else {
         SessionVideoOutcome(
-            rawVideoUri = rawVideoUri,
+            rawVideoUri = rawVideoUri?.takeIf(::mediaAssetExists),
             annotatedVideoUri = null,
             annotatedExportStatus = if (rawVideoUri.isNullOrBlank()) exportStatus else AnnotatedExportStatus.FAILED,
         )

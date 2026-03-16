@@ -35,10 +35,12 @@ import com.inversioncoach.app.ui.common.formatSessionDuration
 import com.inversioncoach.app.ui.common.formatLimiterText
 import com.inversioncoach.app.ui.common.formatPrimaryPerformance
 import com.inversioncoach.app.ui.components.ScaffoldedScreen
+import com.inversioncoach.app.ui.live.resolvePreferredReplayUri
 
 @Composable
 fun HistoryScreen(onBack: () -> Unit, onOpenSession: (Long) -> Unit) {
     val context = LocalContext.current
+    val isDebuggable = (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
     val repository = remember { ServiceLocator.repository(context) }
     val sessions by repository.observeSessions().collectAsState(initial = emptyList())
     val settings by repository.observeSettings().collectAsState(initial = UserSettings())
@@ -112,6 +114,23 @@ fun HistoryScreen(onBack: () -> Unit, onOpenSession: (Long) -> Unit) {
                                 overflow = TextOverflow.Ellipsis,
                             )
                             Text(formatPrimaryPerformance(session), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                if (!session.annotatedVideoUri.isNullOrBlank()) "Annotated Replay Ready" else "Raw Only",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            if (isDebuggable && session.annotatedExportStatus.name == "FAILED") {
+                                Text("Reason: ${session.annotatedExportFailureReason.orEmpty()}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            if (isDebuggable) {
+                                val replaySource = resolvePreferredReplayUri(session).source
+                                Text("replay source selected: $replaySource", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("rawPersistStatus: ${session.rawPersistStatus}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("annotatedExportStatus: ${session.annotatedExportStatus}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("annotatedExportFailureReason: ${session.annotatedExportFailureReason.orEmpty()}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("rawVideoUri: ${session.rawVideoUri.orEmpty()}", maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("annotatedVideoUri: ${session.annotatedVideoUri.orEmpty()}", maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("overlay frame count: ${session.overlayFrameCount}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                             Text("Storage: $sizeMb MB", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }

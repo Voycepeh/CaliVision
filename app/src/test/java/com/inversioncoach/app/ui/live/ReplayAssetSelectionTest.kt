@@ -58,6 +58,16 @@ class ReplayAssetSelectionTest {
         assertNull(selection.uri)
     }
 
+    @Test
+    fun resolverPrefersAnnotatedThenRaw() {
+        val result = resolvePreferredReplayUri(
+            sessionRecord(rawUri = "raw", annotatedUri = "annotated"),
+            isReadable = { it == "annotated" || it == "raw" },
+        )
+        assertEquals("annotated", result.source)
+        assertEquals("annotated", result.uri)
+    }
+
     private fun sessionRecord(rawUri: String?, annotatedUri: String?) = SessionRecord(
         id = 99,
         title = "Test session",

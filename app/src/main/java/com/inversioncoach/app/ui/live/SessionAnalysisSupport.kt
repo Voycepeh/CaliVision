@@ -2,6 +2,7 @@ package com.inversioncoach.app.ui.live
 
 import android.net.Uri
 import android.util.Log
+import com.inversioncoach.app.model.DrillType
 import com.inversioncoach.app.biomechanics.DrillModeConfig
 import com.inversioncoach.app.model.DrillScore
 import com.inversioncoach.app.model.DrillType
@@ -327,6 +328,11 @@ data class ReplayAssetSelection(
     val label: String,
 )
 
+data class PreferredReplayUri(
+    val uri: String?,
+    val source: String,
+)
+
 object SessionSummaryComputer {
     fun compute(
         validFrameScores: List<Int>,
@@ -373,15 +379,27 @@ fun mediaAssetExists(uri: String?): Boolean {
 }
 
 fun selectReplayAsset(session: SessionRecord?): ReplayAssetSelection {
-    val annotatedUri = session?.annotatedVideoUri?.takeIf(::mediaAssetExists)
-    if (annotatedUri != null) {
-        return ReplayAssetSelection(uri = annotatedUri, label = "Annotated replay")
+    val preferred = resolvePreferredReplayUri(session)
+    return when (preferred.source) {
+        "annotated" -> ReplayAssetSelection(uri = preferred.uri, label = "Annotated replay")
+        "raw" -> ReplayAssetSelection(uri = preferred.uri, label = "Raw replay")
+        else -> ReplayAssetSelection(uri = null, label = "Replay unavailable")
     }
-    val rawUri = session?.rawVideoUri?.takeIf(::mediaAssetExists)
-    if (rawUri != null) {
-        return ReplayAssetSelection(uri = rawUri, label = "Raw replay")
+}
+
+fun resolvePreferredReplayUri(
+    session: SessionRecord?,
+    isReadable: (String?) -> Boolean = ::mediaAssetExists,
+): PreferredReplayUri {
+    val annotatedUri = session?.annotatedVideoUri
+    if (isReadable(annotatedUri)) {
+        return PreferredReplayUri(uri = annotatedUri, source = "annotated")
     }
-    return ReplayAssetSelection(uri = null, label = "Replay unavailable")
+    val rawUri = session?.rawVideoUri
+    if (isReadable(rawUri)) {
+        return PreferredReplayUri(uri = rawUri, source = "raw")
+    }
+    return PreferredReplayUri(uri = null, source = "none")
 }
 
 object SessionDiagnostics {
@@ -389,5 +407,22 @@ object SessionDiagnostics {
 
     fun log(message: String) {
         Log.d(TAG, message)
+    }
+
+    fun logStructured(
+        event: String,
+        sessionId: Long?,
+        drillType: DrillType,
+        rawUri: String?,
+        annotatedUri: String?,
+        overlayFrameCount: Int,
+        failureReason: String? = null,
+    ) {
+        Log.d(
+            TAG,
+            "event=$event sessionId=${sessionId ?: -1L} drillType=$drillType rawUri=${rawUri.orEmpty()} " +
+                "annotatedUri=${annotatedUri.orEmpty()} overlayFrames=$overlayFrameCount " +
+                "failureReason=${failureReason.orEmpty()}",
+        )
     }
 }

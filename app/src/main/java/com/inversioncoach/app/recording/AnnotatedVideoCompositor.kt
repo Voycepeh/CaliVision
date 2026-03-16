@@ -33,11 +33,6 @@ class AnnotatedVideoCompositor(
         debugValidation: Boolean = false,
     ): String? = withContext(Dispatchers.IO) {
         if (overlayFrames.isEmpty()) return@withContext null
-        val rawFile = File(Uri.parse(rawVideoUri).path.orEmpty())
-        if (!rawFile.exists() || !rawFile.canRead()) {
-            Log.w(TAG, "export_failure reason=input_unreadable uri=$rawVideoUri")
-            return@withContext null
-        }
         val retriever = MediaMetadataRetriever()
         val output = File(context.cacheDir, "recordings/annotated_${System.currentTimeMillis()}.mp4").apply {
             parentFile?.mkdirs()
@@ -126,11 +121,13 @@ class AnnotatedVideoCompositor(
             }
 
             drain(endOfStream = true)
-            codec.stop()
-            codec.release()
-            inputSurface.release()
-            if (muxerStarted) muxer.stop()
-            muxer.release()
+            runCatching { codec.stop() }
+            runCatching { codec.release() }
+            runCatching { inputSurface.release() }
+            if (muxerStarted) {
+                runCatching { muxer.stop() }
+            }
+            runCatching { muxer.release() }
             val outputUri = Uri.fromFile(output).toString()
             if (!output.exists() || output.length() <= 0L) {
                 Log.w(TAG, "export_failure reason=output_missing_or_empty path=${output.absolutePath}")
@@ -175,9 +172,9 @@ class AnnotatedVideoCompositor(
         val joints = overlay.smoothedLandmarks.ifEmpty { overlay.landmarks }
         val renderModel = OverlayGeometry.build(
             drillType = drillType,
-            sessionMode = overlay.orientation,
+            sessionMode = overlay.sessionMode,
             joints = joints,
-            drillCameraSide = drillCameraSide,
+            drillCameraSide = overlay.drillCameraSide ?: drillCameraSide,
         )
         OverlayFrameRenderer.drawAndroid(
             canvas = canvas,
@@ -185,8 +182,8 @@ class AnnotatedVideoCompositor(
             height = height,
             model = renderModel,
             frame = OverlayDrawingFrame(
-                drawSkeleton = overlay.drawSkeleton,
-                drawIdealLine = overlay.drawIdealLine,
+                drawSkeleton = overlay.showSkeleton,
+                drawIdealLine = overlay.showIdealLine,
             ),
         )
     }
