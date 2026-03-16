@@ -88,7 +88,7 @@ class AnnotatedExportPipeline(
     private val debugValidationEnabled: Boolean = false,
     private val persistAnnotatedVideo: suspend (Long, String) -> String?,
     private val updateExportStatus: suspend (Long, AnnotatedExportStatus) -> Unit,
-    private val verifyMedia: (String?) -> MediaVerificationResult = MediaVerificationHelper::verify,
+    private val verifyMedia: (String?) -> MediaVerificationResult = { uri -> MediaVerificationHelper.verify(uri) },
     private val exportTimeoutMs: Long = EXPORT_TIMEOUT_MS,
     private val renderAnnotatedVideo: suspend (String, DrillType, DrillCameraSide, List<AnnotatedOverlayFrame>, Boolean) -> String? =
         { rawUri, drill, side, frames, debug ->
@@ -122,7 +122,7 @@ class AnnotatedExportPipeline(
     internal constructor(
         persistAnnotatedVideo: suspend (Long, String) -> String?,
         updateExportStatus: suspend (Long, AnnotatedExportStatus) -> Unit,
-        verifyMedia: (String?) -> MediaVerificationResult = MediaVerificationHelper::verify,
+        verifyMedia: (String?) -> MediaVerificationResult = { uri -> MediaVerificationHelper.verify(uri) },
         exportTimeoutMs: Long = EXPORT_TIMEOUT_MS,
         renderAnnotatedVideo: suspend (String, DrillType, DrillCameraSide, List<AnnotatedOverlayFrame>, Boolean) -> String?,
     ) : this(
