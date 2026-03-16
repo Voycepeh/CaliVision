@@ -4,6 +4,7 @@ import android.net.Uri
 import android.util.Log
 import com.inversioncoach.app.biomechanics.DrillModeConfig
 import com.inversioncoach.app.model.AnnotatedExportFailureReason
+import com.inversioncoach.app.model.AnnotatedExportStage
 import com.inversioncoach.app.model.AnnotatedExportStatus
 import com.inversioncoach.app.model.DrillScore
 import com.inversioncoach.app.model.DrillType
@@ -350,11 +351,27 @@ enum class ReplayDisplayState {
 }
 
 enum class ExportProgressStage(val label: String) {
-    FINALIZING_RECORDING("Finalizing recording"),
-    SAVING_RAW_VIDEO("Saving raw video"),
-    BUILDING_ANNOTATED_REPLAY("Building annotated replay"),
-    VERIFYING_OUTPUT("Verifying output"),
-    DONE("Done"),
+    QUEUED("Queued"),
+    PREPARING("Preparing"),
+    LOADING_OVERLAYS("Loading overlays"),
+    DECODING_SOURCE("Decoding source"),
+    RENDERING("Rendering"),
+    ENCODING("Encoding"),
+    VERIFYING("Verifying output"),
+    COMPLETED("Completed"),
+    FAILED("Failed"),
+}
+
+fun AnnotatedExportStage.toProgressStage(): ExportProgressStage = when (this) {
+    AnnotatedExportStage.QUEUED -> ExportProgressStage.QUEUED
+    AnnotatedExportStage.PREPARING -> ExportProgressStage.PREPARING
+    AnnotatedExportStage.LOADING_OVERLAYS -> ExportProgressStage.LOADING_OVERLAYS
+    AnnotatedExportStage.DECODING_SOURCE -> ExportProgressStage.DECODING_SOURCE
+    AnnotatedExportStage.RENDERING -> ExportProgressStage.RENDERING
+    AnnotatedExportStage.ENCODING -> ExportProgressStage.ENCODING
+    AnnotatedExportStage.VERIFYING -> ExportProgressStage.VERIFYING
+    AnnotatedExportStage.COMPLETED -> ExportProgressStage.COMPLETED
+    AnnotatedExportStage.FAILED -> ExportProgressStage.FAILED
 }
 
 data class ExportProgressSnapshot(
@@ -440,15 +457,14 @@ fun deriveReplayDisplayState(session: SessionRecord?, hasActiveExportJob: Boolea
     val annotatedReadable = mediaAssetExists(annotatedUri)
     val rawReadable = mediaAssetExists(rawUri)
     val hasInconsistentValues =
-        (session.rawPersistStatus == RawPersistStatus.SUCCEEDED &&
-            session.rawPersistFailureReason == AnnotatedExportFailureReason.RAW_SAVE_FAILED.name) ||
-            (session.annotatedExportStatus == AnnotatedExportStatus.PROCESSING && !session.annotatedExportFailureReason.isNullOrBlank()) ||
+                    (session.annotatedExportStatus == AnnotatedExportStatus.PROCESSING && !session.annotatedExportFailureReason.isNullOrBlank()) ||
             (session.annotatedExportStatus == AnnotatedExportStatus.ANNOTATED_READY && !annotatedReadable)
     if (hasInconsistentValues) return ReplayDisplayState.INCONSISTENT_STATE
 
     return when {
-        session.annotatedExportStatus == AnnotatedExportStatus.PROCESSING && hasActiveExportJob -> ReplayDisplayState.ANNOTATED_PROCESSING
+        session.annotatedExportStatus == AnnotatedExportStatus.PROCESSING -> ReplayDisplayState.ANNOTATED_PROCESSING
         session.annotatedExportStatus == AnnotatedExportStatus.ANNOTATED_READY && annotatedReadable -> ReplayDisplayState.ANNOTATED_READY
+        session.annotatedExportStatus == AnnotatedExportStatus.ANNOTATED_READY && !annotatedReadable && rawReadable -> ReplayDisplayState.RAW_ONLY
         session.annotatedExportStatus == AnnotatedExportStatus.ANNOTATED_FAILED && rawReadable -> ReplayDisplayState.RAW_ONLY
         session.annotatedExportStatus == AnnotatedExportStatus.ANNOTATED_FAILED -> ReplayDisplayState.ANNOTATED_FAILED
         rawReadable -> ReplayDisplayState.RAW_ONLY

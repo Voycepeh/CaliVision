@@ -36,6 +36,19 @@ class ReplayDisplayStateTest {
         )
     }
 
+
+    @Test
+    fun rawReadableWinsEvenIfRawPersistStatusFailed() {
+        val raw = File.createTempFile("raw_replay_failed_status", ".mp4").apply { writeText("raw") }
+        val session = baseSession.copy(
+            rawPersistStatus = RawPersistStatus.FAILED,
+            rawPersistFailureReason = "RAW_SAVE_FAILED",
+            rawVideoUri = raw.toURI().toString(),
+            annotatedExportStatus = AnnotatedExportStatus.ANNOTATED_FAILED,
+            annotatedExportFailureReason = "EXPORT_TIMED_OUT",
+        )
+        assertEquals(ReplayDisplayState.RAW_ONLY, deriveReplayDisplayState(session, hasActiveExportJob = false))
+    }
     private val baseSession = SessionRecord(
         id = 1,
         title = "t",

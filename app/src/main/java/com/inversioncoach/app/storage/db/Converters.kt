@@ -2,6 +2,7 @@ package com.inversioncoach.app.storage.db
 
 import androidx.room.TypeConverter
 import com.inversioncoach.app.model.AlignmentStrictness
+import com.inversioncoach.app.model.AnnotatedExportStage
 import com.inversioncoach.app.model.AnnotatedExportStatus
 import com.inversioncoach.app.model.CleanupStatus
 import com.inversioncoach.app.model.CompressionStatus
@@ -47,6 +48,14 @@ class Converters {
 
     @TypeConverter
     fun annotatedExportStatusToString(value: AnnotatedExportStatus): String = value.name
+
+
+    @TypeConverter
+    fun annotatedExportStageFromString(raw: String): AnnotatedExportStage =
+        runCatching { AnnotatedExportStage.valueOf(raw) }.getOrDefault(AnnotatedExportStage.QUEUED)
+
+    @TypeConverter
+    fun annotatedExportStageToString(value: AnnotatedExportStage): String = value.name
 
     @TypeConverter
     fun rawPersistStatusFromString(raw: String): RawPersistStatus =
