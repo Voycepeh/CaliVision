@@ -47,7 +47,6 @@ import com.inversioncoach.app.model.UserSettings
 import com.inversioncoach.app.model.SessionMode
 import com.inversioncoach.app.motion.DrillCatalog
 import com.inversioncoach.app.motion.RepMode
-import com.inversioncoach.app.overlay.FreestyleOrientationClassifier
 import com.inversioncoach.app.overlay.FreestyleViewMode
 import com.inversioncoach.app.overlay.OverlayRenderer
 import com.inversioncoach.app.pose.PoseAnalyzer
@@ -97,7 +96,6 @@ fun LiveCoachingScreen(drillType: DrillType, options: LiveSessionOptions, onStop
     val currentSessionTitle by rememberUpdatedState(newValue = vm.sessionTitle)
     val showDetailedStats = rememberSaveable { mutableStateOf(false) }
 
-    val freestyleOrientationClassifier = remember { FreestyleOrientationClassifier() }
     val freestyleViewLabel = remember(smoothed, uiState.sessionMode) {
         if (uiState.sessionMode != SessionMode.FREESTYLE) {
             null
@@ -106,7 +104,8 @@ fun LiveCoachingScreen(drillType: DrillType, options: LiveSessionOptions, onStop
             if (joints.isEmpty()) {
                 "Detecting View"
             } else {
-                when (freestyleOrientationClassifier.classify(joints)) {
+                when (uiState.freestyleViewMode) {
+                    FreestyleViewMode.UNKNOWN -> "Detecting View"
                     FreestyleViewMode.FRONT -> "Front View"
                     FreestyleViewMode.BACK -> "Back View"
                     FreestyleViewMode.LEFT_PROFILE -> "Left Profile"
@@ -236,6 +235,7 @@ fun LiveCoachingScreen(drillType: DrillType, options: LiveSessionOptions, onStop
                     activeFault = uiState.activeFault,
                     cueText = if (uiState.sessionMode == SessionMode.FREESTYLE) "" else uiState.currentCue,
                     drillCameraSide = options.drillCameraSide,
+                    freestyleViewMode = uiState.freestyleViewMode,
                 )
             }
         }

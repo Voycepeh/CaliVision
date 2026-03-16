@@ -30,6 +30,8 @@ import com.inversioncoach.app.motion.MotionAnalysisPipeline
 import com.inversioncoach.app.motion.QualityThresholds
 import com.inversioncoach.app.motion.UserCalibrationSettings
 import com.inversioncoach.app.overlay.DrillCameraSide
+import com.inversioncoach.app.overlay.FreestyleOrientationClassifier
+import com.inversioncoach.app.overlay.FreestyleViewMode
 import com.inversioncoach.app.pose.PoseSmoother
 import com.inversioncoach.app.recording.AnnotatedExportPipeline
 import com.inversioncoach.app.recording.MediaVerificationHelper
@@ -138,6 +140,7 @@ class LiveCoachingViewModel(
     private var compressionJob: Job? = null
     private var cleanupJob: Job? = null
     private val overlayFrames = mutableListOf<com.inversioncoach.app.recording.AnnotatedOverlayFrame>()
+    private val freestyleOrientationClassifier = FreestyleOrientationClassifier()
     private var pendingStopCallback: ((SessionStopResult) -> Unit)? = null
     private var isSessionFinalizing = false
     private var activeSettings: UserSettings = UserSettings()
@@ -228,6 +231,7 @@ class LiveCoachingViewModel(
             UserCalibrationSettings(settings.alignmentStrictness)
         }
         val motionEligible = sessionMode == SessionMode.DRILL && (readiness?.timerEligible ?: false)
+        val freestyleViewMode = if (sessionMode == SessionMode.FREESTYLE) freestyleOrientationClassifier.classify(smoothed.joints) else FreestyleViewMode.UNKNOWN
         val motion = if (motionEligible) motionPipeline.analyze(frameForSession, settings.alignmentStrictness, calibration) else null
         _smoothedFrame.value = smoothed
         if (shouldCaptureOverlayFrame(smoothed.timestampMs)) {
@@ -237,6 +241,7 @@ class LiveCoachingViewModel(
                 drillCameraSide = if (sessionMode == SessionMode.FREESTYLE) null else options.drillCameraSide,
                 showIdealLine = options.showIdealLine,
                 showSkeleton = options.showSkeletonOverlay,
+                freestyleViewMode = freestyleViewMode,
             )
             lastOverlayCaptureTsMs = smoothed.timestampMs
             if (overlayFrames.size % OVERLAY_FRAME_LOG_INTERVAL == 0) {
@@ -279,6 +284,7 @@ class LiveCoachingViewModel(
             debugInferenceTimeMs = frameForSession.inferenceTimeMs,
             debugFrameDrops = frameForSession.droppedFrames,
             debugRejectionReason = "$rejectionReason|$readinessSummary",
+            freestyleViewMode = freestyleViewMode,
         )
         SessionDiagnostics.log("readiness drill=$drillType $readinessSummary")
 
@@ -327,6 +333,7 @@ class LiveCoachingViewModel(
                 mostCommonFailureReason = "",
                 averageStabilityScore = 0,
                 peakDrift = 0f,
+                freestyleViewMode = freestyleViewMode,
             )
             persistFrameData(
                 smoothed = smoothed,

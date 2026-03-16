@@ -3,6 +3,7 @@ package com.inversioncoach.app.model
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.inversioncoach.app.overlay.DrillCameraSide
+import com.inversioncoach.app.overlay.FreestyleViewMode
 
 enum class DrillType(val displayName: String) {
     FREESTYLE("Freestyle Live Coaching"),
@@ -329,6 +330,7 @@ data class LiveSessionUiState(
     val debugFrameDrops: Int = 0,
     val debugRejectionReason: String = "none",
     val drillCameraSide: DrillCameraSide? = null,
+    val freestyleViewMode: FreestyleViewMode = FreestyleViewMode.UNKNOWN,
 )
 
 data class LiveSessionOptions(
