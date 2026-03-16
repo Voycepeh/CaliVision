@@ -32,7 +32,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.inversioncoach.app.model.FrameMetricRecord
 import com.inversioncoach.app.model.IssueEvent
 import com.inversioncoach.app.model.sessionMode
 import com.inversioncoach.app.model.SessionMode
@@ -54,7 +53,6 @@ fun ResultsScreen(sessionId: Long, onDone: () -> Unit) {
     val context = LocalContext.current
     val repository = remember { ServiceLocator.repository(context) }
     val session by repository.observeSession(sessionId).collectAsState(initial = null)
-    val frameMetrics by repository.observeSessionFrameMetrics(sessionId).collectAsState(initial = emptyList())
     val issueTimeline by repository.observeIssueTimeline(sessionId).collectAsState(initial = emptyList())
     val replaySelection = remember(session) { selectReplayAsset(session) }
     val rawUri = session?.rawVideoUri?.takeIf(::mediaAssetExists)
@@ -66,15 +64,6 @@ fun ResultsScreen(sessionId: Long, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
     var notes by remember { mutableStateOf("") }
 
-    val stabilityBreakdown = remember(frameMetrics) { computeStabilityBreakdown(frameMetrics) }
-    val issueSummarySentence = remember(session, stabilityBreakdown) {
-        buildSessionSummarySentence(
-            wins = session?.wins,
-            issues = session?.issues,
-            improvement = session?.topImprovementFocus,
-            stability = stabilityBreakdown,
-        )
-    }
     val collapsedIssueTimeline = remember(issueTimeline, session?.startedAtMs) {
         collapseIssueTimeline(issueTimeline, session?.startedAtMs)
     }
@@ -118,7 +107,6 @@ fun ResultsScreen(sessionId: Long, onDone: () -> Unit) {
                             if (!metrics.repFailureReason.isNullOrBlank()) Text("Top failure reason: ${metrics.repFailureReason}")
                         }
                     }
-                    Text(issueSummarySentence)
                     Text(
                         "Top wins: ${sessionSummaryDisplay.wins}",
                         maxLines = 3,
@@ -168,7 +156,7 @@ fun ResultsScreen(sessionId: Long, onDone: () -> Unit) {
                 enabled = hasReplay,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Replay ${replaySelection.label}")
+                Text(replaySelection.label)
             }
             if (!hasReplay) {
                 Text("No replay asset is available for this session.")
@@ -192,18 +180,15 @@ fun ResultsScreen(sessionId: Long, onDone: () -> Unit) {
             ) { Text("Save note") }
             Button(
                 onClick = {
-                    shareSummary(
+                    shareVideoOnly(
                         context = context,
-                        sessionId = sessionId,
-                        issues = session?.issues.orEmpty(),
-                        notes = notes,
-                        sessionSummary = issueSummarySentence,
                         rawVideoUri = rawUri,
                         annotatedVideoUri = replaySelection.uri,
                     )
                 },
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Share summary") }
+                enabled = !replaySelection.uri.isNullOrBlank() || !rawUri.isNullOrBlank(),
+            ) { Text("Share video (.mp4)") }
             Button(
                 onClick = {
                     scope.launch {
@@ -232,37 +217,9 @@ fun ResultsScreen(sessionId: Long, onDone: () -> Unit) {
     }
 }
 
-private data class StabilityBreakdown(
-    val stablePercent: Int,
-    val poorPercent: Int,
-)
-
 internal fun shouldShowRawVideoButton(replayUri: String?, rawUri: String?): Boolean =
     !rawUri.isNullOrBlank() && replayUri != rawUri
 
-private fun computeStabilityBreakdown(frameMetrics: List<FrameMetricRecord>): StabilityBreakdown {
-    if (frameMetrics.isEmpty()) return StabilityBreakdown(stablePercent = 0, poorPercent = 0)
-    val stableFrames = frameMetrics.count { it.activeIssue.isNullOrBlank() }
-    val totalFrames = frameMetrics.size
-    val stablePercent = ((stableFrames * 100f) / totalFrames).toInt()
-    return StabilityBreakdown(
-        stablePercent = stablePercent,
-        poorPercent = 100 - stablePercent,
-    )
-}
-
-private fun buildSessionSummarySentence(
-    wins: String?,
-    issues: String?,
-    improvement: String?,
-    stability: StabilityBreakdown,
-): String {
-    val winsText = wins?.takeIf { it.isNotBlank() } ?: "No standout wins captured"
-    val issuesText = issues?.takeIf { it.isNotBlank() } ?: "No major issues captured"
-    val improvementText = improvement?.takeIf { it.isNotBlank() } ?: "maintain current control"
-    return "Stable for ${stability.stablePercent}% of sampled time and in issue-heavy positions for ${stability.poorPercent}%. " +
-        "Win: $winsText. Main issue: $issuesText. Improvement focus: $improvementText."
-}
 
 private data class CollapsedIssueRange(
     val issue: String,
@@ -352,44 +309,24 @@ private fun toSharableVideoUri(context: android.content.Context, sourceUri: Uri)
     )
 }
 
-private fun shareSummary(
+private fun shareVideoOnly(
     context: android.content.Context,
-    sessionId: Long,
-    issues: String,
-    notes: String,
-    sessionSummary: String,
     rawVideoUri: String?,
     annotatedVideoUri: String?,
 ) {
-    val summary = buildString {
-        appendLine("Inversion Coach session #$sessionId")
-        appendLine(sessionSummary)
-        appendLine("Top issues: ${issues.ifBlank { "No issues captured" }}")
-        if (notes.isNotBlank()) {
-            appendLine("Notes: $notes")
-        }
-    }.trim()
+    val preferredShareUri = listOfNotNull(annotatedVideoUri, rawVideoUri)
+        .firstNotNullOfOrNull { uri -> toSharableVideoUri(context, Uri.parse(uri)) }
 
-    val shareableVideoUris = listOfNotNull(rawVideoUri, annotatedVideoUri)
-        .distinct()
-        .mapNotNull { uri -> toSharableVideoUri(context, Uri.parse(uri)) }
-
-    val intent = if (shareableVideoUris.isEmpty()) {
-        Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_TEXT, summary)
-        }
-    } else {
-        Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-            type = "video/mp4"
-            putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(shareableVideoUris))
-            putExtra(Intent.EXTRA_TEXT, summary)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            clipData = ClipData.newUri(context.contentResolver, "session-video", shareableVideoUris.first())
-            shareableVideoUris.drop(1).forEach { uri ->
-                clipData?.addItem(ClipData.Item(uri))
-            }
-        }
+    if (preferredShareUri == null) {
+        Toast.makeText(context, "No video file available to share.", Toast.LENGTH_SHORT).show()
+        return
     }
-    context.startActivity(Intent.createChooser(intent, "Share session summary"))
+
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "video/mp4"
+        putExtra(Intent.EXTRA_STREAM, preferredShareUri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        clipData = ClipData.newUri(context.contentResolver, "session-video", preferredShareUri)
+    }
+    context.startActivity(Intent.createChooser(intent, "Share session video"))
 }
