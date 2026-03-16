@@ -68,8 +68,8 @@ object DrillQualityProfiles {
     )
 
     fun byType(drillType: DrillType): DrillQualityProfile = when (drillType) {
-        DrillType.FREESTANDING_HANDSTAND_FUTURE,
-        DrillType.CHEST_TO_WALL_HANDSTAND,
+        DrillType.FREE_HANDSTAND,
+        DrillType.WALL_HANDSTAND,
         DrillType.BACK_TO_WALL_HANDSTAND,
         -> DrillQualityProfile(drillType, holdWeights, faultMap)
 
@@ -77,8 +77,8 @@ object DrillQualityProfiles {
         DrillType.ELEVATED_PIKE_PUSH_UP,
         -> DrillQualityProfile(drillType, pikeWeights, faultMap, repDepthTargetDeg = 92f)
 
-        DrillType.PUSH_UP,
-        DrillType.NEGATIVE_WALL_HANDSTAND_PUSH_UP,
+        DrillType.HANDSTAND_PUSH_UP,
+        DrillType.WALL_HANDSTAND_PUSH_UP,
         -> DrillQualityProfile(drillType, holdWeights, faultMap, repDepthTargetDeg = 98f)
 
         else -> DrillQualityProfile(drillType, holdWeights, faultMap)

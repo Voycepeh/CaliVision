@@ -26,7 +26,7 @@ class AnnotatedExportPipelineTest {
             pipeline.export(
                 sessionId = 7L,
                 rawVideoUri = "file:///raw.mp4",
-                drillType = DrillType.CHEST_TO_WALL_HANDSTAND,
+                drillType = DrillType.WALL_HANDSTAND,
                 drillCameraSide = DrillCameraSide.LEFT,
                 overlayFrames = emptyList(),
             )
@@ -50,7 +50,7 @@ class AnnotatedExportPipelineTest {
             pipeline.export(
                 sessionId = 7L,
                 rawVideoUri = "file:///raw.mp4",
-                drillType = DrillType.CHEST_TO_WALL_HANDSTAND,
+                drillType = DrillType.WALL_HANDSTAND,
                 drillCameraSide = DrillCameraSide.LEFT,
                 overlayFrames = listOf(testFrame(1000L)),
             )
@@ -78,7 +78,7 @@ class AnnotatedExportPipelineTest {
             pipeline.export(
                 sessionId = 7L,
                 rawVideoUri = "file:///raw.mp4",
-                drillType = DrillType.CHEST_TO_WALL_HANDSTAND,
+                drillType = DrillType.WALL_HANDSTAND,
                 drillCameraSide = DrillCameraSide.LEFT,
                 overlayFrames = listOf(testFrame(1000L)),
             )
@@ -99,7 +99,7 @@ class AnnotatedExportPipelineTest {
             pipeline.export(
                 sessionId = 7L,
                 rawVideoUri = "file:///raw.mp4",
-                drillType = DrillType.CHEST_TO_WALL_HANDSTAND,
+                drillType = DrillType.WALL_HANDSTAND,
                 drillCameraSide = DrillCameraSide.LEFT,
                 overlayFrames = listOf(testFrame(1000L)),
             )

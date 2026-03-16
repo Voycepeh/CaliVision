@@ -71,7 +71,7 @@ class ReplayAssetSelectionTest {
     private fun sessionRecord(rawUri: String?, annotatedUri: String?) = SessionRecord(
         id = 99,
         title = "Test session",
-        drillType = DrillType.CHEST_TO_WALL_HANDSTAND,
+        drillType = DrillType.WALL_HANDSTAND,
         startedAtMs = 1L,
         completedAtMs = 2L,
         overallScore = 80,

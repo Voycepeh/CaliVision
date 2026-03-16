@@ -22,13 +22,13 @@ enum class DrillType(val displayName: String) {
     L_SIT_HOLD("L Sit Hold"),
     BURPEE("Burpee"),
     STANDING_POSTURE_HOLD("Standing Posture Hold"),
-    PUSH_UP("Handstand Push Up"),
+    HANDSTAND_PUSH_UP("Handstand Push Up"),
     SIT_UP("Sit Up"),
-    CHEST_TO_WALL_HANDSTAND("Wall Handstand"),
+    WALL_HANDSTAND("Wall Handstand"),
     BACK_TO_WALL_HANDSTAND("Back To Wall Handstand"),
     ELEVATED_PIKE_PUSH_UP("Elevated Pike Push Up"),
-    NEGATIVE_WALL_HANDSTAND_PUSH_UP("Wall Handstand Push Up"),
-    FREESTANDING_HANDSTAND_FUTURE("Free Handstand"),
+    WALL_HANDSTAND_PUSH_UP("Wall Handstand Push Up"),
+    FREE_HANDSTAND("Free Handstand"),
 }
 
 enum class SessionMode {

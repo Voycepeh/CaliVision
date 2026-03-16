@@ -11,7 +11,7 @@ class DrillMetricsCalculatorTest {
 
     @Test
     fun handstandUsesBandedThresholds() {
-        val calibration = DrillProfiles.forDrill(DrillType.CHEST_TO_WALL_HANDSTAND, emptyList(), ThresholdStrictness.STANDARD)
+        val calibration = DrillProfiles.forDrill(DrillType.WALL_HANDSTAND, emptyList(), ThresholdStrictness.STANDARD)
         val metrics = derivedMetrics(
             elbowAngle = 176f,
             shoulderAngle = 178f,
@@ -20,7 +20,7 @@ class DrillMetricsCalculatorTest {
             bodyLineDeviation = 0.05f,
         )
 
-        val subscores = calculator.computeSubscores(DrillType.CHEST_TO_WALL_HANDSTAND, metrics, calibration)
+        val subscores = calculator.computeSubscores(DrillType.WALL_HANDSTAND, metrics, calibration)
 
         assertTrue(subscores["elbow_lock"] == 100)
         assertTrue(subscores["leg_tension"] == 100)
@@ -30,14 +30,14 @@ class DrillMetricsCalculatorTest {
 
     @Test
     fun repDrillsArePhaseAwareAndDoNotExposeUniversalElbowPathMetric() {
-        val calibration = DrillProfiles.forDrill(DrillType.PUSH_UP, emptyList(), ThresholdStrictness.STANDARD)
+        val calibration = DrillProfiles.forDrill(DrillType.HANDSTAND_PUSH_UP, emptyList(), ThresholdStrictness.STANDARD)
         val metrics = derivedMetrics(
             elbowAngle = 98f,
             pathMetrics = mapOf("depth_norm" to 0.6f, "elbow_flare_proxy" to 0.1f, "path_variance" to 0.1f),
             tempoMetrics = mapOf("descent_sec" to 1.0f, "ascent_sec" to 0.7f),
         )
 
-        val subscores = calculator.computeSubscores(DrillType.PUSH_UP, metrics, calibration)
+        val subscores = calculator.computeSubscores(DrillType.HANDSTAND_PUSH_UP, metrics, calibration)
 
         assertTrue(subscores.containsKey("descent_quality"))
         assertTrue(subscores.containsKey("bottom_depth_quality"))
@@ -49,8 +49,8 @@ class DrillMetricsCalculatorTest {
 
     @Test
     fun strictnessPresetShiftsThresholdBands() {
-        val beginner = DrillProfiles.forDrill(DrillType.CHEST_TO_WALL_HANDSTAND, emptyList(), ThresholdStrictness.BEGINNER).thresholds
-        val advanced = DrillProfiles.forDrill(DrillType.CHEST_TO_WALL_HANDSTAND, emptyList(), ThresholdStrictness.ADVANCED).thresholds
+        val beginner = DrillProfiles.forDrill(DrillType.WALL_HANDSTAND, emptyList(), ThresholdStrictness.BEGINNER).thresholds
+        val advanced = DrillProfiles.forDrill(DrillType.WALL_HANDSTAND, emptyList(), ThresholdStrictness.ADVANCED).thresholds
 
         assertTrue(beginner.elbowExcellentDeg < advanced.elbowExcellentDeg)
         assertTrue(beginner.stackAcceptableNorm > advanced.stackAcceptableNorm)

@@ -95,7 +95,7 @@ fun AppNavHost(modifier: Modifier = Modifier) {
             val args = backStack.arguments
             val drill = parseDrillTypeOrDefault(
                 rawValue = args?.getString("drill"),
-                fallback = DrillType.CHEST_TO_WALL_HANDSTAND,
+                fallback = DrillType.WALL_HANDSTAND,
             )
             val options = LiveSessionOptions(
                 voiceEnabled = args?.getBoolean("voice") ?: true,

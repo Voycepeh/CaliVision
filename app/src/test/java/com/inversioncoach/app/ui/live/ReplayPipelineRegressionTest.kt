@@ -20,7 +20,7 @@ class ReplayPipelineRegressionTest {
             val session = SessionRecord(
                 id = 42,
                 title = "regression",
-                drillType = DrillType.CHEST_TO_WALL_HANDSTAND,
+                drillType = DrillType.WALL_HANDSTAND,
                 startedAtMs = 1L,
                 completedAtMs = 2L,
                 overallScore = 0,

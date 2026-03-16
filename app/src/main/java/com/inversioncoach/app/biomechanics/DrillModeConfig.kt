@@ -53,7 +53,7 @@ object DrillConfigs {
             experimental = false,
         ),
         cfg(
-            DrillType.FREESTANDING_HANDSTAND_FUTURE,
+            DrillType.FREE_HANDSTAND,
             "Free Standing Handstand",
             cuePriority = listOf("line_quality", "scapular_elevation", "rib_pelvis_control"),
             faults = mapOf(
@@ -74,7 +74,7 @@ object DrillConfigs {
             experimental = true,
         ),
         cfg(
-            DrillType.CHEST_TO_WALL_HANDSTAND,
+            DrillType.WALL_HANDSTAND,
             "Wall Assisted Handstand",
             cuePriority = listOf("line_quality", "scapular_elevation", "wall_reliance"),
             faults = mapOf(
@@ -134,7 +134,7 @@ object DrillConfigs {
             ),
         ),
         cfg(
-            DrillType.PUSH_UP,
+            DrillType.HANDSTAND_PUSH_UP,
             "Free Standing Handstand Push-Up",
             cuePriority = listOf("torso_line", "bottom_depth_quality", "top_lockout_quality"),
             faults = mapOf(
@@ -154,7 +154,7 @@ object DrillConfigs {
             ),
         ),
         cfg(
-            DrillType.NEGATIVE_WALL_HANDSTAND_PUSH_UP,
+            DrillType.WALL_HANDSTAND_PUSH_UP,
             "Wall Assisted Handstand Push-Up",
             cuePriority = listOf("descent_quality", "line_retention", "path_consistency"),
             faults = mapOf(

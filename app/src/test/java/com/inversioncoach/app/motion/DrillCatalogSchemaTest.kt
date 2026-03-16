@@ -18,13 +18,13 @@ class DrillCatalogSchemaTest {
 
     @Test
     fun handstand_drills_use_expected_tracking_modes() {
-        assertEquals(RepMode.HOLD_BASED, DrillCatalog.byType(DrillType.FREESTANDING_HANDSTAND_FUTURE).repMode)
-        assertEquals(RepMode.HOLD_BASED, DrillCatalog.byType(DrillType.CHEST_TO_WALL_HANDSTAND).repMode)
+        assertEquals(RepMode.HOLD_BASED, DrillCatalog.byType(DrillType.FREE_HANDSTAND).repMode)
+        assertEquals(RepMode.HOLD_BASED, DrillCatalog.byType(DrillType.WALL_HANDSTAND).repMode)
 
         assertEquals(RepMode.REP_BASED, DrillCatalog.byType(DrillType.PIKE_PUSH_UP).repMode)
         assertEquals(RepMode.REP_BASED, DrillCatalog.byType(DrillType.ELEVATED_PIKE_PUSH_UP).repMode)
-        assertEquals(RepMode.REP_BASED, DrillCatalog.byType(DrillType.PUSH_UP).repMode)
-        assertEquals(RepMode.REP_BASED, DrillCatalog.byType(DrillType.NEGATIVE_WALL_HANDSTAND_PUSH_UP).repMode)
+        assertEquals(RepMode.REP_BASED, DrillCatalog.byType(DrillType.HANDSTAND_PUSH_UP).repMode)
+        assertEquals(RepMode.REP_BASED, DrillCatalog.byType(DrillType.WALL_HANDSTAND_PUSH_UP).repMode)
     }
 
 }
