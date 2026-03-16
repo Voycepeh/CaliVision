@@ -1,5 +1,6 @@
 package com.inversioncoach.app.storage.repository
 
+import com.inversioncoach.app.model.AnnotatedExportStage
 import com.inversioncoach.app.model.AnnotatedExportStatus
 import com.inversioncoach.app.model.AnnotatedExportFailureReason
 import com.inversioncoach.app.model.CleanupStatus
@@ -64,6 +65,46 @@ class SessionRepository(
         sessionDao.upsert(session.copy(rawFinalUri = persistedUri, rawVideoUri = persistedUri))
         enforceConfiguredStorageLimit()
         return persistedUri
+    }
+
+
+    suspend fun updateAnnotatedExportProgress(
+        sessionId: Long,
+        stage: AnnotatedExportStage,
+        percent: Int,
+        etaSeconds: Int?,
+        elapsedMs: Long?,
+        failureDetail: String? = null,
+        failureReason: String? = null,
+    ) {
+        val session = sessionDao.getById(sessionId) ?: return
+        sessionDao.upsert(
+            session.copy(
+                annotatedExportStage = stage,
+                annotatedExportPercent = percent.coerceIn(0, 100),
+                annotatedExportEtaSeconds = etaSeconds,
+                annotatedExportElapsedMs = elapsedMs,
+                annotatedExportFailureDetail = failureDetail,
+                annotatedExportFailureReason = failureReason ?: session.annotatedExportFailureReason,
+                annotatedExportLastUpdatedAt = System.currentTimeMillis(),
+            ),
+        )
+    }
+
+    suspend fun reconcileRawPersistState(sessionId: Long): Boolean {
+        val session = sessionDao.getById(sessionId) ?: return false
+        val rawUri = session.rawFinalUri ?: session.rawVideoUri ?: session.rawMasterUri
+        val isValid = rawUri?.let { uri ->
+            runCatching {
+                val path = android.net.Uri.parse(uri).path ?: return@runCatching false
+                val file = java.io.File(path)
+                file.exists() && file.length() > 0L
+            }.getOrDefault(false)
+        } ?: false
+        if (!isValid) return false
+        if (session.rawPersistStatus == RawPersistStatus.SUCCEEDED && session.rawPersistFailureReason.isNullOrBlank()) return false
+        sessionDao.upsert(session.copy(rawPersistStatus = RawPersistStatus.SUCCEEDED, rawPersistFailureReason = null))
+        return true
     }
 
     suspend fun updateAnnotatedExportStatus(sessionId: Long, status: AnnotatedExportStatus) {

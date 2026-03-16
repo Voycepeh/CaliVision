@@ -87,6 +87,7 @@ fun ResultsScreen(sessionId: Long, onDone: () -> Unit) {
         ) {
             repository.reconcileStaleProcessingState(sessionId, hasActiveExportJob = false)
         }
+        repository.reconcileRawPersistState(sessionId)
     }
 
     ScaffoldedScreen(title = "Results") { padding ->
@@ -184,14 +185,19 @@ fun ResultsScreen(sessionId: Long, onDone: () -> Unit) {
             }
             if (replayDisplayState == ReplayDisplayState.ANNOTATED_PROCESSING) {
                 val progress = exportProgress
-                Text("${progress?.stage?.label ?: "Processing"} • ${(progress?.percent ?: 0)}%")
+                val persistedPercent = session?.annotatedExportPercent ?: 0
+                val livePercent = progress?.percent ?: persistedPercent
+                val persistedEtaMs = session?.annotatedExportEtaSeconds?.toLong()?.times(1000L)
+                val eta = progress?.etaMs ?: persistedEtaMs
+                Text("${progress?.stage?.label ?: session?.annotatedExportStage?.name?.lowercase()?.replace('_', ' ')?.replaceFirstChar { it.uppercase() } ?: "Processing"} • ${livePercent}%")
                 Text(
-                    "ETA: ${formatEta(progress?.etaMs)}",
+                    "ETA: ${formatEta(eta)}",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Text("Showing raw replay while annotated video is being generated.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (replayDisplayState == ReplayDisplayState.RAW_ONLY && !rawUri.isNullOrBlank()) {
-                Text("Annotated replay unavailable. Raw replay is available.")
+                Text("Showing raw replay while annotated video is being generated or unavailable.")
                 if (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) {
                     Text("Reason: ${session?.annotatedExportFailureReason ?: "Unavailable"}")
                 }

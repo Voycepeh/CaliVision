@@ -131,10 +131,23 @@ enum class RawPersistStatus {
     FAILED,
 }
 
+enum class AnnotatedExportStage {
+    QUEUED,
+    PREPARING,
+    LOADING_OVERLAYS,
+    DECODING_SOURCE,
+    RENDERING,
+    ENCODING,
+    VERIFYING,
+    COMPLETED,
+    FAILED,
+}
+
 enum class AnnotatedExportFailureReason {
     RAW_SAVE_FAILED,
     RAW_URI_EMPTY,
     OVERLAY_FRAMES_EMPTY,
+    OVERLAY_DATA_EMPTY,
     EXPORT_RETURNED_EMPTY,
     ANNOTATED_EXPORT_FAILED,
     EXPORT_TIMED_OUT,
@@ -143,10 +156,13 @@ enum class AnnotatedExportFailureReason {
     OUTPUT_FILE_MISSING,
     OUTPUT_FILE_ZERO_BYTES,
     METADATA_UNREADABLE,
+    SOURCE_VIDEO_UNREADABLE,
+    ENCODER_INIT_FAILED,
     ANNOTATED_COMPRESSION_FAILED,
     RAW_COMPRESSION_FAILED,
     STALE_PROCESSING_STATE,
     CLEANUP_DELETE_FAILED,
+    RENDER_PIPELINE_EXCEPTION,
     UNKNOWN,
 }
 
@@ -191,6 +207,13 @@ data class SessionRecord(
     val rawPersistFailureReason: String? = null,
     val annotatedExportStatus: AnnotatedExportStatus = AnnotatedExportStatus.NOT_STARTED,
     val annotatedExportFailureReason: String? = null,
+    val annotatedExportFailureDetail: String? = null,
+    val annotatedExportElapsedMs: Long? = null,
+    val annotatedExportStageAtFailure: String? = null,
+    val annotatedExportStage: AnnotatedExportStage = AnnotatedExportStage.QUEUED,
+    val annotatedExportPercent: Int = 0,
+    val annotatedExportEtaSeconds: Int? = null,
+    val annotatedExportLastUpdatedAt: Long? = null,
     val rawCompressionStatus: CompressionStatus = CompressionStatus.NOT_STARTED,
     val annotatedCompressionStatus: CompressionStatus = CompressionStatus.NOT_STARTED,
     val cleanupStatus: CleanupStatus = CleanupStatus.NOT_STARTED,

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.inversioncoach.app.biomechanics.AlignmentMetricsEngine
 import com.inversioncoach.app.biomechanics.DrillConfigs
 import com.inversioncoach.app.coaching.CueEngine
+import com.inversioncoach.app.model.AnnotatedExportStage
 import com.inversioncoach.app.model.AnnotatedExportStatus
 import com.inversioncoach.app.model.CleanupStatus
 import com.inversioncoach.app.model.CompressionStatus
@@ -120,6 +121,13 @@ class LiveCoachingViewModel(
     private var annotatedExportStatus: AnnotatedExportStatus = AnnotatedExportStatus.NOT_STARTED
     private var exportLifecycleState: ExportLifecycleState = ExportLifecycleState.IDLE
     private var annotatedExportFailureReason: String? = null
+    private var annotatedExportFailureDetail: String? = null
+    private var annotatedExportElapsedMs: Long? = null
+    private var annotatedExportStageAtFailure: String? = null
+    private var annotatedExportStage: AnnotatedExportStage = AnnotatedExportStage.QUEUED
+    private var annotatedExportPercent: Int = 0
+    private var annotatedExportEtaSeconds: Int? = null
+    private var annotatedExportLastUpdatedAt: Long? = null
     private var rawCompressionStatus: CompressionStatus = CompressionStatus.NOT_STARTED
     private var annotatedCompressionStatus: CompressionStatus = CompressionStatus.NOT_STARTED
     private var cleanupStatus: CleanupStatus = CleanupStatus.NOT_STARTED
@@ -182,7 +190,7 @@ class LiveCoachingViewModel(
         val activeSessionId = sessionId ?: return
         exportLifecycleState = ExportLifecycleState.PROCESSING
         AnnotatedExportJobTracker.markStarted(activeSessionId)
-        AnnotatedExportJobTracker.updateProgress(activeSessionId, ExportProgressStage.FINALIZING_RECORDING, 3, null)
+        AnnotatedExportJobTracker.updateProgress(activeSessionId, ExportProgressStage.PREPARING, 3, null)
         sessionHadAnyVideo = true
         if (finalizedUri.isNullOrBlank()) {
             setAnnotatedExportState(AnnotatedExportStatus.ANNOTATED_FAILED, AnnotatedExportFailureReason.RAW_URI_EMPTY.name)
@@ -616,6 +624,13 @@ class LiveCoachingViewModel(
                         rawPersistFailureReason = rawPersistFailureReason,
                         annotatedExportStatus = finalVideos.annotatedExportStatus,
                         annotatedExportFailureReason = reconciledFailureReason,
+                        annotatedExportFailureDetail = annotatedExportFailureDetail,
+                        annotatedExportElapsedMs = annotatedExportElapsedMs,
+                        annotatedExportStageAtFailure = annotatedExportStageAtFailure,
+                        annotatedExportStage = annotatedExportStage,
+                        annotatedExportPercent = annotatedExportPercent,
+                        annotatedExportEtaSeconds = annotatedExportEtaSeconds,
+                        annotatedExportLastUpdatedAt = annotatedExportLastUpdatedAt,
                         rawCompressionStatus = rawCompressionStatus,
                         annotatedCompressionStatus = annotatedCompressionStatus,
                         cleanupStatus = cleanupStatus,
@@ -687,6 +702,8 @@ class LiveCoachingViewModel(
                     rawPersistFailureReason = null,
                     annotatedExportStatus = AnnotatedExportStatus.NOT_STARTED,
                     annotatedExportFailureReason = null,
+                    annotatedExportStage = AnnotatedExportStage.QUEUED,
+                    annotatedExportPercent = 0,
                     rawCompressionStatus = CompressionStatus.NOT_STARTED,
                     annotatedCompressionStatus = CompressionStatus.NOT_STARTED,
                     cleanupStatus = CleanupStatus.NOT_STARTED,
@@ -734,7 +751,34 @@ class LiveCoachingViewModel(
         }
     }
 
+    private suspend fun updateAnnotatedExportProgress(
+        activeSessionId: Long,
+        stage: AnnotatedExportStage,
+        percent: Int,
+        etaMs: Long?,
+        elapsedMs: Long,
+    ) {
+        annotatedExportStage = stage
+        annotatedExportPercent = percent.coerceIn(0, 100)
+        annotatedExportEtaSeconds = etaMs?.let { (it / 1000L).toInt().coerceAtLeast(1) }
+        annotatedExportElapsedMs = elapsedMs
+        annotatedExportLastUpdatedAt = System.currentTimeMillis()
+        repository.updateAnnotatedExportProgress(
+            sessionId = activeSessionId,
+            stage = stage,
+            percent = annotatedExportPercent,
+            etaSeconds = annotatedExportEtaSeconds,
+            elapsedMs = annotatedExportElapsedMs,
+            failureDetail = annotatedExportFailureDetail,
+            failureReason = annotatedExportFailureReason,
+        )
+    }
+
     private fun reconcileMediaStateForPersistence(hasActiveExportJob: Boolean): Pair<AnnotatedExportStatus, String?> {
+        if (!rawVideoUri.isNullOrBlank() && mediaAssetExists(rawVideoUri)) {
+            rawPersistStatus = RawPersistStatus.SUCCEEDED
+            rawPersistFailureReason = null
+        }
         if (rawPersistStatus == RawPersistStatus.SUCCEEDED && rawPersistFailureReason == AnnotatedExportFailureReason.RAW_SAVE_FAILED.name) {
             rawPersistFailureReason = null
         }
@@ -762,7 +806,7 @@ class LiveCoachingViewModel(
         setRawPersistState(RawPersistStatus.PROCESSING, null)
         repository.updateRawPersistStatus(activeSessionId, RawPersistStatus.PROCESSING)
         repository.updateRawPersistFailureReason(activeSessionId, null)
-        AnnotatedExportJobTracker.updateProgress(activeSessionId, ExportProgressStage.SAVING_RAW_VIDEO, 15, null)
+        AnnotatedExportJobTracker.updateProgress(activeSessionId, ExportProgressStage.PREPARING, 15, null)
         val rawPersistStartMs = System.currentTimeMillis()
         SessionDiagnostics.logStructured("raw_persist_started", activeSessionId, drillType, finalizedUri, null, overlayFrames.size)
         rawMasterUri = repository.saveRawVideoBlob(activeSessionId, finalizedUri)
@@ -783,12 +827,19 @@ class LiveCoachingViewModel(
         setAnnotatedExportState(AnnotatedExportStatus.PROCESSING, null)
         repository.updateAnnotatedExportStatus(activeSessionId, AnnotatedExportStatus.PROCESSING)
         repository.updateAnnotatedExportFailureReason(activeSessionId, null)
+        annotatedExportStage = AnnotatedExportStage.PREPARING
+        annotatedExportPercent = 20
+        annotatedExportEtaSeconds = null
+        annotatedExportElapsedMs = 0L
+        annotatedExportLastUpdatedAt = System.currentTimeMillis()
+        repository.updateAnnotatedExportProgress(activeSessionId, AnnotatedExportStage.PREPARING, 20, null, 0L)
         SessionDiagnostics.logStructured("annotated_export_started", activeSessionId, drillType, rawMasterUri, null, overlayFrames.size)
         val exportStartMs = System.currentTimeMillis()
-        AnnotatedExportJobTracker.updateProgress(activeSessionId, ExportProgressStage.BUILDING_ANNOTATED_REPLAY, 30, null)
+        AnnotatedExportJobTracker.updateProgress(activeSessionId, ExportProgressStage.LOADING_OVERLAYS, 30, null)
 
         val exportFrames = exportFramesForSession()
         try {
+            updateAnnotatedExportProgress(activeSessionId, AnnotatedExportStage.LOADING_OVERLAYS, 30, null, System.currentTimeMillis() - exportStartMs)
             val exportResult = withTimeout(ANNOTATED_EXPORT_TIMEOUT_MS) {
                 annotatedExportPipeline.export(
                     sessionId = activeSessionId,
@@ -802,14 +853,17 @@ class LiveCoachingViewModel(
                         val remainingFrames = (total - rendered).coerceAtLeast(0)
                         val frameRate = rendered.toDouble() / (elapsed / 1000.0)
                         val etaMs = if (frameRate > 0.01) ((remainingFrames / frameRate) * 1000.0).toLong() else null
-                        AnnotatedExportJobTracker.updateProgress(activeSessionId, ExportProgressStage.BUILDING_ANNOTATED_REPLAY, pct, etaMs)
+                        AnnotatedExportJobTracker.updateProgress(activeSessionId, ExportProgressStage.RENDERING, pct, etaMs)
+                        kotlinx.coroutines.runBlocking {
+                            updateAnnotatedExportProgress(activeSessionId, AnnotatedExportStage.RENDERING, pct, etaMs, elapsed)
+                        }
                     },
                 )
             }
             val persistedUri = exportResult.persistedUri
             SessionDiagnostics.logStructured("annotated_export_output", activeSessionId, drillType, rawMasterUri, persistedUri, exportFrames.size)
             SessionDiagnostics.log("annotated_export_duration_ms=${System.currentTimeMillis() - exportStartMs}")
-            AnnotatedExportJobTracker.updateProgress(activeSessionId, ExportProgressStage.VERIFYING_OUTPUT, 90, null)
+            AnnotatedExportJobTracker.updateProgress(activeSessionId, ExportProgressStage.VERIFYING, 90, null)
             val verifyStartMs = System.currentTimeMillis()
             val verification = MediaVerificationHelper.verify(persistedUri)
             SessionDiagnostics.log("verify_duration_ms=${System.currentTimeMillis() - verifyStartMs}")
@@ -831,9 +885,25 @@ class LiveCoachingViewModel(
             retainedAssetType = RetainedAssetType.ANNOTATED_FINAL
             setAnnotatedExportState(AnnotatedExportStatus.ANNOTATED_READY, null)
             exportLifecycleState = ExportLifecycleState.READY
+            annotatedExportStage = AnnotatedExportStage.COMPLETED
+            annotatedExportPercent = 100
+            annotatedExportEtaSeconds = 0
+            annotatedExportElapsedMs = System.currentTimeMillis() - exportStartMs
+            annotatedExportFailureDetail = null
+            annotatedExportStageAtFailure = null
+            annotatedExportLastUpdatedAt = System.currentTimeMillis()
             repository.updateAnnotatedExportStatus(activeSessionId, AnnotatedExportStatus.ANNOTATED_READY)
             repository.updateAnnotatedExportFailureReason(activeSessionId, null)
-            AnnotatedExportJobTracker.updateProgress(activeSessionId, ExportProgressStage.DONE, 100, 0L)
+            repository.updateAnnotatedExportProgress(
+                sessionId = activeSessionId,
+                stage = AnnotatedExportStage.COMPLETED,
+                percent = 100,
+                etaSeconds = 0,
+                elapsedMs = annotatedExportElapsedMs,
+                failureDetail = null,
+                failureReason = null,
+            )
+            AnnotatedExportJobTracker.updateProgress(activeSessionId, ExportProgressStage.COMPLETED, 100, 0L)
         } catch (_: TimeoutCancellationException) {
             persistAnnotatedExportFailed(activeSessionId, AnnotatedExportFailureReason.EXPORT_TIMED_OUT.name)
         } catch (_: CancellationException) {
@@ -863,13 +933,28 @@ class LiveCoachingViewModel(
     }
 
     private suspend fun persistAnnotatedExportFailed(activeSessionId: Long, reason: String) {
+        val previousStage = annotatedExportStage
+        annotatedExportStage = AnnotatedExportStage.FAILED
+        annotatedExportStageAtFailure = previousStage.name
+        annotatedExportFailureReason = reason
+        annotatedExportFailureDetail = "Export failed during ${previousStage.name.lowercase()}"
+        annotatedExportLastUpdatedAt = System.currentTimeMillis()
         annotatedVideoUri = null
         annotatedFinalUri = null
         setAnnotatedExportState(AnnotatedExportStatus.ANNOTATED_FAILED, reason)
         exportLifecycleState = ExportLifecycleState.FAILED
         repository.updateAnnotatedExportStatus(activeSessionId, AnnotatedExportStatus.ANNOTATED_FAILED)
         repository.updateAnnotatedExportFailureReason(activeSessionId, reason)
-        AnnotatedExportJobTracker.updateProgress(activeSessionId, ExportProgressStage.DONE, 100, 0L)
+        repository.updateAnnotatedExportProgress(
+            sessionId = activeSessionId,
+            stage = AnnotatedExportStage.FAILED,
+            percent = annotatedExportPercent,
+            etaSeconds = null,
+            elapsedMs = annotatedExportElapsedMs,
+            failureDetail = annotatedExportFailureDetail,
+            failureReason = reason,
+        )
+        AnnotatedExportJobTracker.updateProgress(activeSessionId, ExportProgressStage.FAILED, 100, 0L)
     }
 
     private fun resolveTerminalAnnotatedExportStatus(): AnnotatedExportStatus {
@@ -968,7 +1053,7 @@ class LiveCoachingViewModel(
         private const val FRAME_PERSIST_INTERVAL_MS = 250L
         private const val MAX_EXPORT_FRAME_INTERVAL_MS = 50L
         private const val OVERLAY_FRAME_LOG_INTERVAL = 60
-        private const val ANNOTATED_EXPORT_TIMEOUT_MS = 25_000L
+        private const val ANNOTATED_EXPORT_TIMEOUT_MS = 120_000L
     }
 }
 

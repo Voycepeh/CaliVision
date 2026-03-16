@@ -147,7 +147,7 @@ class AnnotatedExportPipeline(
             updateExportStatus(sessionId, AnnotatedExportStatus.ANNOTATED_FAILED)
             Log.w(TAG, "export_failure sessionId=$sessionId reason=overlay_frames_empty")
             return ExportResult(
-                failureReason = AnnotatedExportFailureReason.OVERLAY_FRAMES_EMPTY.name,
+                failureReason = AnnotatedExportFailureReason.OVERLAY_DATA_EMPTY.name,
                 verificationStatus = VerificationStatus.FAILED,
             )
         }
@@ -175,7 +175,7 @@ class AnnotatedExportPipeline(
         } catch (t: Throwable) {
             updateExportStatus(sessionId, AnnotatedExportStatus.ANNOTATED_FAILED)
             Log.e(TAG, "export_failure sessionId=$sessionId reason=exception_${t::class.simpleName}", t)
-            return ExportResult(failureReason = "EXCEPTION_${t::class.simpleName ?: "UNKNOWN"}", verificationStatus = VerificationStatus.FAILED)
+            return ExportResult(failureReason = AnnotatedExportFailureReason.RENDER_PIPELINE_EXCEPTION.name, verificationStatus = VerificationStatus.FAILED)
         }
         if (renderedUri == null) {
             updateExportStatus(sessionId, AnnotatedExportStatus.ANNOTATED_FAILED)

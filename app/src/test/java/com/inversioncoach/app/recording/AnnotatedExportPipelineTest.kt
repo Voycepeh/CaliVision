@@ -36,7 +36,7 @@ class AnnotatedExportPipelineTest {
         }
 
         assertNull(exported.persistedUri)
-        assertEquals(AnnotatedExportFailureReason.OVERLAY_FRAMES_EMPTY.name, exported.failureReason)
+        assertEquals(AnnotatedExportFailureReason.OVERLAY_DATA_EMPTY.name, exported.failureReason)
         assertEquals(listOf(AnnotatedExportStatus.ANNOTATED_FAILED), statuses)
     }
 
@@ -108,7 +108,7 @@ class AnnotatedExportPipelineTest {
             )
         }
 
-        assertEquals("EXCEPTION_IllegalStateException", exported.failureReason)
+        assertEquals(AnnotatedExportFailureReason.RENDER_PIPELINE_EXCEPTION.name, exported.failureReason)
     }
 
     @Test
