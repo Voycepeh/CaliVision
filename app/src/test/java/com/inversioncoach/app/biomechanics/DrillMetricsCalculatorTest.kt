@@ -28,6 +28,23 @@ class DrillMetricsCalculatorTest {
         assertTrue(subscores["line_quality"] == 100)
     }
 
+
+    @Test
+    fun evaluateMetricsSupportsFreestandingHandstand() {
+        val calibration = DrillProfiles.forDrill(DrillType.FREESTANDING_HANDSTAND_FUTURE, emptyList(), ThresholdStrictness.STANDARD)
+        val metrics = derivedMetrics(
+            elbowAngle = 176f,
+            shoulderAngle = 178f,
+            hipAngle = 174f,
+            kneeAngle = 176f,
+            bodyLineDeviation = 0.05f,
+        )
+
+        val evaluations = calculator.evaluateMetrics(DrillType.FREESTANDING_HANDSTAND_FUTURE, metrics, calibration)
+
+        assertFalse(evaluations.isEmpty())
+    }
+
     @Test
     fun repDrillsArePhaseAwareAndDoNotExposeUniversalElbowPathMetric() {
         val calibration = DrillProfiles.forDrill(DrillType.PUSH_UP, emptyList(), ThresholdStrictness.STANDARD)

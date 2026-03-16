@@ -31,6 +31,12 @@ class IssueClassifier {
                 maybeAddPassiveShoulder(metrics, profile, calibration, persistedFrames, nowMs, issues)
                 maybeAddSoftKnee(metrics, profile, calibration, persistedFrames, nowMs, issues)
             }
+            DrillType.FREESTANDING_HANDSTAND_FUTURE -> {
+                maybeAddBanana(metrics, profile, calibration, persistedFrames, nowMs, issues)
+                maybeAddShoulderOpen(metrics, profile, calibration, persistedFrames, nowMs, issues)
+                maybeAddPassiveShoulder(metrics, profile, calibration, persistedFrames, nowMs, issues)
+                maybeAddSoftKnee(metrics, profile, calibration, persistedFrames, nowMs, issues)
+            }
             DrillType.PIKE_PUSH_UP -> {
                 maybeAddHipsLow(metrics, profile, calibration, persistedFrames, nowMs, issues)
                 maybeAddHeadForward(metrics, profile, calibration, persistedFrames, nowMs, issues)
