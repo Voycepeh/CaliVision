@@ -90,7 +90,7 @@ fun LiveCoachingScreen(drillType: DrillType, options: LiveSessionOptions, onStop
     val hostActivity = context as? Activity
     val currentSessionTitle by rememberUpdatedState(newValue = vm.sessionTitle)
     val isRecordingNow by rememberUpdatedState(newValue = uiState.isRecording)
-    var showDetailedStats by rememberSaveable { mutableStateOf(false) }
+    val showDetailedStats = rememberSaveable { mutableStateOf(false) }
 
     fun stopRecordingsAndPersist() {
         sessionRecorder.stopRecording()
@@ -252,8 +252,8 @@ fun LiveCoachingScreen(drillType: DrillType, options: LiveSessionOptions, onStop
         ) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Side-view • ${drillType.displayName}", color = Color.White, fontSize = 18.sp)
-                TextButton(onClick = { showDetailedStats = !showDetailedStats }) {
-                    Text(if (showDetailedStats) "Less" else "More", color = Color.White, fontSize = 12.sp)
+                TextButton(onClick = { showDetailedStats.value = !showDetailedStats.value }) {
+                    Text(if (showDetailedStats.value) "Less" else "More", color = Color.White, fontSize = 12.sp)
                 }
             }
             Text("Time ${formatSessionDuration(sessionDurationMs)}", color = Color.White, fontSize = 14.sp)
@@ -263,7 +263,7 @@ fun LiveCoachingScreen(drillType: DrillType, options: LiveSessionOptions, onStop
                 Text("Camera Side: ${options.drillCameraSide.name.lowercase().replaceFirstChar { it.uppercase() }}", color = Color.White, fontSize = 13.sp)
             }
 
-            if (showDetailedStats) {
+            if (showDetailedStats.value) {
                 Text("Started: ${formatSessionDateTime(vm.sessionStartTimestampMs)}", color = Color.White, fontSize = 13.sp)
                 if (uiState.sessionMode != SessionMode.FREESTYLE) {
                     Text("Cue: ${uiState.currentCue.ifBlank { "Awaiting stable frame..." }}", color = Color.White, fontSize = 13.sp)
