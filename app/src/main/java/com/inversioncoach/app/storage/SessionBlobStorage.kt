@@ -27,6 +27,19 @@ class SessionBlobStorage(
         return notesFile.toURI().toString()
     }
 
+    fun persistOverlayTimeline(sessionId: Long, timelineJson: String): String {
+        val timelineFile = sessionDir(sessionId).resolve(OVERLAY_TIMELINE_FILE_NAME)
+        timelineFile.parentFile?.mkdirs()
+        timelineFile.writeText(timelineJson)
+        return timelineFile.toURI().toString()
+    }
+
+    fun readOverlayTimeline(sessionId: Long): String? {
+        val timelineFile = sessionDir(sessionId).resolve(OVERLAY_TIMELINE_FILE_NAME)
+        if (!timelineFile.exists()) return null
+        return timelineFile.readText()
+    }
+
     fun readNotes(sessionId: Long): String? {
         val notesFile = sessionDir(sessionId).resolve(NOTES_FILE_NAME)
         if (!notesFile.exists()) return null
@@ -96,5 +109,6 @@ class SessionBlobStorage(
         const val RAW_FINAL_FILE_NAME = "raw_final.mp4"
         const val ANNOTATED_FINAL_FILE_NAME = "annotated_final.mp4"
         private const val NOTES_FILE_NAME = "notes.txt"
+        private const val OVERLAY_TIMELINE_FILE_NAME = "overlay_timeline.json"
     }
 }

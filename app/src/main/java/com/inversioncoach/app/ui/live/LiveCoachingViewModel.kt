@@ -35,6 +35,9 @@ import com.inversioncoach.app.overlay.FreestyleViewMode
 import com.inversioncoach.app.pose.PoseSmoother
 import com.inversioncoach.app.recording.MediaVerificationHelper
 import com.inversioncoach.app.recording.OverlayStabilizer
+import com.inversioncoach.app.recording.OverlayTimelineJson
+import com.inversioncoach.app.recording.OverlayTimelineRecorder
+import com.inversioncoach.app.recording.toTimelineFrame
 import com.inversioncoach.app.recording.VideoCompressionPipeline
 import com.inversioncoach.app.storage.repository.SessionRepository
 import com.inversioncoach.app.summary.SummaryGenerator
@@ -138,6 +141,8 @@ class LiveCoachingViewModel(
     private var compressionJob: Job? = null
     private var cleanupJob: Job? = null
     private val overlayFrames = mutableListOf<com.inversioncoach.app.recording.AnnotatedOverlayFrame>()
+    private var overlayTimelineRecorder: OverlayTimelineRecorder? = null
+    private var overlayTimelineUri: String? = null
     private val freestyleOrientationClassifier = FreestyleOrientationClassifier()
     private var pendingStopCallback: ((SessionStopResult) -> Unit)? = null
     private var isSessionFinalizing = false
@@ -169,6 +174,8 @@ class LiveCoachingViewModel(
             failureReason = "analyzer=${metricsEngine::class.simpleName};movementPattern=$movementPattern",
         )
         startSession()
+        overlayTimelineRecorder = OverlayTimelineRecorder(startedAtMs = sessionStartedAtMs, sampleIntervalMs = OVERLAY_TIMELINE_SAMPLE_INTERVAL_MS)
+        SessionDiagnostics.log("overlay_timeline_recorder_start sampleIntervalMs=$OVERLAY_TIMELINE_SAMPLE_INTERVAL_MS")
     }
 
     fun onCameraPermissionChanged(granted: Boolean) {
@@ -282,7 +289,7 @@ class LiveCoachingViewModel(
         val motion = if (motionEligible) motionPipeline.analyze(frameForSession, settings.alignmentStrictness, calibration) else null
         _smoothedFrame.value = smoothed
         if (shouldCaptureOverlayFrame(smoothed.timestampMs)) {
-            overlayFrames += overlayStabilizer.stabilize(
+            val overlayFrame = overlayStabilizer.stabilize(
                 frame = smoothed,
                 sessionMode = sessionMode,
                 drillCameraSide = if (sessionMode == SessionMode.FREESTYLE) null else options.drillCameraSide,
@@ -290,6 +297,8 @@ class LiveCoachingViewModel(
                 showSkeleton = options.showSkeletonOverlay,
                 freestyleViewMode = freestyleViewMode,
             )
+            overlayFrames += overlayFrame
+            overlayTimelineRecorder?.record(overlayFrame.toTimelineFrame())
             lastOverlayCaptureTsMs = smoothed.timestampMs
             if (overlayFrames.size % OVERLAY_FRAME_LOG_INTERVAL == 0) {
                 SessionDiagnostics.logStructured(
@@ -691,6 +700,7 @@ class LiveCoachingViewModel(
                         cleanupStatus = cleanupStatus,
                         retainedAssetType = finalVideos.retainedAssetType,
                         overlayFrameCount = overlayFrames.size,
+                        overlayTimelineUri = overlayTimelineUri,
                         notesUri = null,
                         bestFrameTimestampMs = bestFrame,
                         worstFrameTimestampMs = worstFrame,
@@ -765,6 +775,7 @@ class LiveCoachingViewModel(
                     cleanupStatus = CleanupStatus.NOT_STARTED,
                     retainedAssetType = RetainedAssetType.NONE,
                     overlayFrameCount = 0,
+                    overlayTimelineUri = null,
                     notesUri = null,
                     bestFrameTimestampMs = null,
                     worstFrameTimestampMs = null,
@@ -900,6 +911,23 @@ class LiveCoachingViewModel(
         repository.updateRawPersistStatus(activeSessionId, RawPersistStatus.SUCCEEDED)
         repository.updateRawPersistFailureReason(activeSessionId, null)
 
+
+        val overlayTimeline = overlayTimelineRecorder?.snapshot()
+            ?: com.inversioncoach.app.recording.OverlayTimeline(
+                startedAtMs = sessionStartedAtMs,
+                sampleIntervalMs = OVERLAY_TIMELINE_SAMPLE_INTERVAL_MS,
+                frames = emptyList(),
+            )
+        overlayTimelineUri = repository.saveOverlayTimeline(activeSessionId, OverlayTimelineJson.encode(overlayTimeline))
+        SessionDiagnostics.logStructured(
+            event = "overlay_timeline_persisted",
+            sessionId = activeSessionId,
+            drillType = drillType,
+            rawUri = rawVideoUri,
+            annotatedUri = overlayTimelineUri,
+            overlayFrameCount = overlayTimeline.frames.size,
+        )
+
         exportLifecycleState = ExportLifecycleState.PROCESSING
         setAnnotatedExportState(AnnotatedExportStatus.PROCESSING, null)
         repository.updateAnnotatedExportStatus(activeSessionId, AnnotatedExportStatus.PROCESSING)
@@ -914,7 +942,8 @@ class LiveCoachingViewModel(
         val exportStartMs = System.currentTimeMillis()
         AnnotatedExportJobTracker.updateProgress(activeSessionId, ExportProgressStage.LOADING_OVERLAYS, 30, null)
 
-        val exportFrames = exportFramesForSession()
+        val exportTimeline = overlayTimelineRecorder?.snapshot()
+            ?: com.inversioncoach.app.recording.OverlayTimeline(startedAtMs = sessionStartedAtMs, sampleIntervalMs = OVERLAY_TIMELINE_SAMPLE_INTERVAL_MS, frames = emptyList())
         try {
             updateAnnotatedExportProgress(activeSessionId, AnnotatedExportStage.LOADING_OVERLAYS, 30, null, System.currentTimeMillis() - exportStartMs)
             val exportResult = withTimeout(ANNOTATED_EXPORT_TIMEOUT_MS) {
@@ -923,7 +952,7 @@ class LiveCoachingViewModel(
                     rawVideoUri = rawMasterUri!!,
                     drillType = drillType,
                     drillCameraSide = options.drillCameraSide,
-                    overlayFrames = exportFrames,
+                    overlayTimeline = exportTimeline,
                     onRenderProgress = { rendered, total ->
                         val pct = 30 + (((rendered.toFloat() / total.coerceAtLeast(1).toFloat()) * 55f).toInt())
                         val elapsed = (System.currentTimeMillis() - exportStartMs).coerceAtLeast(1L)
@@ -938,7 +967,7 @@ class LiveCoachingViewModel(
                 )
             }
             val persistedUri = exportResult.persistedUri
-            SessionDiagnostics.logStructured("annotated_export_output", activeSessionId, drillType, rawMasterUri, persistedUri, exportFrames.size)
+            SessionDiagnostics.logStructured("annotated_export_output", activeSessionId, drillType, rawMasterUri, persistedUri, exportTimeline.frames.size)
             SessionDiagnostics.log("annotated_export_duration_ms=${System.currentTimeMillis() - exportStartMs}")
             AnnotatedExportJobTracker.updateProgress(activeSessionId, ExportProgressStage.VERIFYING, 90, null)
             val verifyStartMs = System.currentTimeMillis()
@@ -988,7 +1017,7 @@ class LiveCoachingViewModel(
                 drillType = drillType,
                 rawUri = rawVideoUri,
                 annotatedUri = annotatedVideoUri,
-                overlayFrameCount = exportFrames.size,
+                overlayFrameCount = exportTimeline.frames.size,
                 failureReason = "timeoutMs=$ANNOTATED_EXPORT_TIMEOUT_MS;elapsedMs=${System.currentTimeMillis() - exportStartMs}",
             )
             persistAnnotatedExportFailed(activeSessionId, AnnotatedExportFailureReason.EXPORT_TIMED_OUT.name)
@@ -999,7 +1028,7 @@ class LiveCoachingViewModel(
                 drillType = drillType,
                 rawUri = rawVideoUri,
                 annotatedUri = annotatedVideoUri,
-                overlayFrameCount = exportFrames.size,
+                overlayFrameCount = exportTimeline.frames.size,
                 failureReason = "elapsedMs=${System.currentTimeMillis() - exportStartMs}",
             )
             persistAnnotatedExportFailed(activeSessionId, AnnotatedExportFailureReason.EXPORT_CANCELLED.name)
@@ -1019,7 +1048,7 @@ class LiveCoachingViewModel(
                 drillType = drillType,
                 rawUri = rawVideoUri,
                 annotatedUri = annotatedVideoUri,
-                overlayFrameCount = exportFrames.size,
+                overlayFrameCount = exportTimeline.frames.size,
                 failureReason = "status=$annotatedExportStatus;reason=${annotatedExportFailureReason.orEmpty()}",
             )
             SessionDiagnostics.log("post_stop_total_duration_ms=${System.currentTimeMillis() - pipelineStartMs}")
@@ -1154,6 +1183,7 @@ class LiveCoachingViewModel(
     companion object {
         private const val FRAME_PERSIST_INTERVAL_MS = 250L
         private const val MAX_EXPORT_FRAME_INTERVAL_MS = 50L
+        private const val OVERLAY_TIMELINE_SAMPLE_INTERVAL_MS = 80L
         private const val OVERLAY_FRAME_LOG_INTERVAL = 60
         private const val ANNOTATED_EXPORT_TIMEOUT_MS = 120_000L
         private const val PROCESSING_SLOW_THRESHOLD_MS = 90_000L

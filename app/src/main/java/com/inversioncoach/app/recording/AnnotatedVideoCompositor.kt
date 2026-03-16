@@ -3,6 +3,7 @@ package com.inversioncoach.app.recording
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Rect
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
@@ -11,20 +12,24 @@ import android.media.MediaMuxer
 import android.net.Uri
 import android.util.Log
 import com.inversioncoach.app.model.DrillType
-import com.inversioncoach.app.model.JointPoint
 import com.inversioncoach.app.overlay.DrillCameraSide
 import com.inversioncoach.app.overlay.OverlayDrawingFrame
 import com.inversioncoach.app.overlay.OverlayFrameRenderer
 import com.inversioncoach.app.overlay.OverlayGeometry
+import com.inversioncoach.app.overlay.OverlayRenderModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.channels.Channel
 import java.io.File
-import kotlin.math.abs
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.roundToInt
 
 private const val TAG = "AnnotatedVideoCompositor"
-private const val EXPORT_FPS = 30
-private const val MAX_SAMPLE_DELTA_MS = 200L
 
 class AnnotatedVideoCompositor(
     private val context: Context,
@@ -53,18 +58,27 @@ class AnnotatedVideoCompositor(
             val width = ((sourceWidth * scale) / 2f).roundToInt().coerceAtLeast(2) * 2
             val height = ((sourceHeight * scale) / 2f).roundToInt().coerceAtLeast(2) * 2
             val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-            val sourceFps = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)?.toFloatOrNull()?.roundToInt()
-                ?.coerceIn(15, 60) ?: preset.outputFps
             if (durationMs <= 0L) {
-                Log.w(TAG, "Cannot export annotated video because duration metadata is unavailable")
+                Log.w(TAG, "export_failure reason=duration_unavailable")
                 return@withContext null
             }
 
-            Log.d(TAG, "export_start uri=$rawVideoUri width=$width height=$height durationMs=$durationMs sourceFps=$sourceFps exportFps=${preset.outputFps} preset=${preset.name}")
+            val workerCount = computeWorkerCount()
+            val queueCapacity = (workerCount * 3).coerceAtLeast(6)
+            val totalFrames = ((durationMs / 1000f) * preset.outputFps).roundToInt().coerceAtLeast(1)
+            val timestampStart = overlayFrames.first().timestampMs
+            val resolver = OverlayTimelineResolver(overlayFrames)
+
+            Log.d(
+                TAG,
+                "export_start preset=${preset.name} workers=$workerCount queueCapacity=$queueCapacity totalFrames=$totalFrames " +
+                    "width=$width height=$height durationMs=$durationMs overlaySamples=${overlayFrames.size}",
+            )
+
             val codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
             val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
                 setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-                setInteger(MediaFormat.KEY_BIT_RATE, (width * height * 6).coerceAtLeast(1_500_000))
+                setInteger(MediaFormat.KEY_BIT_RATE, computeBitrate(width, height, preset))
                 setInteger(MediaFormat.KEY_FRAME_RATE, preset.outputFps)
                 setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
             }
@@ -105,61 +119,122 @@ class AnnotatedVideoCompositor(
                 }
             }
 
-            val totalFrames = ((durationMs / 1000f) * preset.outputFps).roundToInt().coerceAtLeast(1)
-            val timeline = OverlayTimeline(overlayFrames.sortedBy { it.timestampMs })
-            val timestampStart = overlayFrames.first().timestampMs
-            repeat(totalFrames) { idx ->
-                val frameTimeUs = (idx * 1_000_000L) / preset.outputFps
-                val frameTimeMs = frameTimeUs / 1000L
-                val bitmap = retriever.getFrameAtTime(frameTimeUs, MediaMetadataRetriever.OPTION_CLOSEST) ?: return@repeat
-                val canvas = inputSurface.lockCanvas(null)
-                drawFrame(
-                    canvas = canvas,
-                    bitmap = bitmap,
-                    width = width,
-                    height = height,
-                    overlay = timeline.overlayAt(timestampStart + frameTimeMs),
-                    drillType = drillType,
-                    drillCameraSide = drillCameraSide,
-                )
-                inputSurface.unlockCanvasAndPost(canvas)
-                bitmap.recycle()
-                if (idx % EXPORT_FPS == 0) {
-                    Log.d(TAG, "frame_render_progress frame=${idx + 1}/$totalFrames timeMs=$frameTimeMs")
+            val decodeChannel = Channel<DecodedFrame>(capacity = queueCapacity)
+            val preparedChannel = Channel<PreparedFrame>(capacity = queueCapacity)
+            val decodeElapsedMs = AtomicLong(0L)
+            val resolveElapsedMs = AtomicLong(0L)
+            val instructionElapsedMs = AtomicLong(0L)
+            val renderElapsedMs = AtomicLong(0L)
+            val maxPendingFrames = AtomicInteger(0)
+            val decodedCount = AtomicInteger(0)
+
+            coroutineScope {
+                val decodeJob = launch {
+                    val decodeStart = System.currentTimeMillis()
+                    for (idx in 0 until totalFrames) {
+                        val frameTimeUs = (idx * 1_000_000L) / preset.outputFps
+                        val bitmap = retriever.getFrameAtTime(frameTimeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                            ?: Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                        val scaled = if (bitmap.width != width || bitmap.height != height) {
+                            Bitmap.createScaledBitmap(bitmap, width, height, true).also { bitmap.recycle() }
+                        } else {
+                            bitmap
+                        }
+                        decodeChannel.send(DecodedFrame(index = idx, frameTimeUs = frameTimeUs, bitmap = scaled))
+                        decodedCount.incrementAndGet()
+                        if (idx % 30 == 0) {
+                            Log.d(TAG, "stage=decode progress=${idx + 1}/$totalFrames")
+                        }
+                    }
+                    decodeElapsedMs.set(System.currentTimeMillis() - decodeStart)
+                    decodeChannel.close()
                 }
-                if (idx % 3 == 0 || idx == totalFrames - 1) {
-                    onProgress(idx + 1, totalFrames)
+
+                val workers = (0 until workerCount).map {
+                    async {
+                        for (decoded in decodeChannel) {
+                            val resolveStart = System.nanoTime()
+                            val overlay = resolver.overlayAt(timestampStart + (decoded.frameTimeUs / 1000L))
+                            resolveElapsedMs.addAndGet(((System.nanoTime() - resolveStart) / 1_000_000L))
+                            val instructionStart = System.nanoTime()
+                            val instruction = buildRenderInstruction(overlay, drillType, drillCameraSide)
+                            instructionElapsedMs.addAndGet(((System.nanoTime() - instructionStart) / 1_000_000L))
+                            preparedChannel.send(
+                                PreparedFrame(
+                                    index = decoded.index,
+                                    bitmap = decoded.bitmap,
+                                    instruction = instruction,
+                                ),
+                            )
+                        }
+                    }
                 }
-                drain(endOfStream = false)
+
+                val encoderJob = launch {
+                    val ordered = OrderedFrameBuffer<PreparedFrame>()
+                    var next = 0
+                    var rendered = 0
+                    val canvasDest = Rect(0, 0, width, height)
+                    for (prepared in preparedChannel) {
+                        ordered.put(prepared.index, prepared)
+                        if (ordered.size() > maxPendingFrames.get()) {
+                            maxPendingFrames.set(ordered.size())
+                        }
+                        while (true) {
+                            val frame = ordered.pop(next) ?: break
+                            val renderStart = System.nanoTime()
+                            val canvas = inputSurface.lockCanvas(null)
+                            canvas.drawBitmap(frame.bitmap, null, canvasDest, null)
+                            drawInstruction(canvas, width, height, frame.instruction)
+                            inputSurface.unlockCanvasAndPost(canvas)
+                            frame.bitmap.recycle()
+                            renderElapsedMs.addAndGet((System.nanoTime() - renderStart) / 1_000_000L)
+                            drain(endOfStream = false)
+                            rendered++
+                            if (rendered % 30 == 0 || rendered == totalFrames) {
+                                Log.d(TAG, "stage=encode progress=$rendered/$totalFrames")
+                            }
+                            onProgress(rendered, totalFrames)
+                            next++
+                        }
+                    }
+                }
+
+                decodeJob.join()
+                workers.awaitAll()
+                preparedChannel.close()
+                encoderJob.join()
             }
 
             drain(endOfStream = true)
             runCatching { codec.stop() }
             runCatching { codec.release() }
             runCatching { inputSurface.release() }
-            if (muxerStarted) {
-                runCatching { muxer.stop() }
-            }
+            if (muxerStarted) runCatching { muxer.stop() }
             runCatching { muxer.release() }
+
             val outputUri = Uri.fromFile(output).toString()
-            if (!output.exists() || output.length() <= 0L) {
-                Log.w(TAG, "export_failure reason=output_missing_or_empty path=${output.absolutePath}")
-                output.delete()
-                return@withContext null
-            }
-            if (!verifyReadableOutput(outputUri)) {
-                Log.w(TAG, "export_failure reason=output_not_readable uri=$outputUri")
+            val verifyStart = System.currentTimeMillis()
+            val readable = verifyReadableOutput(outputUri)
+            val verifyElapsedMs = System.currentTimeMillis() - verifyStart
+            val totalElapsedMs = decodeElapsedMs.get() + resolveElapsedMs.get() + instructionElapsedMs.get() + renderElapsedMs.get() + verifyElapsedMs
+            Log.d(
+                TAG,
+                "export_telemetry preset=${preset.name} workers=$workerCount decoded=${decodedCount.get()} rendered=$totalFrames " +
+                    "overlaySamples=${overlayFrames.size} decodeMs=${decodeElapsedMs.get()} resolveMs=${resolveElapsedMs.get()} " +
+                    "instructionMs=${instructionElapsedMs.get()} renderEncodeMs=${renderElapsedMs.get()} verifyMs=$verifyElapsedMs " +
+                    "totalMs=$totalElapsedMs maxPendingFrames=${maxPendingFrames.get()}",
+            )
+
+            if (!output.exists() || output.length() <= 0L || !readable) {
+                Log.w(TAG, "export_failure reason=verification_failed uri=$outputUri")
                 output.delete()
                 return@withContext null
             }
             if (debugValidation) {
                 val verified = verifyAnnotatedDifference(rawVideoUri, outputUri)
                 Log.d(TAG, "debug_validation overlay_present=$verified")
-                if (!verified) {
-                    Log.w(TAG, "debug_validation_failed overlay not detected in exported clip")
-                }
             }
-            Log.d(TAG, "export_complete output=${output.absolutePath}")
             outputUri
         } catch (t: Throwable) {
             Log.e(TAG, "export_failure", t)
@@ -170,34 +245,37 @@ class AnnotatedVideoCompositor(
         }
     }
 
-    private fun drawFrame(
-        canvas: Canvas,
-        bitmap: Bitmap,
-        width: Int,
-        height: Int,
+    private fun buildRenderInstruction(
         overlay: AnnotatedOverlayFrame?,
         drillType: DrillType,
         drillCameraSide: DrillCameraSide,
-    ) {
-        val dest = android.graphics.Rect(0, 0, width, height)
-        canvas.drawBitmap(bitmap, null, dest, null)
-        if (overlay == null) return
+    ): RenderInstruction {
+        if (overlay == null) return RenderInstruction()
         val joints = overlay.smoothedLandmarks.ifEmpty { overlay.landmarks }
-        val renderModel = OverlayGeometry.build(
+        val model = OverlayGeometry.build(
             drillType = drillType,
             sessionMode = overlay.sessionMode,
             joints = joints,
             drillCameraSide = overlay.drillCameraSide ?: drillCameraSide,
             freestyleViewMode = overlay.freestyleViewMode,
         )
+        return RenderInstruction(
+            model = model,
+            drawSkeleton = overlay.showSkeleton,
+            drawIdealLine = overlay.showIdealLine,
+        )
+    }
+
+    private fun drawInstruction(canvas: Canvas, width: Int, height: Int, instruction: RenderInstruction) {
+        val model = instruction.model ?: return
         OverlayFrameRenderer.drawAndroid(
             canvas = canvas,
             width = width,
             height = height,
-            model = renderModel,
+            model = model,
             frame = OverlayDrawingFrame(
-                drawSkeleton = overlay.showSkeleton,
-                drawIdealLine = overlay.showIdealLine,
+                drawSkeleton = instruction.drawSkeleton,
+                drawIdealLine = instruction.drawIdealLine,
             ),
         )
     }
@@ -255,64 +333,32 @@ class AnnotatedVideoCompositor(
         }
     }
 
-    private class OverlayTimeline(frames: List<AnnotatedOverlayFrame>) {
-        private val samples = frames.sortedBy { it.timestampMs }
-        private var lowerIndex = 0
-
-        fun overlayAt(targetTimestampMs: Long): AnnotatedOverlayFrame? {
-            if (samples.isEmpty()) return null
-            while (lowerIndex < samples.lastIndex && samples[lowerIndex + 1].timestampMs <= targetTimestampMs) {
-                lowerIndex++
-            }
-            val previous = samples[lowerIndex]
-            val next = samples.getOrNull(lowerIndex + 1)
-            val nearest = when {
-                next == null -> previous
-                abs(previous.timestampMs - targetTimestampMs) <= abs(next.timestampMs - targetTimestampMs) -> previous
-                else -> next
-            }
-            if (abs(nearest.timestampMs - targetTimestampMs) > MAX_SAMPLE_DELTA_MS) {
-                Log.d(TAG, "missing_pose_frame timestampMs=$targetTimestampMs nearestDeltaMs=${abs(nearest.timestampMs - targetTimestampMs)}")
-                return null
-            }
-            if (next == null || previous.timestampMs == next.timestampMs) return nearest
-            if (targetTimestampMs <= previous.timestampMs) return previous
-            if (targetTimestampMs >= next.timestampMs) return next
-            val span = (next.timestampMs - previous.timestampMs).toFloat().coerceAtLeast(1f)
-            val t = ((targetTimestampMs - previous.timestampMs).toFloat() / span).coerceIn(0f, 1f)
-            return interpolate(previous, next, t)
-        }
-
-        private fun interpolate(previous: AnnotatedOverlayFrame, next: AnnotatedOverlayFrame, t: Float): AnnotatedOverlayFrame {
-            val prevByName = previous.smoothedLandmarks.associateBy { it.name }
-            val nextByName = next.smoothedLandmarks.associateBy { it.name }
-            val names = (prevByName.keys + nextByName.keys).sorted()
-            val interpolated = names.mapNotNull { name ->
-                val a = prevByName[name]
-                val b = nextByName[name]
-                when {
-                    a != null && b != null -> JointPoint(
-                        name = name,
-                        x = lerp(a.x, b.x, t),
-                        y = lerp(a.y, b.y, t),
-                        z = lerp(a.z, b.z, t),
-                        visibility = lerp(a.visibility, b.visibility, t),
-                    )
-                    a != null -> a
-                    else -> b
-                }
-            }
-            return previous.copy(
-                timestampMs = lerp(previous.timestampMs.toFloat(), next.timestampMs.toFloat(), t).toLong(),
-                landmarks = interpolated,
-                smoothedLandmarks = interpolated,
-                confidence = lerp(previous.confidence, next.confidence, t),
-                bodyVisible = previous.bodyVisible || next.bodyVisible,
-                showSkeleton = previous.showSkeleton || next.showSkeleton,
-                showIdealLine = previous.showIdealLine || next.showIdealLine,
-            )
-        }
-
-        private fun lerp(a: Float, b: Float, t: Float): Float = a + ((b - a) * t)
+    private fun computeWorkerCount(): Int {
+        val cores = Runtime.getRuntime().availableProcessors()
+        return (cores - 2).coerceAtLeast(1).coerceAtMost(4)
     }
+
+    private fun computeBitrate(width: Int, height: Int, preset: ExportPreset): Int = when (preset) {
+        ExportPreset.FAST -> (width * height * 4).coerceAtLeast(1_000_000)
+        ExportPreset.BALANCED -> (width * height * 6).coerceAtLeast(1_500_000)
+        ExportPreset.HIGH -> (width * height * 8).coerceAtLeast(2_500_000)
+    }
+
+    private data class DecodedFrame(
+        val index: Int,
+        val frameTimeUs: Long,
+        val bitmap: Bitmap,
+    )
+
+    private data class PreparedFrame(
+        val index: Int,
+        val bitmap: Bitmap,
+        val instruction: RenderInstruction,
+    )
+
+    private data class RenderInstruction(
+        val model: OverlayRenderModel? = null,
+        val drawSkeleton: Boolean = false,
+        val drawIdealLine: Boolean = false,
+    )
 }

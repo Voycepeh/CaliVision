@@ -89,14 +89,15 @@ class OverlayStabilizer {
 
 class AnnotatedExportPipeline(
     private val compositor: AnnotatedVideoCompositor,
+    private val composer: AnnotatedVideoComposer = AnnotatedVideoComposer(compositor),
     private val debugValidationEnabled: Boolean = false,
     private val persistAnnotatedVideo: suspend (Long, String) -> String?,
     private val updateExportStatus: suspend (Long, AnnotatedExportStatus) -> Unit,
     private val verifyMedia: (String?) -> MediaVerificationResult = { uri -> MediaVerificationHelper.verify(uri) },
     private val exportTimeoutMs: Long = EXPORT_TIMEOUT_MS,
-    private val renderAnnotatedVideo: suspend (String, DrillType, DrillCameraSide, List<AnnotatedOverlayFrame>, ExportPreset, Boolean, (Int, Int) -> Unit) -> String? =
-        { rawUri, drill, side, frames, preset, debug, onProgress ->
-            compositor.export(rawUri, drill, side, frames, preset, debug, onProgress)
+    private val renderAnnotatedVideo: suspend (String, DrillType, DrillCameraSide, OverlayTimeline, ExportPreset, (Int, Int) -> Unit) -> ComposerResult =
+        { rawUri, drill, side, timeline, preset, onProgress ->
+            composer.compose(rawUri, timeline, drill, side, preset, onProgress)
         },
 ) {
 
@@ -128,7 +129,7 @@ class AnnotatedExportPipeline(
         updateExportStatus: suspend (Long, AnnotatedExportStatus) -> Unit,
         verifyMedia: (String?) -> MediaVerificationResult = { uri -> MediaVerificationHelper.verify(uri) },
         exportTimeoutMs: Long = EXPORT_TIMEOUT_MS,
-        renderAnnotatedVideo: suspend (String, DrillType, DrillCameraSide, List<AnnotatedOverlayFrame>, ExportPreset, Boolean, (Int, Int) -> Unit) -> String?,
+        renderAnnotatedVideo: suspend (String, DrillType, DrillCameraSide, OverlayTimeline, ExportPreset, (Int, Int) -> Unit) -> ComposerResult,
     ) : this(
         compositor = throw IllegalStateException("Test constructor requires renderAnnotatedVideo"),
         debugValidationEnabled = false,
@@ -144,35 +145,27 @@ class AnnotatedExportPipeline(
         rawVideoUri: String,
         drillType: DrillType,
         drillCameraSide: DrillCameraSide,
-        overlayFrames: List<AnnotatedOverlayFrame>,
+        overlayTimeline: OverlayTimeline,
         preset: ExportPreset = ExportPreset.BALANCED,
         onRenderProgress: (Int, Int) -> Unit = { _, _ -> },
     ): ExportResult {
-        if (overlayFrames.isEmpty()) {
+        if (overlayTimeline.frames.isEmpty()) {
             updateExportStatus(sessionId, AnnotatedExportStatus.ANNOTATED_FAILED)
             Log.w(TAG, "export_failure sessionId=$sessionId reason=overlay_frames_empty")
             return ExportResult(
-                failureReason = AnnotatedExportFailureReason.OVERLAY_DATA_EMPTY.name,
+                failureReason = AnnotatedExportFailureReason.OVERLAY_TIMELINE_EMPTY.name,
                 verificationStatus = VerificationStatus.FAILED,
             )
         }
         updateExportStatus(sessionId, AnnotatedExportStatus.PROCESSING)
         Log.d(
             TAG,
-            "export_start sessionId=$sessionId rawVideoUri=$rawVideoUri overlayFrames=${overlayFrames.size} " +
-                "firstFrameTs=${overlayFrames.first().timestampMs} lastFrameTs=${overlayFrames.last().timestampMs}",
+            "export_start sessionId=$sessionId rawVideoUri=$rawVideoUri timelineFrames=${overlayTimeline.frames.size} " +
+                "firstFrameTs=${overlayTimeline.frames.first().timestampMs} lastFrameTs=${overlayTimeline.frames.last().timestampMs}",
         )
-        val renderedUri = try {
+        val composeResult = try {
             withTimeoutOrNull(exportTimeoutMs) {
-                renderAnnotatedVideo(
-                    rawVideoUri,
-                    drillType,
-                    drillCameraSide,
-                    overlayFrames,
-                    preset,
-                    debugValidationEnabled,
-                    onRenderProgress,
-                )
+                renderAnnotatedVideo(rawVideoUri, drillType, drillCameraSide, overlayTimeline, preset, onRenderProgress)
             }
         } catch (_: CancellationException) {
             updateExportStatus(sessionId, AnnotatedExportStatus.ANNOTATED_FAILED)
@@ -183,22 +176,24 @@ class AnnotatedExportPipeline(
             Log.e(TAG, "export_failure sessionId=$sessionId reason=exception_${t::class.simpleName}", t)
             return ExportResult(failureReason = AnnotatedExportFailureReason.RENDER_PIPELINE_EXCEPTION.name, verificationStatus = VerificationStatus.FAILED)
         }
-        if (renderedUri == null) {
+        if (composeResult == null) {
             updateExportStatus(sessionId, AnnotatedExportStatus.ANNOTATED_FAILED)
             Log.w(TAG, "export_failure sessionId=$sessionId reason=timeout")
-            return ExportResult(failureReason = AnnotatedExportFailureReason.EXPORT_TIMED_OUT.name, verificationStatus = VerificationStatus.FAILED)
+            return ExportResult(failureReason = AnnotatedExportFailureReason.EXPORT_TIMEOUT.name, verificationStatus = VerificationStatus.FAILED)
         }
-        if (renderedUri.isNullOrBlank()) {
+        if (composeResult.uri.isNullOrBlank()) {
             updateExportStatus(sessionId, AnnotatedExportStatus.ANNOTATED_FAILED)
-            Log.w(TAG, "export_failure sessionId=$sessionId reason=rendered_uri_empty")
-            return ExportResult(failureReason = AnnotatedExportFailureReason.EXPORT_RETURNED_EMPTY.name, verificationStatus = VerificationStatus.FAILED)
+            val reason = composeResult.failureReason ?: AnnotatedExportFailureReason.EXPORT_RETURNED_EMPTY.name
+            Log.w(TAG, "export_failure sessionId=$sessionId reason=$reason")
+            return ExportResult(failureReason = reason, verificationStatus = VerificationStatus.FAILED)
         }
-        val persisted = persistAnnotatedVideo(sessionId, renderedUri)
+
+        val persisted = persistAnnotatedVideo(sessionId, composeResult.uri)
         val verification = verifyMedia(persisted)
         val status = if (verification.isValid) AnnotatedExportStatus.ANNOTATED_READY else AnnotatedExportStatus.ANNOTATED_FAILED
         updateExportStatus(sessionId, status)
         if (!verification.isValid) {
-            val failure = verification.failureReason?.name ?: AnnotatedExportFailureReason.UNKNOWN.name
+            val failure = verification.failureReason?.name ?: AnnotatedExportFailureReason.VERIFICATION_FAILED.name
             Log.w(TAG, "export_failure sessionId=$sessionId reason=$failure")
             return ExportResult(failureReason = failure, verificationStatus = VerificationStatus.FAILED)
         } else {
