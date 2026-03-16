@@ -28,10 +28,11 @@ fun OverlayRenderer(
     activeFault: String = "",
     cueText: String = "",
     drillCameraSide: DrillCameraSide = DrillCameraSide.LEFT,
+    freestyleViewMode: FreestyleViewMode = FreestyleViewMode.UNKNOWN,
 ) {
     Canvas(modifier = modifier) {
         val joints = frame?.joints.orEmpty()
-        val model = OverlayGeometry.build(drillType, sessionMode, joints, drillCameraSide)
+        val model = OverlayGeometry.build(drillType, sessionMode, joints, drillCameraSide, freestyleViewMode)
         OverlayFrameRenderer.drawAndroid(
             canvas = drawContext.canvas.nativeCanvas,
             width = size.width.toInt().coerceAtLeast(1),

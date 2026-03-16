@@ -37,18 +37,15 @@ object OverlayGeometry {
         sessionMode: SessionMode,
         joints: List<JointPoint>,
         drillCameraSide: DrillCameraSide,
+        freestyleViewMode: FreestyleViewMode? = null,
     ): OverlayRenderModel {
-        val mode = freestyleClassifier.classify(joints)
-        val base = if (sessionMode == SessionMode.FREESTYLE) {
+        val mode = freestyleViewMode ?: freestyleClassifier.classify(joints)
+        return if (sessionMode == SessionMode.FREESTYLE) {
             freestyleStrategy.build(joints, mode)
         } else {
-            drillStrategy.build(joints, drillCameraSide)
+            val base = drillStrategy.build(joints, drillCameraSide)
+            base.copy(idealLineX = idealLineXForDrill(drillType, joints))
         }
-        return OverlayRenderModel(
-            joints = base.joints,
-            connections = base.connections,
-            idealLineX = idealLineXForDrill(drillType, joints),
-        )
     }
 
     private fun idealLineXForDrill(drillType: DrillType, joints: List<JointPoint>): Float {
@@ -99,7 +96,9 @@ private class FreestyleOverlayStrategy {
             add("nose")
             when (viewMode) {
                 FreestyleViewMode.FRONT,
-                FreestyleViewMode.BACK -> {
+                FreestyleViewMode.BACK,
+                FreestyleViewMode.UNKNOWN,
+                -> {
                     SELECTED_JOINTS.filter { it != "nose" }.forEach { base ->
                         add("left_$base")
                         add("right_$base")
@@ -118,7 +117,9 @@ private class FreestyleOverlayStrategy {
         val connections = buildList {
             when (viewMode) {
                 FreestyleViewMode.FRONT,
-                FreestyleViewMode.BACK -> {
+                FreestyleViewMode.BACK,
+                FreestyleViewMode.UNKNOWN,
+                -> {
                     addAll(sideConnections("left"))
                     addAll(sideConnections("right"))
                     addAll(BILATERAL_CONNECTORS)
@@ -129,7 +130,22 @@ private class FreestyleOverlayStrategy {
             }
         }.filter { (from, to) -> visible[from] != null && visible[to] != null }
 
-        return OverlayRenderModel(filtered, connections, idealLineX = 0.5f)
+        val idealLineX = when (viewMode) {
+            FreestyleViewMode.LEFT_PROFILE -> profileLineX(filtered, "left")
+            FreestyleViewMode.RIGHT_PROFILE -> profileLineX(filtered, "right")
+            FreestyleViewMode.FRONT,
+            FreestyleViewMode.BACK,
+            FreestyleViewMode.UNKNOWN,
+            -> 0.5f
+        }
+
+        return OverlayRenderModel(filtered, connections, idealLineX = idealLineX)
+    }
+
+    private fun profileLineX(joints: List<JointPoint>, side: String): Float {
+        val candidates = listOf("${side}_wrist", "${side}_shoulder", "${side}_hip")
+            .mapNotNull { name -> joints.firstOrNull { it.name == name }?.x }
+        return if (candidates.isEmpty()) 0.5f else candidates.average().toFloat().coerceIn(0.1f, 0.9f)
     }
 }
 

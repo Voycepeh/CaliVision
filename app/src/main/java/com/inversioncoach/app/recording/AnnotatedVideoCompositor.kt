@@ -184,6 +184,7 @@ class AnnotatedVideoCompositor(
             sessionMode = overlay.sessionMode,
             joints = joints,
             drillCameraSide = overlay.drillCameraSide ?: drillCameraSide,
+            freestyleViewMode = overlay.freestyleViewMode,
         )
         OverlayFrameRenderer.drawAndroid(
             canvas = canvas,

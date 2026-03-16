@@ -35,6 +35,7 @@ import com.inversioncoach.app.movementprofile.ExistingDrillToProfileAdapter
 import com.inversioncoach.app.movementprofile.MlKitVideoPoseFrameSource
 import com.inversioncoach.app.movementprofile.UploadedVideoAnalyzer
 import com.inversioncoach.app.overlay.DrillCameraSide
+import com.inversioncoach.app.overlay.FreestyleOrientationClassifier
 import com.inversioncoach.app.recording.AnnotatedExportPipeline
 import com.inversioncoach.app.recording.AnnotatedOverlayFrame
 import com.inversioncoach.app.recording.AnnotatedVideoCompositor
@@ -123,10 +124,12 @@ class DefaultUploadVideoAnalysisRunner(
         }
 
         onStage(UploadStage.BUILDING_OVERLAY)
+        val orientationClassifier = FreestyleOrientationClassifier()
         val overlayFrames = analysis.overlayTimeline.map { point ->
             val joints = point.landmarks.map { (name, pointPair) ->
                 com.inversioncoach.app.model.JointPoint(name, pointPair.first, pointPair.second, 0f, point.confidence)
             }
+            val viewMode = orientationClassifier.classify(joints)
             AnnotatedOverlayFrame(
                 timestampMs = point.timestampMs,
                 landmarks = joints,
@@ -134,6 +137,7 @@ class DefaultUploadVideoAnalysisRunner(
                 confidence = point.confidence,
                 sessionMode = SessionMode.FREESTYLE,
                 drillCameraSide = DrillCameraSide.LEFT,
+                freestyleViewMode = viewMode,
                 bodyVisible = point.confidence > 0f,
                 showSkeleton = true,
                 showIdealLine = true,

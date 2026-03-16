@@ -8,6 +8,7 @@ import com.inversioncoach.app.model.JointPoint
 import com.inversioncoach.app.model.SessionMode
 import com.inversioncoach.app.model.SmoothedPoseFrame
 import com.inversioncoach.app.overlay.DrillCameraSide
+import com.inversioncoach.app.overlay.FreestyleViewMode
 import com.inversioncoach.app.storage.repository.SessionRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeoutOrNull
@@ -22,6 +23,7 @@ data class AnnotatedOverlayFrame(
     val confidence: Float,
     val sessionMode: SessionMode,
     val drillCameraSide: DrillCameraSide?,
+    val freestyleViewMode: FreestyleViewMode = FreestyleViewMode.UNKNOWN,
     val bodyVisible: Boolean,
     val showSkeleton: Boolean,
     val showIdealLine: Boolean,
@@ -38,6 +40,7 @@ class OverlayStabilizer {
         drillCameraSide: DrillCameraSide?,
         showIdealLine: Boolean,
         showSkeleton: Boolean,
+        freestyleViewMode: FreestyleViewMode = FreestyleViewMode.UNKNOWN,
     ): AnnotatedOverlayFrame {
         val visibilityGood = frame.joints.count { it.visibility >= MIN_VISIBILITY } >= MIN_VISIBLE_JOINTS
         val confidenceGood = frame.confidence >= MIN_CONFIDENCE
@@ -58,6 +61,7 @@ class OverlayStabilizer {
             confidence = frame.confidence,
             sessionMode = sessionMode,
             drillCameraSide = drillCameraSide,
+            freestyleViewMode = freestyleViewMode,
             bodyVisible = visibilityGood,
             showSkeleton = drawSkeleton && showSkeleton,
             showIdealLine = showIdealLine,
