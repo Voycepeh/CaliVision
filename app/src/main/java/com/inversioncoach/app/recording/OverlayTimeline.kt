@@ -1,0 +1,79 @@
+package com.inversioncoach.app.recording
+
+import com.inversioncoach.app.model.JointPoint
+import com.inversioncoach.app.model.SessionMode
+import com.inversioncoach.app.overlay.DrillCameraSide
+import com.inversioncoach.app.overlay.FreestyleViewMode
+
+/**
+ * Lightweight timeline payload used to reconstruct overlays for post-session video rendering.
+ */
+data class OverlayTimelineFrame(
+    val timestampMs: Long,
+    val landmarks: List<JointPoint>,
+    val skeletonLines: List<Pair<String, String>>,
+    val headPoint: JointPoint?,
+    val hipPoint: JointPoint?,
+    val idealLine: Pair<JointPoint, JointPoint>?,
+    val alignmentAngles: Map<String, Float>,
+    val visibilityFlags: Map<String, Boolean>,
+    val drillMetadata: OverlayDrillMetadata,
+    val smoothedLandmarks: List<JointPoint> = landmarks,
+    val confidence: Float = 0f,
+)
+
+data class OverlayDrillMetadata(
+    val sessionMode: SessionMode,
+    val drillCameraSide: DrillCameraSide?,
+    val freestyleViewMode: FreestyleViewMode = FreestyleViewMode.UNKNOWN,
+    val showSkeleton: Boolean,
+    val showIdealLine: Boolean,
+    val bodyVisible: Boolean,
+    val mirrorMode: Boolean,
+)
+
+data class OverlayTimeline(
+    val version: Int = 1,
+    val startedAtMs: Long,
+    val sampleIntervalMs: Long,
+    val frames: List<OverlayTimelineFrame>,
+)
+
+fun AnnotatedOverlayFrame.toTimelineFrame(): OverlayTimelineFrame {
+    val byName = smoothedLandmarks.ifEmpty { landmarks }.associateBy { it.name }
+    return OverlayTimelineFrame(
+        timestampMs = timestampMs,
+        landmarks = landmarks,
+        smoothedLandmarks = smoothedLandmarks,
+        skeletonLines = emptyList(),
+        headPoint = byName["HEAD"] ?: byName["NOSE"],
+        hipPoint = byName["LEFT_HIP"] ?: byName["RIGHT_HIP"],
+        idealLine = null,
+        alignmentAngles = emptyMap(),
+        visibilityFlags = mapOf("bodyVisible" to bodyVisible),
+        confidence = confidence,
+        drillMetadata = OverlayDrillMetadata(
+            sessionMode = sessionMode,
+            drillCameraSide = drillCameraSide,
+            freestyleViewMode = freestyleViewMode,
+            showSkeleton = showSkeleton,
+            showIdealLine = showIdealLine,
+            bodyVisible = bodyVisible,
+            mirrorMode = mirrorMode,
+        ),
+    )
+}
+
+fun OverlayTimelineFrame.toAnnotatedOverlayFrame(): AnnotatedOverlayFrame = AnnotatedOverlayFrame(
+    timestampMs = timestampMs,
+    landmarks = landmarks,
+    smoothedLandmarks = smoothedLandmarks,
+    confidence = confidence,
+    sessionMode = drillMetadata.sessionMode,
+    drillCameraSide = drillMetadata.drillCameraSide,
+    freestyleViewMode = drillMetadata.freestyleViewMode,
+    bodyVisible = drillMetadata.bodyVisible,
+    showSkeleton = drillMetadata.showSkeleton,
+    showIdealLine = drillMetadata.showIdealLine,
+    mirrorMode = drillMetadata.mirrorMode,
+)

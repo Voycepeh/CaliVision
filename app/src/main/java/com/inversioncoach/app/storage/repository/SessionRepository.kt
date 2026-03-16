@@ -153,6 +153,17 @@ class SessionRepository(
         val session = sessionDao.getById(sessionId) ?: return
         sessionDao.upsert(block(session))
     }
+
+    suspend fun saveOverlayTimeline(sessionId: Long, timelineJson: String): String {
+        val persistedUri = sessionBlobStorage.persistOverlayTimeline(sessionId, timelineJson)
+        val session = sessionDao.getById(sessionId)
+        if (session != null) {
+            sessionDao.upsert(session.copy(overlayTimelineUri = persistedUri))
+        }
+        return persistedUri
+    }
+
+    fun readOverlayTimeline(sessionId: Long): String? = sessionBlobStorage.readOverlayTimeline(sessionId)
     suspend fun saveSessionNotes(sessionId: Long, notes: String): String {
         val notesUri = sessionBlobStorage.persistNotes(sessionId, notes)
         val session = sessionDao.getById(sessionId)
@@ -208,6 +219,7 @@ class SessionRepository(
                 cleanupStatus = CleanupStatus.NOT_STARTED,
                 retainedAssetType = RetainedAssetType.NONE,
                 overlayFrameCount = 0,
+                overlayTimelineUri = null,
             ),
         )
     }

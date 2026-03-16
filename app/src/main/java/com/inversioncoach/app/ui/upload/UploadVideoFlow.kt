@@ -41,6 +41,9 @@ import com.inversioncoach.app.overlay.FreestyleOrientationClassifier
 import com.inversioncoach.app.recording.AnnotatedExportPipeline
 import com.inversioncoach.app.recording.AnnotatedOverlayFrame
 import com.inversioncoach.app.recording.AnnotatedVideoCompositor
+import com.inversioncoach.app.recording.OverlayTimeline
+import com.inversioncoach.app.recording.OverlayTimelineJson
+import com.inversioncoach.app.recording.toTimelineFrame
 import com.inversioncoach.app.recording.ExportPreset
 import com.inversioncoach.app.storage.ServiceLocator
 import com.inversioncoach.app.storage.repository.SessionRepository
@@ -191,7 +194,7 @@ class DefaultUploadVideoAnalysisRunner(
             rawVideoUri = persistedRawUri,
             drillType = drillType,
             drillCameraSide = DrillCameraSide.LEFT,
-            overlayFrames = overlayFrames,
+            overlayTimeline = OverlayTimeline(startedAtMs = 0L, sampleIntervalMs = 80L, frames = overlayFrames.map { it.toTimelineFrame() }),
             preset = preset,
             onRenderProgress = { rendered, total ->
                 val ratio = if (total <= 0) 0f else rendered.toFloat() / total.toFloat()
@@ -199,6 +202,7 @@ class DefaultUploadVideoAnalysisRunner(
             },
         )
         val renderDurationMs = System.currentTimeMillis() - renderStart
+        val overlayTimelineUri = repository.saveOverlayTimeline(sessionId, OverlayTimelineJson.encode(OverlayTimeline(startedAtMs = 0L, sampleIntervalMs = 80L, frames = overlayFrames.map { it.toTimelineFrame() })))
         if (!export.failureReason.isNullOrBlank()) {
             Log.w(TAG, "analysis_export_failed sessionId=$sessionId reason=${export.failureReason}")
         }
@@ -234,6 +238,7 @@ class DefaultUploadVideoAnalysisRunner(
                 rawVideoUri = persistedRawUri,
                 annotatedVideoUri = export.persistedUri,
                 overlayFrameCount = overlayFrames.size,
+                overlayTimelineUri = overlayTimelineUri,
             )
         }
         Log.i(TAG, "analysis_complete sessionId=$sessionId replayUri=$replayUri")
