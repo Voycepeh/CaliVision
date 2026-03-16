@@ -174,7 +174,7 @@ class SessionRepository(
             .mapNotNull { token ->
                 val parts = token.split(':')
                 if (parts.size != 2) return@mapNotNull null
-                val drill = DrillType.entries.firstOrNull { it.name == parts[0] } ?: return@mapNotNull null
+                val drill = DrillType.fromStoredName(parts[0]) ?: return@mapNotNull null
                 val side = DrillCameraSide.entries.firstOrNull { it.name == parts[1] } ?: return@mapNotNull null
                 drill to side
             }.toMap()

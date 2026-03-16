@@ -67,12 +67,12 @@ fun StartDrillScreen(
     val drillByType = remember { DrillConfigs.all.associateBy { it.type } }
     val gridItems = remember(drillByType) {
         listOf(
-            DrillGridItem(DrillType.FREESTANDING_HANDSTAND_FUTURE, R.drawable.handstand_free_preview),
-            DrillGridItem(DrillType.CHEST_TO_WALL_HANDSTAND, R.drawable.handstand_wall_preview),
+            DrillGridItem(DrillType.FREE_HANDSTAND, R.drawable.handstand_free_preview),
+            DrillGridItem(DrillType.WALL_HANDSTAND, R.drawable.handstand_wall_preview),
             DrillGridItem(DrillType.PIKE_PUSH_UP, R.drawable.pike_pushup_preview),
             DrillGridItem(DrillType.ELEVATED_PIKE_PUSH_UP, R.drawable.pike_pushup_elevated_preview),
-            DrillGridItem(DrillType.PUSH_UP, R.drawable.handstand_pushup_free_preview),
-            DrillGridItem(DrillType.NEGATIVE_WALL_HANDSTAND_PUSH_UP, R.drawable.handstand_pushup_wall_preview),
+            DrillGridItem(DrillType.HANDSTAND_PUSH_UP, R.drawable.handstand_pushup_free_preview),
+            DrillGridItem(DrillType.WALL_HANDSTAND_PUSH_UP, R.drawable.handstand_pushup_wall_preview),
         ).filter { drillByType.containsKey(it.type) }
     }
 

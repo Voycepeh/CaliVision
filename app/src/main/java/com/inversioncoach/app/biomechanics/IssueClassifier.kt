@@ -18,20 +18,20 @@ class IssueClassifier {
             return issues
         }
         when (drill) {
-            DrillType.PUSH_UP -> {
+            DrillType.HANDSTAND_PUSH_UP -> {
                 maybeAddDepth(metrics, calibration, persistedFrames, nowMs, issues)
                 maybeAddElbowFlare(metrics, calibration, persistedFrames, nowMs, issues)
                 maybeAddLockout(metrics, profile, calibration, persistedFrames, nowMs, issues)
                 maybeAddRushed(metrics, profile, calibration, persistedFrames, nowMs, issues)
                 maybeAddLineLoss(metrics, profile, calibration, persistedFrames, nowMs, issues)
             }
-            DrillType.CHEST_TO_WALL_HANDSTAND -> {
+            DrillType.WALL_HANDSTAND -> {
                 maybeAddBanana(metrics, profile, calibration, persistedFrames, nowMs, issues)
                 maybeAddShoulderOpen(metrics, profile, calibration, persistedFrames, nowMs, issues)
                 maybeAddPassiveShoulder(metrics, profile, calibration, persistedFrames, nowMs, issues)
                 maybeAddSoftKnee(metrics, profile, calibration, persistedFrames, nowMs, issues)
             }
-            DrillType.FREESTANDING_HANDSTAND_FUTURE -> {
+            DrillType.FREE_HANDSTAND -> {
                 maybeAddBanana(metrics, profile, calibration, persistedFrames, nowMs, issues)
                 maybeAddShoulderOpen(metrics, profile, calibration, persistedFrames, nowMs, issues)
                 maybeAddPassiveShoulder(metrics, profile, calibration, persistedFrames, nowMs, issues)
@@ -51,7 +51,7 @@ class IssueClassifier {
                 maybeAddInconsistent(metrics, calibration, persistedFrames, nowMs, issues)
                 maybeAddLockout(metrics, profile, calibration, persistedFrames, nowMs, issues)
             }
-            DrillType.NEGATIVE_WALL_HANDSTAND_PUSH_UP -> {
+            DrillType.WALL_HANDSTAND_PUSH_UP -> {
                 maybeAddRushed(metrics, profile, calibration, persistedFrames, nowMs, issues)
                 maybeAddLineLoss(metrics, profile, calibration, persistedFrames, nowMs, issues)
                 maybeAddHipsFolding(metrics, profile, calibration, persistedFrames, nowMs, issues)

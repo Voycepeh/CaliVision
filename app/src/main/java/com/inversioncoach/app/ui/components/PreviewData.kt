@@ -6,7 +6,7 @@ import com.inversioncoach.app.model.SessionRecord
 
 object PreviewData {
     val sampleLive = LiveSessionUiState(
-        drillType = DrillType.CHEST_TO_WALL_HANDSTAND,
+        drillType = DrillType.WALL_HANDSTAND,
         score = 82,
         currentCue = "Push taller through shoulders",
         confidence = 0.91f,
@@ -18,7 +18,7 @@ object PreviewData {
         SessionRecord(
             id = 1,
             title = "Wall line holds",
-            drillType = DrillType.CHEST_TO_WALL_HANDSTAND,
+            drillType = DrillType.WALL_HANDSTAND,
             startedAtMs = 0,
             completedAtMs = 0,
             overallScore = 79,

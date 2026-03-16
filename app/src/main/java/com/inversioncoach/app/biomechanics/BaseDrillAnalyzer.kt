@@ -217,8 +217,8 @@ abstract class BaseDrillAnalyzer(
         if (
             drillType == com.inversioncoach.app.model.DrillType.PIKE_PUSH_UP ||
             drillType == com.inversioncoach.app.model.DrillType.ELEVATED_PIKE_PUSH_UP ||
-            drillType == com.inversioncoach.app.model.DrillType.NEGATIVE_WALL_HANDSTAND_PUSH_UP ||
-            drillType == com.inversioncoach.app.model.DrillType.PUSH_UP ||
+            drillType == com.inversioncoach.app.model.DrillType.WALL_HANDSTAND_PUSH_UP ||
+            drillType == com.inversioncoach.app.model.DrillType.HANDSTAND_PUSH_UP ||
             drillType == com.inversioncoach.app.model.DrillType.SIT_UP
         ) return null
         if (frameScores.isEmpty()) return null
@@ -293,7 +293,7 @@ abstract class BaseDrillAnalyzer(
     }
 
     private fun alignmentLossPercent(start: Long, end: Long): Int? {
-        if (drillType != com.inversioncoach.app.model.DrillType.NEGATIVE_WALL_HANDSTAND_PUSH_UP) return null
+        if (drillType != com.inversioncoach.app.model.DrillType.WALL_HANDSTAND_PUSH_UP) return null
         val repFrames = frameScores.filter { it.first in start..end }
         if (repFrames.isEmpty()) return null
         val idx = repFrames.indexOfFirst { it.second < 60 }

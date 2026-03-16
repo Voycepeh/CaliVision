@@ -22,7 +22,7 @@ import com.inversioncoach.app.ui.settings.SettingsScreen
 import com.inversioncoach.app.ui.startdrill.StartDrillScreen
 
 private fun parseDrillTypeOrDefault(rawValue: String?, fallback: DrillType): DrillType =
-    rawValue?.let { value -> DrillType.entries.firstOrNull { it.name == value } } ?: fallback
+    rawValue?.let(DrillType::fromStoredName) ?: fallback
 
 sealed class Route(val value: String) {
     data object Home : Route("home")
@@ -95,7 +95,7 @@ fun AppNavHost(modifier: Modifier = Modifier) {
             val args = backStack.arguments
             val drill = parseDrillTypeOrDefault(
                 rawValue = args?.getString("drill"),
-                fallback = DrillType.CHEST_TO_WALL_HANDSTAND,
+                fallback = DrillType.WALL_HANDSTAND,
             )
             val options = LiveSessionOptions(
                 voiceEnabled = args?.getBoolean("voice") ?: true,
