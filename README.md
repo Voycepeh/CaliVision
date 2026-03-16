@@ -207,6 +207,21 @@ sequenceDiagram
 The app analyzes resized frames live to keep real-time coaching smooth (stable FPS, low latency cues, responsive overlays), but exports from high-quality intermediate recordings to preserve replay fidelity and annotation quality for post-session review.
 
 
+
+## Movement-profile foundation (new in this PR)
+
+The app now includes a **movement-profile domain layer** that decouples analysis contracts from hard-coded drill branches:
+
+- `MovementProfile` + rule primitives (`ReadinessRule`, `AlignmentRule`, `HoldRule`, `RepRule`, `PhaseDefinition`)
+- legacy drill compatibility via `ExistingDrillToProfileAdapter` and `LegacyDrillExecutionBridge`
+- calibration versioning foundation via `CalibrationProfile`
+- upload-first offline analysis pipeline (`UploadedVideoAnalysisCoordinator` / `UploadedVideoAnalyzer` / `UploadedAnalysisRepository`)
+- draft `MovementTemplateCandidate` generation from uploaded timeline analysis
+
+This is an incremental foundation: existing drill flows remain in place while freestyle/generic paths can consume profile-driven services.
+
+See `docs/architecture/movement-profile-architecture.md` for details.
+
 ## Repository structure
 
 - `app/src/main/java/com/inversioncoach/app/`

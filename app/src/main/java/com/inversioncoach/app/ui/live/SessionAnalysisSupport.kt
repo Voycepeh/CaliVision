@@ -10,6 +10,7 @@ import com.inversioncoach.app.model.DrillType
 import com.inversioncoach.app.model.PoseFrame
 import com.inversioncoach.app.model.RawPersistStatus
 import com.inversioncoach.app.model.SessionRecord
+import com.inversioncoach.app.movementprofile.MovementProfile
 import com.inversioncoach.app.overlay.DrillCameraSide
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
@@ -64,8 +65,9 @@ class SharedReadinessEngine(
     private val drillType: DrillType,
     private val config: DrillModeConfig,
     private val preferredSide: DrillCameraSide,
+    private val movementProfile: MovementProfile? = null,
 ) {
-    private val requiredJoints = requiredJointsByDrill[drillType] ?: DEFAULT_REQUIRED_JOINTS
+    private val requiredJoints = movementProfile?.readinessRule?.requiredLandmarks ?: (requiredJointsByDrill[drillType] ?: DEFAULT_REQUIRED_JOINTS)
     private var stableState = ReadinessState.NO_PERSON
     private var enterCandidateCount = 0
     private var exitCandidateCount = 0
@@ -82,10 +84,11 @@ class SharedReadinessEngine(
         val bestQuality = maxOf(leftQuality.quality, rightQuality.quality)
         val bestPresentCount = maxOf(leftQuality.presentCount, rightQuality.presentCount)
 
+        val readyMinimalConfidence = movementProfile?.readinessRule?.minConfidence ?: MIN_READY_MINIMAL_CONFIDENCE
         val targetState = when {
             joints.isEmpty() || frame.confidence < MIN_NO_PERSON_CONFIDENCE || visibleJoints < MIN_VISIBLE_JOINTS_FOR_PARTIAL -> ReadinessState.NO_PERSON
             frame.confidence >= MIN_READY_FULL_CONFIDENCE && bestQuality >= MIN_FULL_CHAIN_QUALITY && missingLandmarks.size <= MAX_MISSING_FULL_LANDMARKS -> ReadinessState.READY_FULL
-            frame.confidence >= MIN_READY_MINIMAL_CONFIDENCE && bestQuality >= MIN_MINIMAL_CHAIN_QUALITY && bestPresentCount >= MIN_CHAIN_LANDMARKS_FOR_MINIMAL -> ReadinessState.READY_MINIMAL
+            frame.confidence >= readyMinimalConfidence && bestQuality >= MIN_MINIMAL_CHAIN_QUALITY && bestPresentCount >= MIN_CHAIN_LANDMARKS_FOR_MINIMAL -> ReadinessState.READY_MINIMAL
             else -> ReadinessState.PERSON_PARTIAL
         }
 
