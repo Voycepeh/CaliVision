@@ -47,11 +47,9 @@ class CameraSessionManager(
                     .build().apply {
                         setAnalyzer(cameraExecutor, analyzer)
                     }
-                val qualitySelector = QualitySelector
-                    .fromOrderedList(listOf(Quality.SD, Quality.HD, Quality.FHD))
-                    .withFallbackStrategy(
-                        QualitySelector.FallbackStrategy.lowerQualityOrHigherThan(Quality.SD),
-                    )
+                val qualitySelector = QualitySelector.fromOrderedList(
+                    listOf(Quality.SD, Quality.HD, Quality.FHD),
+                )
                 videoCapture = VideoCapture.withOutput(
                     Recorder.Builder()
                         .setQualitySelector(qualitySelector)
