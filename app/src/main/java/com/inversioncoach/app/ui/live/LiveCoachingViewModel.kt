@@ -1,5 +1,7 @@
 package com.inversioncoach.app.ui.live
 
+import android.media.MediaExtractor
+import android.media.MediaFormat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.inversioncoach.app.biomechanics.AlignmentMetricsEngine
@@ -51,6 +53,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 
@@ -156,6 +159,7 @@ class LiveCoachingViewModel(
     private var isSessionFinalizing = false
     private var finalizeOwnerSessionId: Long? = null
     private var recordingFinalizedCallbackCount: Int = 0
+    private var acceptedFinalizeRawUri: String? = null
     private var rawPersistAttemptCount: Int = 0
     private var exportLaunchAttemptCount: Int = 0
     private var overlayCaptureFrozen: Boolean = false
@@ -241,10 +245,69 @@ class LiveCoachingViewModel(
             )
             return
         }
+        val acceptance = evaluateFinalizeCallbackAcceptance(acceptedFinalizeRawUri, finalizedUri)
+        acceptedFinalizeRawUri = acceptance.acceptedUri
+        when (resolveRecorderFinalizeFlowOutcome(acceptance.action, finalizationJob?.isActive == true)) {
+            RecorderFinalizeFlowOutcome.IGNORE_CALLBACK -> {
+                SessionDiagnostics.logStructured(
+                    event = "duplicate_finalize_ignored",
+                    sessionId = activeSessionId,
+                    drillType = drillType,
+                    rawUri = finalizedUri,
+                    annotatedUri = annotatedVideoUri,
+                    overlayFrameCount = overlayFrames.size,
+                    failureReason = "action=${acceptance.action};acceptedRawUri=${acceptance.acceptedUri};incomingRawUri=$finalizedUri",
+                )
+                return
+            }
+
+            RecorderFinalizeFlowOutcome.IGNORE_UPGRADE_INFLIGHT -> {
+                SessionDiagnostics.logStructured(
+                    event = "finalize_callback_upgraded_ignored_inflight",
+                    sessionId = activeSessionId,
+                    drillType = drillType,
+                    rawUri = acceptance.acceptedUri,
+                    annotatedUri = annotatedVideoUri,
+                    overlayFrameCount = overlayFrames.size,
+                    failureReason = "incomingRawUri=$finalizedUri;reason=finalization_already_inflight",
+                )
+                return
+            }
+
+            RecorderFinalizeFlowOutcome.START_FINALIZATION -> {
+                when (acceptance.action) {
+                    FinalizeCallbackAction.UPGRADED_TO_PERSISTED -> {
+                        SessionDiagnostics.logStructured(
+                            event = "finalize_callback_upgraded",
+                            sessionId = activeSessionId,
+                            drillType = drillType,
+                            rawUri = acceptance.acceptedUri,
+                            annotatedUri = annotatedVideoUri,
+                            overlayFrameCount = overlayFrames.size,
+                            failureReason = "incomingRawUri=$finalizedUri;action=launch_with_upgraded_uri",
+                        )
+                    }
+
+                    FinalizeCallbackAction.ACCEPTED_FIRST -> {
+                        SessionDiagnostics.logStructured(
+                            event = "finalize_callback_accepted",
+                            sessionId = activeSessionId,
+                            drillType = drillType,
+                            rawUri = acceptance.acceptedUri,
+                            annotatedUri = annotatedVideoUri,
+                            overlayFrameCount = overlayFrames.size,
+                            failureReason = "incomingRawUri=$finalizedUri",
+                        )
+                    }
+
+                    else -> Unit
+                }
+            }
+        }
         if (!tryAcquireFinalizeOwner(activeSessionId)) return
         sessionHadAnyVideo = true
         finalizationJob = viewModelScope.launch {
-            runFinalizationPipeline(activeSessionId, finalizedUri)
+            runFinalizationPipeline(activeSessionId, acceptance.acceptedUri.orEmpty())
         }
     }
 
@@ -1028,9 +1091,30 @@ class LiveCoachingViewModel(
                 return
             }
 
-            val validationFailure = validateExportSnapshot(snapshot)
-            if (validationFailure != null) {
-                persistAnnotatedExportFailed(activeSessionId, validationFailure)
+            val preflight = validateExportSnapshot(snapshot)
+            if (preflight.fatalReason != null) {
+                persistAnnotatedExportFailed(activeSessionId, preflight.fatalReason)
+                return
+            }
+            val exportSnapshot = preflight.snapshot
+            if (exportSnapshot.overlayTimeline.frames.isEmpty()) {
+                setAnnotatedExportState(AnnotatedExportStatus.NOT_STARTED, null)
+                exportLifecycleState = ExportLifecycleState.IDLE
+                annotatedExportStage = AnnotatedExportStage.QUEUED
+                annotatedExportPercent = 0
+                annotatedExportEtaSeconds = null
+                annotatedExportElapsedMs = 0L
+                annotatedExportLastUpdatedAt = System.currentTimeMillis()
+                repository.updateAnnotatedExportStatus(activeSessionId, AnnotatedExportStatus.NOT_STARTED)
+                repository.updateAnnotatedExportFailureReason(activeSessionId, null)
+                SessionDiagnostics.logStructured(
+                    event = "annotated_export_skipped_empty_overlay_after_preflight",
+                    sessionId = activeSessionId,
+                    drillType = drillType,
+                    rawUri = exportSnapshot.rawUri,
+                    annotatedUri = null,
+                    overlayFrameCount = 0,
+                )
                 return
             }
 
@@ -1042,18 +1126,18 @@ class LiveCoachingViewModel(
                     drillType = drillType,
                     rawUri = rawMasterUri,
                     annotatedUri = annotatedVideoUri,
-                    overlayFrameCount = snapshot.overlayFrameCount,
+                    overlayFrameCount = exportSnapshot.overlayFrameCount,
                     failureReason = "exportLaunchAttemptCount=$exportLaunchAttemptCount",
                 )
                 return
             }
             SessionDiagnostics.logStructured(
-                event = "annotated_export_launch_requested",
+                event = "export_launch_started",
                 sessionId = activeSessionId,
                 drillType = drillType,
-                rawUri = rawVideoUri,
+                rawUri = exportSnapshot.rawUri,
                 annotatedUri = null,
-                overlayFrameCount = snapshot.overlayFrameCount,
+                overlayFrameCount = exportSnapshot.overlayFrameCount,
                 failureReason = "exportLaunchAttemptCount=$exportLaunchAttemptCount",
             )
 
@@ -1072,9 +1156,9 @@ class LiveCoachingViewModel(
                 event = "annotated_export_launched",
                 sessionId = activeSessionId,
                 drillType = drillType,
-                rawUri = rawVideoUri,
+                rawUri = exportSnapshot.rawUri,
                 annotatedUri = null,
-                overlayFrameCount = snapshot.overlayFrameCount,
+                overlayFrameCount = exportSnapshot.overlayFrameCount,
             )
 
             val exportStartMs = System.currentTimeMillis()
@@ -1082,10 +1166,10 @@ class LiveCoachingViewModel(
                 val exportResult = withTimeout(ANNOTATED_EXPORT_TIMEOUT_MS) {
                     annotatedExportPipeline.export(
                         sessionId = activeSessionId,
-                        rawVideoUri = snapshot.rawUri,
+                        rawVideoUri = exportSnapshot.rawUri,
                         drillType = drillType,
                         drillCameraSide = options.drillCameraSide,
-                        overlayTimeline = snapshot.overlayTimeline,
+                        overlayTimeline = exportSnapshot.overlayTimeline,
                         onRenderProgress = { rendered, total ->
                             val pct = 30 + (((rendered.toFloat() / total.coerceAtLeast(1).toFloat()) * 55f).toInt())
                             val elapsed = (System.currentTimeMillis() - exportStartMs).coerceAtLeast(1L)
@@ -1207,6 +1291,7 @@ class LiveCoachingViewModel(
 
     private suspend fun createExportSnapshot(activeSessionId: Long): ExportSnapshot {
         val stopTimestamp = System.currentTimeMillis()
+        val liveOverlayFrameCountAtFreeze = overlayFrames.size
         overlayCaptureFrozen = true
         val timeline = frozenOverlayTimeline ?: (overlayTimelineRecorder?.snapshot()
             ?: com.inversioncoach.app.recording.OverlayTimeline(
@@ -1222,7 +1307,48 @@ class LiveCoachingViewModel(
                 overlayTimelineUri = overlayTimelineUri,
             )
         }
-        val rawDurationMs = MediaVerificationHelper.verify(rawMasterUri).durationMs ?: 0L
+        val rawFile = resolveReadableFile(rawMasterUri)
+        val maxOverlayTimestampMs = timeline.frames.lastOrNull()?.timestampMs ?: 0L
+        val durationResolution = resolveRawDurationWithRetries(
+            rawUri = rawMasterUri,
+            fileExists = rawFile?.exists() == true,
+            fileSizeBytes = rawFile?.length() ?: 0L,
+            sessionElapsedMs = (stopTimestamp - sessionStartedAtMs).coerceAtLeast(0L),
+            overlayMaxTimestampMs = maxOverlayTimestampMs,
+            onAttempt = { attempt ->
+                SessionDiagnostics.logStructured(
+                    event = "raw_duration_read_attempt",
+                    sessionId = activeSessionId,
+                    drillType = drillType,
+                    rawUri = rawMasterUri,
+                    annotatedUri = null,
+                    overlayFrameCount = timeline.frames.size,
+                    failureReason = "attempt=${attempt.attemptIndex};uri=${attempt.uri};fileExists=${attempt.fileExists};fileSize=${attempt.fileSizeBytes};source=${attempt.source};durationMs=${attempt.durationMs}",
+                )
+            },
+            onRetry = { retry, waitMs ->
+                SessionDiagnostics.logStructured(
+                    event = "raw_duration_read_retry",
+                    sessionId = activeSessionId,
+                    drillType = drillType,
+                    rawUri = rawMasterUri,
+                    annotatedUri = null,
+                    overlayFrameCount = timeline.frames.size,
+                    failureReason = "retry=$retry;waitMs=$waitMs",
+                )
+            },
+        )
+        val rawDurationMs = durationResolution.durationMs
+        SessionDiagnostics.logStructured(
+            event = "raw_duration_source_selected",
+            sessionId = activeSessionId,
+            drillType = drillType,
+            rawUri = rawMasterUri,
+            annotatedUri = null,
+            overlayFrameCount = timeline.frames.size,
+            failureReason = "source=${durationResolution.source};durationMs=$rawDurationMs",
+        )
+        val overlayFramesIgnoredAfterFreeze = (liveOverlayFrameCountAtFreeze - timeline.frames.size).coerceAtLeast(0)
         SessionDiagnostics.logStructured(
             event = "overlay_freeze_snapshot_created",
             sessionId = activeSessionId,
@@ -1230,29 +1356,41 @@ class LiveCoachingViewModel(
             rawUri = rawMasterUri,
             annotatedUri = null,
             overlayFrameCount = timeline.frames.size,
-            failureReason = "overlayFreezeTs=$stopTimestamp;rawDurationMs=$rawDurationMs",
+            failureReason = "overlayFreezeTs=$stopTimestamp;rawDurationMs=$rawDurationMs;source=${durationResolution.source};liveOverlayFrameCountAtFreeze=$liveOverlayFrameCountAtFreeze;frozenOverlayFrameCount=${timeline.frames.size};overlayFramesIgnoredAfterFreeze=$overlayFramesIgnoredAfterFreeze",
         )
         return ExportSnapshot(
             sessionId = activeSessionId,
             stopTimestampMs = stopTimestamp,
             rawUri = rawMasterUri.orEmpty(),
             rawDurationMs = rawDurationMs,
+            rawDurationSource = durationResolution.source,
             overlayTimeline = timeline,
             overlayTimelineUri = overlayTimelineUri,
             overlayFrameCount = timeline.frames.size,
         )
     }
 
-    private fun validateExportSnapshot(snapshot: ExportSnapshot): String? {
-        if (snapshot.rawUri.isBlank()) return "EXPORT_INPUT_VALIDATION_FAILED_RAW_URI_EMPTY"
-        if (snapshot.rawDurationMs <= 0L) return "EXPORT_INPUT_VALIDATION_FAILED_RAW_DURATION"
-        if (!snapshot.overlayTimeline.isMonotonic()) return "EXPORT_INPUT_VALIDATION_FAILED_TIMESTAMPS"
-        val maxTimestamp = snapshot.overlayTimeline.frames.lastOrNull()?.timestampMs ?: 0L
-        if (maxTimestamp > snapshot.rawDurationMs + EXPORT_SNAPSHOT_DURATION_TOLERANCE_MS) {
-            return "EXPORT_INPUT_VALIDATION_FAILED_DURATION_MISMATCH"
-        }
-        if (!overlayCaptureFrozen) return "EXPORT_INPUT_VALIDATION_FAILED_SNAPSHOT_NOT_FROZEN"
-        return null
+    private fun validateExportSnapshot(snapshot: ExportSnapshot): ExportPreflightResult {
+        val rawFile = resolveReadableFile(snapshot.rawUri)
+        val hasReadableRaw = rawFile != null && rawFile.length() > 0L
+        val liveOverlayFrameCountAtFreeze = overlayFrames.size
+        val preflight = prepareExportSnapshotInputs(
+            snapshot = snapshot,
+            overlayCaptureFrozen = overlayCaptureFrozen,
+            hasReadableRaw = hasReadableRaw,
+            toleranceMs = EXPORT_SNAPSHOT_DURATION_TOLERANCE_MS,
+            liveOverlayFrameCountAtFreeze = liveOverlayFrameCountAtFreeze,
+        )
+        SessionDiagnostics.logStructured(
+            event = "export_input_validation",
+            sessionId = snapshot.sessionId,
+            drillType = drillType,
+            rawUri = preflight.snapshot.rawUri,
+            annotatedUri = null,
+            overlayFrameCount = preflight.snapshot.overlayFrameCount,
+            failureReason = "fatalReason=${preflight.fatalReason.orEmpty()};durationMs=${preflight.snapshot.rawDurationMs};durationSource=${preflight.snapshot.rawDurationSource};durationMismatchMs=${preflight.durationMismatchMs};clampApplied=${preflight.clampApplied};liveOverlayFrameCountAtFreeze=${preflight.liveOverlayFrameCountAtFreeze};frozenOverlayFrameCount=${preflight.frozenOverlayFrameCount};overlayFramesIgnoredAfterFreeze=${preflight.overlayFramesIgnoredAfterFreeze}",
+        )
+        return preflight
     }
     private suspend fun persistAnnotatedExportFailed(activeSessionId: Long, reason: String) {
         val previousStage = annotatedExportStage
@@ -1409,15 +1547,244 @@ class LiveCoachingViewModel(
 
 
 
+internal data class ExportPreflightResult(
+    val snapshot: ExportSnapshot,
+    val fatalReason: String?,
+    val clampApplied: Boolean,
+    val durationMismatchMs: Long,
+    val liveOverlayFrameCountAtFreeze: Int,
+    val frozenOverlayFrameCount: Int,
+    val overlayFramesIgnoredAfterFreeze: Int,
+)
+
+internal fun clampOverlayTimelineToDuration(
+    timeline: com.inversioncoach.app.recording.OverlayTimeline,
+    maxDurationMs: Long,
+): com.inversioncoach.app.recording.OverlayTimeline {
+    if (maxDurationMs <= 0L) return timeline
+    val clampedFrames = timeline.frames.filter { it.timestampMs <= maxDurationMs }
+    return if (clampedFrames.size == timeline.frames.size) timeline else timeline.copy(frames = clampedFrames)
+}
+
+internal fun prepareExportSnapshotInputs(
+    snapshot: ExportSnapshot,
+    overlayCaptureFrozen: Boolean,
+    hasReadableRaw: Boolean,
+    toleranceMs: Long,
+    liveOverlayFrameCountAtFreeze: Int,
+): ExportPreflightResult {
+    fun result(
+        outSnapshot: ExportSnapshot,
+        fatalReason: String?,
+        clampApplied: Boolean,
+        durationMismatchMs: Long,
+    ) = ExportPreflightResult(
+        snapshot = outSnapshot,
+        fatalReason = fatalReason,
+        clampApplied = clampApplied,
+        durationMismatchMs = durationMismatchMs,
+        liveOverlayFrameCountAtFreeze = liveOverlayFrameCountAtFreeze,
+        frozenOverlayFrameCount = outSnapshot.overlayFrameCount,
+        overlayFramesIgnoredAfterFreeze = (liveOverlayFrameCountAtFreeze - outSnapshot.overlayFrameCount).coerceAtLeast(0),
+    )
+
+    if (snapshot.rawUri.isBlank()) return result(snapshot, "EXPORT_INPUT_VALIDATION_FAILED_RAW_URI_EMPTY", false, 0L)
+    if (!overlayCaptureFrozen) return result(snapshot, "EXPORT_INPUT_VALIDATION_FAILED_SNAPSHOT_NOT_FROZEN", false, 0L)
+    if (!snapshot.overlayTimeline.isMonotonic()) return result(snapshot, "EXPORT_INPUT_VALIDATION_FAILED_TIMESTAMPS", false, 0L)
+
+    val overlayEndTimestamp = snapshot.overlayTimeline.frames.lastOrNull()?.timestampMs ?: 0L
+    val usableDurationMs = when {
+        snapshot.rawDurationMs > 0L -> snapshot.rawDurationMs
+        overlayEndTimestamp > 0L -> overlayEndTimestamp
+        else -> 0L
+    }
+    if (usableDurationMs <= 0L) {
+        return if (hasReadableRaw) {
+            result(snapshot, "EXPORT_INPUT_VALIDATION_FAILED_DURATION_UNAVAILABLE_READABLE_RAW", false, 0L)
+        } else {
+            result(snapshot, "EXPORT_INPUT_VALIDATION_FAILED_RAW_MISSING_AND_DURATION_UNAVAILABLE", false, 0L)
+        }
+    }
+
+    val durationSource = when {
+        snapshot.rawDurationMs > 0L -> snapshot.rawDurationSource
+        overlayEndTimestamp > 0L -> "overlay_timeline_fallback"
+        else -> snapshot.rawDurationSource
+    }
+    val durationMismatchMs = if (usableDurationMs > 0L) {
+        (overlayEndTimestamp - (usableDurationMs + toleranceMs)).coerceAtLeast(0L)
+    } else {
+        0L
+    }
+    val clampedTimeline = if (durationMismatchMs > 0L && usableDurationMs > 0L) {
+        clampOverlayTimelineToDuration(snapshot.overlayTimeline, usableDurationMs)
+    } else {
+        snapshot.overlayTimeline
+    }
+
+    return result(
+        outSnapshot = snapshot.copy(
+            rawDurationMs = usableDurationMs,
+            rawDurationSource = durationSource,
+            overlayTimeline = clampedTimeline,
+            overlayFrameCount = clampedTimeline.frames.size,
+        ),
+        fatalReason = null,
+        clampApplied = durationMismatchMs > 0L,
+        durationMismatchMs = durationMismatchMs,
+    )
+}
+
 internal data class ExportSnapshot(
     val sessionId: Long,
     val stopTimestampMs: Long,
     val rawUri: String,
     val rawDurationMs: Long,
+    val rawDurationSource: String,
     val overlayTimeline: com.inversioncoach.app.recording.OverlayTimeline,
     val overlayTimelineUri: String?,
     val overlayFrameCount: Int,
 )
+
+internal data class RawDurationAttempt(
+    val attemptIndex: Int,
+    val uri: String?,
+    val fileExists: Boolean,
+    val fileSizeBytes: Long,
+    val source: String,
+    val durationMs: Long,
+)
+
+internal enum class FinalizeCallbackAction {
+    IGNORED_BLANK,
+    ACCEPTED_FIRST,
+    UPGRADED_TO_PERSISTED,
+    IGNORED_DUPLICATE,
+    IGNORED_REDUNDANT,
+}
+
+internal data class FinalizeCallbackAcceptance(
+    val action: FinalizeCallbackAction,
+    val acceptedUri: String?,
+)
+
+internal fun evaluateFinalizeCallbackAcceptance(existingAcceptedUri: String?, incomingUri: String?): FinalizeCallbackAcceptance {
+    val normalizedExisting = existingAcceptedUri?.takeIf { it.isNotBlank() }
+    val normalizedIncoming = incomingUri?.takeIf { it.isNotBlank() }
+    if (normalizedIncoming.isNullOrBlank()) {
+        return FinalizeCallbackAcceptance(FinalizeCallbackAction.IGNORED_BLANK, normalizedExisting)
+    }
+    if (normalizedExisting.isNullOrBlank()) {
+        return FinalizeCallbackAcceptance(FinalizeCallbackAction.ACCEPTED_FIRST, normalizedIncoming)
+    }
+    if (normalizedIncoming == normalizedExisting) {
+        return FinalizeCallbackAcceptance(FinalizeCallbackAction.IGNORED_DUPLICATE, normalizedExisting)
+    }
+    if (!isPersistedSessionRawBlobUri(normalizedExisting) && isPersistedSessionRawBlobUri(normalizedIncoming)) {
+        return FinalizeCallbackAcceptance(FinalizeCallbackAction.UPGRADED_TO_PERSISTED, normalizedIncoming)
+    }
+    return FinalizeCallbackAcceptance(FinalizeCallbackAction.IGNORED_REDUNDANT, normalizedExisting)
+}
+
+internal fun isPersistedSessionRawBlobUri(uri: String): Boolean {
+    val path = runCatching { android.net.Uri.parse(uri).path }.getOrNull().orEmpty()
+    return path.endsWith("/${SessionBlobStorage.RAW_MASTER_FILE_NAME}") || path.endsWith("/${SessionBlobStorage.RAW_FINAL_FILE_NAME}")
+}
+
+internal enum class RecorderFinalizeFlowOutcome {
+    START_FINALIZATION,
+    IGNORE_CALLBACK,
+    IGNORE_UPGRADE_INFLIGHT,
+}
+
+internal fun resolveRecorderFinalizeFlowOutcome(
+    action: FinalizeCallbackAction,
+    isFinalizationInFlight: Boolean,
+): RecorderFinalizeFlowOutcome = when (action) {
+    FinalizeCallbackAction.ACCEPTED_FIRST -> RecorderFinalizeFlowOutcome.START_FINALIZATION
+    FinalizeCallbackAction.UPGRADED_TO_PERSISTED -> if (isFinalizationInFlight) RecorderFinalizeFlowOutcome.IGNORE_UPGRADE_INFLIGHT else RecorderFinalizeFlowOutcome.START_FINALIZATION
+    FinalizeCallbackAction.IGNORED_BLANK,
+    FinalizeCallbackAction.IGNORED_DUPLICATE,
+    FinalizeCallbackAction.IGNORED_REDUNDANT,
+    -> RecorderFinalizeFlowOutcome.IGNORE_CALLBACK
+}
+
+internal data class RawDurationResolution(
+    val durationMs: Long,
+    val source: String,
+)
+
+internal val RAW_DURATION_RETRY_BACKOFF_MS = listOf(200L, 350L, 550L, 800L, 1_100L)
+
+internal fun resolveReadableFile(uri: String?): java.io.File? {
+    val path = runCatching { android.net.Uri.parse(uri).path }.getOrNull() ?: return null
+    val file = java.io.File(path)
+    return if (file.exists() && file.canRead()) file else null
+}
+
+internal suspend fun resolveRawDurationWithRetries(
+    rawUri: String?,
+    fileExists: Boolean,
+    fileSizeBytes: Long,
+    sessionElapsedMs: Long,
+    overlayMaxTimestampMs: Long,
+    maxRetries: Int = 3,
+    readMetadataDuration: (String?) -> Long = { uri -> MediaVerificationHelper.verify(uri).durationMs ?: 0L },
+    readExtractorDuration: (String?) -> Long = ::readDurationViaExtractor,
+    onAttempt: (RawDurationAttempt) -> Unit = {},
+    onRetry: suspend (retryIndex: Int, waitMs: Long) -> Unit = { _, _ -> },
+): RawDurationResolution {
+    val totalAttempts = (maxRetries + 1).coerceAtLeast(1)
+    for (attempt in 1..totalAttempts) {
+        val metadataDuration = readMetadataDuration(rawUri).coerceAtLeast(0L)
+        onAttempt(RawDurationAttempt(attempt, rawUri, fileExists, fileSizeBytes, "metadata_retriever", metadataDuration))
+        if (metadataDuration > 0L) return RawDurationResolution(metadataDuration, "metadata_retriever")
+
+        val extractorDuration = readExtractorDuration(rawUri).coerceAtLeast(0L)
+        onAttempt(RawDurationAttempt(attempt, rawUri, fileExists, fileSizeBytes, "media_extractor", extractorDuration))
+        if (extractorDuration > 0L) return RawDurationResolution(extractorDuration, "media_extractor")
+
+        if (attempt < totalAttempts) {
+            val waitMs = RAW_DURATION_RETRY_BACKOFF_MS.getOrElse(attempt - 1) {
+                RAW_DURATION_RETRY_BACKOFF_MS.lastOrNull() ?: 250L
+            }
+            onRetry(attempt, waitMs)
+            delay(waitMs)
+        }
+    }
+
+    val sessionDuration = sessionElapsedMs.coerceAtLeast(0L)
+    onAttempt(RawDurationAttempt(totalAttempts + 1, rawUri, fileExists, fileSizeBytes, "session_elapsed", sessionDuration))
+    if (sessionDuration > 0L) return RawDurationResolution(sessionDuration, "session_elapsed")
+
+    val overlayDuration = overlayMaxTimestampMs.coerceAtLeast(0L)
+    onAttempt(RawDurationAttempt(totalAttempts + 1, rawUri, fileExists, fileSizeBytes, "overlay_timeline", overlayDuration))
+    if (overlayDuration > 0L) return RawDurationResolution(overlayDuration, "overlay_timeline")
+
+    return RawDurationResolution(durationMs = 0L, source = "none")
+}
+
+internal fun readDurationViaExtractor(uri: String?): Long {
+    val file = resolveReadableFile(uri) ?: return 0L
+    val extractor = MediaExtractor()
+    return try {
+        extractor.setDataSource(file.absolutePath)
+        for (index in 0 until extractor.trackCount) {
+            val format = extractor.getTrackFormat(index)
+            val mime = format.getString(MediaFormat.KEY_MIME).orEmpty()
+            if (!mime.startsWith("video/")) continue
+            if (format.containsKey(MediaFormat.KEY_DURATION)) {
+                val durationUs = format.getLong(MediaFormat.KEY_DURATION)
+                return (durationUs / 1000L).coerceAtLeast(0L)
+            }
+        }
+        0L
+    } catch (_: Throwable) {
+        0L
+    } finally {
+        runCatching { extractor.release() }
+    }
+}
 
 private fun com.inversioncoach.app.recording.OverlayTimeline.isMonotonic(): Boolean {
     var last = Long.MIN_VALUE
