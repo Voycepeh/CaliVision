@@ -33,7 +33,7 @@ class ExportDurationResolutionTest {
 
         assertEquals(2_345L, resolved.durationMs)
         assertEquals("metadata_retriever", resolved.source)
-        assertEquals(listOf("metadata_retriever", "media_extractor", "metadata_retriever"), sourceOrder)
+        assertEquals(listOf("metadata_retriever", "media_extractor", "sample_timestamps", "metadata_retriever"), sourceOrder)
     }
 
     @Test
@@ -58,8 +58,10 @@ class ExportDurationResolutionTest {
             listOf(
                 "metadata_retriever",
                 "media_extractor",
+                "sample_timestamps",
                 "metadata_retriever",
                 "media_extractor",
+                "sample_timestamps",
                 "session_elapsed",
             ),
             sourceOrder,
@@ -88,8 +90,10 @@ class ExportDurationResolutionTest {
             listOf(
                 "metadata_retriever",
                 "media_extractor",
+                "sample_timestamps",
                 "metadata_retriever",
                 "media_extractor",
+                "sample_timestamps",
                 "session_elapsed",
                 "overlay_timeline",
             ),
@@ -125,6 +129,8 @@ class ExportDurationResolutionTest {
             overlayFrameCount = 10,
             overlayCaptureFrozen = true,
             hasReadableRaw = true,
+            hasUsableVideoTrack = true,
+            overlayRequired = true,
             toleranceMs = 600L,
         )
 
@@ -142,10 +148,12 @@ class ExportDurationResolutionTest {
             overlayFrameCount = 5,
             overlayCaptureFrozen = true,
             hasReadableRaw = true,
+            hasUsableVideoTrack = true,
+            overlayRequired = true,
             toleranceMs = 600L,
         )
 
-        assertEquals("EXPORT_INPUT_VALIDATION_FAILED_RAW_DURATION_ALL_SOURCES", validation)
+        assertNull(validation)
     }
 
     @Test
@@ -159,10 +167,74 @@ class ExportDurationResolutionTest {
             overlayFrameCount = 0,
             overlayCaptureFrozen = true,
             hasReadableRaw = false,
+            hasUsableVideoTrack = false,
+            overlayRequired = false,
             toleranceMs = 600L,
         )
 
-        assertEquals("EXPORT_INPUT_VALIDATION_FAILED_RAW_MISSING_AND_DURATION_UNAVAILABLE", validation)
+        assertEquals("EXPORT_INPUT_VALIDATION_FAILED_RAW_UNREADABLE", validation)
+    }
+
+    @Test
+    fun mismatchWithinToleranceProceeds() {
+        val timeline = OverlayTimeline(
+            startedAtMs = 100L,
+            sampleIntervalMs = 80L,
+            frames = listOf(
+                com.inversioncoach.app.recording.OverlayTimelineFrame(
+                    sessionId = 1L,
+                    relativeTimestampMs = 0L,
+                    timestampMs = 100L,
+                    landmarks = emptyList(),
+                    skeletonLines = emptyList(),
+                    headPoint = null,
+                    hipPoint = null,
+                    idealLine = null,
+                    alignmentAngles = emptyMap(),
+                    visibilityFlags = emptyMap(),
+                    drillMetadata = com.inversioncoach.app.recording.OverlayDrillMetadata(
+                        sessionMode = com.inversioncoach.app.model.SessionMode.DRILL,
+                        drillCameraSide = null,
+                        showSkeleton = true,
+                        showIdealLine = true,
+                        bodyVisible = true,
+                        mirrorMode = false,
+                    ),
+                ),
+            ),
+        )
+        val validation = validateExportSnapshotInputs(
+            rawUri = "file:///raw.mp4",
+            rawDurationMs = 0L,
+            rawDurationSource = "session_elapsed",
+            overlayTimeline = timeline,
+            overlayFrameCount = 1,
+            overlayCaptureFrozen = true,
+            hasReadableRaw = true,
+            hasUsableVideoTrack = true,
+            overlayRequired = true,
+            toleranceMs = 600L,
+        )
+
+        assertNull(validation)
+    }
+
+    @Test
+    fun emptyFrozenOverlayFailsWhenRequired() {
+        val timeline = OverlayTimeline(startedAtMs = 100L, sampleIntervalMs = 80L, frames = emptyList())
+        val validation = validateExportSnapshotInputs(
+            rawUri = "file:///raw.mp4",
+            rawDurationMs = 5_000L,
+            rawDurationSource = "metadata_retriever",
+            overlayTimeline = timeline,
+            overlayFrameCount = 0,
+            overlayCaptureFrozen = true,
+            hasReadableRaw = true,
+            hasUsableVideoTrack = true,
+            overlayRequired = true,
+            toleranceMs = 600L,
+        )
+        assertEquals("EXPORT_INPUT_VALIDATION_FAILED_EMPTY_FROZEN_OVERLAY", validation)
     }
 
     @Test
