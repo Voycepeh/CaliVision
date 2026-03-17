@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.inversioncoach.app.model.AnnotatedExportStage
 import com.inversioncoach.app.model.AnnotatedExportStatus
 import com.inversioncoach.app.model.IssueEvent
 import com.inversioncoach.app.model.sessionMode
@@ -151,20 +152,25 @@ fun ResultsScreen(sessionId: Long, onDone: () -> Unit) {
                     AnnotatedExportStatus.PROCESSING_SLOW,
                 ) || activeSession.rawPersistStatus == com.inversioncoach.app.model.RawPersistStatus.PROCESSING
                 if (isProcessing || activeSession.annotatedExportStatus == AnnotatedExportStatus.ANNOTATED_FAILED) {
+                    val isFailed = activeSession.annotatedExportStatus == AnnotatedExportStatus.ANNOTATED_FAILED
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(14.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
                     ) {
                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Processing status", style = MaterialTheme.typography.titleMedium)
-                            LinearProgressIndicator(
-                                progress = { (activeSession.annotatedExportPercent.coerceIn(0, 100) / 100f).coerceAtLeast(0.05f) },
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                            Text("Stage: ${activeSession.annotatedExportStage}")
-                            Text("Progress: ${activeSession.annotatedExportPercent}%")
-                            Text("ETA: ${activeSession.annotatedExportEtaSeconds?.let { "${it}s" } ?: "-"}")
+                            Text(if (isFailed) "Processing failed" else "Processing status", style = MaterialTheme.typography.titleMedium)
+                            if (isProcessing) {
+                                LinearProgressIndicator(
+                                    progress = { (activeSession.annotatedExportPercent.coerceIn(0, 100) / 100f).coerceAtLeast(0.05f) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                Text("Stage: ${activeSession.annotatedExportStage}")
+                                Text("Progress: ${activeSession.annotatedExportPercent}%")
+                                Text("ETA: ${activeSession.annotatedExportEtaSeconds?.let { "${it}s" } ?: "-"}")
+                            } else {
+                                Text("Stage: ${AnnotatedExportStage.FAILED}")
+                            }
                             Text("Raw: ${activeSession.rawPersistStatus}")
                             Text("Annotated: ${activeSession.annotatedExportStatus}")
                             if (!activeSession.annotatedExportFailureReason.isNullOrBlank()) {
