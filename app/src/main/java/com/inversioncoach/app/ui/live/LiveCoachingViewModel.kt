@@ -34,12 +34,14 @@ import com.inversioncoach.app.overlay.FreestyleOrientationClassifier
 import com.inversioncoach.app.overlay.FreestyleViewMode
 import com.inversioncoach.app.pose.PoseSmoother
 import com.inversioncoach.app.recording.MediaVerificationHelper
+import com.inversioncoach.app.recording.MediaVerificationResult
 import com.inversioncoach.app.recording.AnnotatedExportPipeline
 import com.inversioncoach.app.recording.OverlayStabilizer
 import com.inversioncoach.app.recording.OverlayTimelineJson
 import com.inversioncoach.app.recording.OverlayTimelineRecorder
 import com.inversioncoach.app.recording.toTimelineFrame
 import com.inversioncoach.app.recording.VideoCompressionPipeline
+import com.inversioncoach.app.storage.SessionBlobStorage
 import com.inversioncoach.app.storage.repository.SessionRepository
 import com.inversioncoach.app.summary.SummaryGenerator
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -910,13 +912,22 @@ class LiveCoachingViewModel(
         SessionDiagnostics.logStructured("raw_persist_started", activeSessionId, drillType, finalizedUri, null, overlayFrames.size)
 
         val rawPersistStartMs = System.currentTimeMillis()
-        rawMasterUri = repository.saveRawVideoBlob(activeSessionId, finalizedUri)
-        rawVideoUri = rawMasterUri
-        rawFinalUri = rawMasterUri
-        bestPlayableUri = rawMasterUri
+        val persistedRawCandidate = repository.saveRawVideoBlob(activeSessionId, finalizedUri)
+        val expectedPersistedRaw = repository
+            .sessionWorkingFile(activeSessionId, SessionBlobStorage.RAW_MASTER_FILE_NAME)
+            .toURI()
+            .toString()
+        val rawVerification = verifyPersistedRawVideoUris(
+            candidateUris = listOf(persistedRawCandidate, expectedPersistedRaw),
+            metadataVerifier = { MediaVerificationHelper.verify(it) },
+        )
+        rawMasterUri = rawVerification.persistedUri
+        rawVideoUri = rawVerification.persistedUri
+        rawFinalUri = rawVerification.persistedUri
+        bestPlayableUri = rawVerification.persistedUri
         SessionDiagnostics.log("raw_persist_duration_ms=${System.currentTimeMillis() - rawPersistStartMs}")
 
-        if (rawMasterUri.isNullOrBlank() || !MediaVerificationHelper.verify(rawMasterUri).isValid) {
+        if (!rawVerification.isPersisted) {
             setRawPersistState(RawPersistStatus.FAILED, AnnotatedExportFailureReason.RAW_SAVE_FAILED.name)
             repository.updateRawPersistStatus(activeSessionId, RawPersistStatus.FAILED)
             repository.updateRawPersistFailureReason(activeSessionId, rawPersistFailureReason)
@@ -942,7 +953,6 @@ class LiveCoachingViewModel(
                 rawFinalUri = rawMasterUri,
                 rawMasterUri = rawMasterUri,
                 bestPlayableUri = rawMasterUri,
-                overlayFrameCount = overlayFrames.size,
             )
         }
         SessionDiagnostics.logStructured(
@@ -961,6 +971,12 @@ class LiveCoachingViewModel(
                 frames = emptyList(),
             )
         overlayTimelineUri = repository.saveOverlayTimeline(activeSessionId, OverlayTimelineJson.encode(overlayTimeline))
+        repository.updateMediaPipelineState(activeSessionId) { session ->
+            session.copy(
+                overlayFrameCount = overlayTimeline.frames.size,
+                overlayTimelineUri = overlayTimelineUri,
+            )
+        }
 
         if (overlayTimeline.frames.isEmpty()) {
             setAnnotatedExportState(AnnotatedExportStatus.NOT_STARTED, null)
@@ -1106,6 +1122,7 @@ class LiveCoachingViewModel(
         annotatedExportFailureReason = reason
         annotatedExportFailureDetail = "Export failed during ${previousStage.name.lowercase()}"
         annotatedExportLastUpdatedAt = System.currentTimeMillis()
+        annotatedExportEtaSeconds = null
         annotatedVideoUri = null
         annotatedFinalUri = null
         setAnnotatedExportState(AnnotatedExportStatus.ANNOTATED_FAILED, reason)
@@ -1137,7 +1154,7 @@ class LiveCoachingViewModel(
             overlayFrameCount = overlayFrames.size,
             failureReason = reason,
         )
-        AnnotatedExportJobTracker.updateProgress(activeSessionId, ExportProgressStage.FAILED, 100, 0L)
+        AnnotatedExportJobTracker.updateProgress(activeSessionId, ExportProgressStage.FAILED, 100, null)
     }
 
     private fun resolveTerminalAnnotatedExportStatus(hasActiveExportJob: Boolean): AnnotatedExportStatus {
@@ -1247,6 +1264,34 @@ class LiveCoachingViewModel(
         private const val ANNOTATED_EXPORT_TIMEOUT_MS = 120_000L
         private const val PROCESSING_SLOW_THRESHOLD_MS = 90_000L
     }
+}
+
+
+internal data class RawPersistVerification(
+    val isPersisted: Boolean,
+    val persistedUri: String?,
+)
+
+internal fun verifyPersistedRawVideoUris(
+    candidateUris: List<String?>,
+    metadataVerifier: (String) -> MediaVerificationResult,
+): RawPersistVerification {
+    val normalizedCandidates = candidateUris
+        .mapNotNull { it?.takeIf(String::isNotBlank) }
+        .distinct()
+
+    for (candidate in normalizedCandidates) {
+        val path = runCatching { android.net.Uri.parse(candidate).path }.getOrNull() ?: continue
+        val file = java.io.File(path)
+        if (!file.exists() || !file.canRead() || file.length() <= 0L) continue
+
+        val verification = metadataVerifier(candidate)
+        if (!verification.isValid) {
+            SessionDiagnostics.log("raw_persist_metadata_unreadable_fallback uri=$candidate")
+        }
+        return RawPersistVerification(isPersisted = true, persistedUri = candidate)
+    }
+    return RawPersistVerification(isPersisted = false, persistedUri = null)
 }
 
 internal fun resolveSessionVideoOutcome(
