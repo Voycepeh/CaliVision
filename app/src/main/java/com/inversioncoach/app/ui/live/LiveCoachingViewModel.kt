@@ -34,6 +34,7 @@ import com.inversioncoach.app.overlay.FreestyleOrientationClassifier
 import com.inversioncoach.app.overlay.FreestyleViewMode
 import com.inversioncoach.app.pose.PoseSmoother
 import com.inversioncoach.app.recording.MediaVerificationHelper
+import com.inversioncoach.app.recording.AnnotatedExportPipeline
 import com.inversioncoach.app.recording.OverlayStabilizer
 import com.inversioncoach.app.recording.OverlayTimelineJson
 import com.inversioncoach.app.recording.OverlayTimelineRecorder
@@ -78,6 +79,7 @@ class LiveCoachingViewModel(
     private val motionPipeline: MotionAnalysisPipeline = MotionAnalysisPipeline(drillType),
     private val overlayStabilizer: OverlayStabilizer = OverlayStabilizer(),
     private val compressionPipeline: VideoCompressionPipeline = VideoCompressionPipeline(),
+    private val annotatedExportPipeline: AnnotatedExportPipeline,
 ) : ViewModel() {
 
     enum class ExportLifecycleState {
