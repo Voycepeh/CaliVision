@@ -192,7 +192,7 @@ class DefaultUploadVideoAnalysisRunner(
             val overlayTimeline = OverlayTimeline(
                 startedAtMs = 0L,
                 sampleIntervalMs = 80L,
-                frames = overlayFrames.map { it.toTimelineFrame() },
+                frames = overlayFrames.map { it.toTimelineFrame(sessionId = sessionId, sessionStartedAtMs = 0L) },
             )
 
             onProgress(UploadProgress(UploadStage.RENDERING, 0.7f))
