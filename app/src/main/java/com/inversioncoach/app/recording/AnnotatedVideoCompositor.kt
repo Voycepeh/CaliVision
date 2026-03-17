@@ -92,13 +92,14 @@ class AnnotatedVideoCompositor(
             } catch (_: Throwable) {
                 return@withContext fail(AnnotatedExportFailureReason.EXTRACTOR_INIT_FAILED)
             }
+            val extractorInstance = extractor ?: return@withContext fail(AnnotatedExportFailureReason.EXTRACTOR_INIT_FAILED)
 
-            val videoTrack = (0 until extractor.trackCount).firstOrNull {
-                extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true
+            val videoTrack = (0 until extractorInstance.trackCount).firstOrNull {
+                extractorInstance.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true
             } ?: return@withContext fail(AnnotatedExportFailureReason.VIDEO_TRACK_NOT_FOUND)
 
-            extractor.selectTrack(videoTrack)
-            val inputFormat = extractor.getTrackFormat(videoTrack)
+            extractorInstance.selectTrack(videoTrack)
+            val inputFormat = extractorInstance.getTrackFormat(videoTrack)
             val mime = inputFormat.getString(MediaFormat.KEY_MIME)
                 ?: return@withContext fail(AnnotatedExportFailureReason.DECODER_INIT_FAILED)
             val sourceWidth = inputFormat.getInteger(MediaFormat.KEY_WIDTH)
@@ -128,12 +129,13 @@ class AnnotatedVideoCompositor(
             } catch (_: Throwable) {
                 return@withContext fail(AnnotatedExportFailureReason.ENCODER_INIT_FAILED)
             }
+            val encoderInstance = encoder ?: return@withContext fail(AnnotatedExportFailureReason.ENCODER_INIT_FAILED)
             val encoderInputSurface = try {
-                encoder.createInputSurface()
+                encoderInstance.createInputSurface()
             } catch (_: Throwable) {
                 return@withContext fail(AnnotatedExportFailureReason.INPUT_SURFACE_INIT_FAILED)
             }
-            encoder.start()
+            encoderInstance.start()
 
             glCompositor = try {
                 GlSurfaceCompositor(sourceWidth, sourceHeight, outWidth, outHeight, sourceRotationDegrees, encoderInputSurface)
@@ -143,17 +145,19 @@ class AnnotatedVideoCompositor(
             } catch (_: Throwable) {
                 return@withContext fail(AnnotatedExportFailureReason.EGL_INIT_FAILED)
             }
+            val glCompositorInstance = glCompositor ?: return@withContext fail(AnnotatedExportFailureReason.EGL_INIT_FAILED)
             telemetry.compositorInitializedAtMs = System.currentTimeMillis()
             onTelemetry(telemetry)
 
             decoder = try {
                 MediaCodec.createDecoderByType(mime).apply {
-                    configure(inputFormat, glCompositor.decoderSurface, null, 0)
+                    configure(inputFormat, glCompositorInstance.decoderSurface, null, 0)
                     start()
                 }
             } catch (_: Throwable) {
                 return@withContext fail(AnnotatedExportFailureReason.DECODER_INIT_FAILED)
             }
+            val decoderInstance = decoder ?: return@withContext fail(AnnotatedExportFailureReason.DECODER_INIT_FAILED)
             telemetry.decoderInitializedAtMs = System.currentTimeMillis()
             exportStarted = true
             onTelemetry(telemetry)
@@ -163,6 +167,7 @@ class AnnotatedVideoCompositor(
             } catch (_: Throwable) {
                 return@withContext fail(AnnotatedExportFailureReason.MUXER_INIT_FAILED)
             }
+            val muxerInstance = muxer ?: return@withContext fail(AnnotatedExportFailureReason.MUXER_INIT_FAILED)
 
             val resolver = OverlayTimelineResolver(overlayFrames)
             val decoderInfo = MediaCodec.BufferInfo()
@@ -174,24 +179,24 @@ class AnnotatedVideoCompositor(
             val firstFrameDeadline = System.currentTimeMillis() + FIRST_FRAME_DECODE_TIMEOUT_MS
 
             fun drainEncoder(endOfStream: Boolean) {
-                if (endOfStream) encoder.signalEndOfInputStream()
+                if (endOfStream) encoderInstance.signalEndOfInputStream()
                 while (true) {
-                    val outIndex = encoder.dequeueOutputBuffer(encoderInfo, 10_000)
+                    val outIndex = encoderInstance.dequeueOutputBuffer(encoderInfo, 10_000)
                     when {
                         outIndex == MediaCodec.INFO_TRY_AGAIN_LATER -> if (!endOfStream) return
                         outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
                             if (muxStarted) return
-                            muxTrack = muxer.addTrack(encoder.outputFormat)
-                            muxer.start()
+                            muxTrack = muxerInstance.addTrack(encoderInstance.outputFormat)
+                            muxerInstance.start()
                             muxStarted = true
                         }
                         outIndex >= 0 -> {
                             if (encoderInfo.size > 0 && muxStarted) {
-                                val data = encoder.getOutputBuffer(outIndex)
+                                val data = encoderInstance.getOutputBuffer(outIndex)
                                 if (data != null) {
                                     data.position(encoderInfo.offset)
                                     data.limit(encoderInfo.offset + encoderInfo.size)
-                                    muxer.writeSampleData(muxTrack, data, encoderInfo)
+                                    muxerInstance.writeSampleData(muxTrack, data, encoderInfo)
                                     telemetry.outputBytesWritten = output.length()
                                     telemetry.encodedFrameCount += 1
                                     if (telemetry.firstFrameEncodedAtMs == null) telemetry.firstFrameEncodedAtMs = System.currentTimeMillis()
@@ -200,7 +205,7 @@ class AnnotatedVideoCompositor(
                             if ((encoderInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
                                 encodedDone = true
                             }
-                            encoder.releaseOutputBuffer(outIndex, false)
+                            encoderInstance.releaseOutputBuffer(outIndex, false)
                             onTelemetry(telemetry)
                         }
                     }
@@ -210,26 +215,26 @@ class AnnotatedVideoCompositor(
 
             while (!encodedDone) {
                 if (!inputDone) {
-                    val inputIndex = decoder.dequeueInputBuffer(10_000)
+                    val inputIndex = decoderInstance.dequeueInputBuffer(10_000)
                     if (inputIndex >= 0) {
-                        val inputBuffer = decoder.getInputBuffer(inputIndex) ?: continue
-                        val sampleSize = extractor.readSampleData(inputBuffer, 0)
+                        val inputBuffer = decoderInstance.getInputBuffer(inputIndex) ?: continue
+                        val sampleSize = extractorInstance.readSampleData(inputBuffer, 0)
                         if (sampleSize < 0) {
-                            decoder.queueInputBuffer(inputIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                            decoderInstance.queueInputBuffer(inputIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                             inputDone = true
                         } else {
-                            decoder.queueInputBuffer(inputIndex, 0, sampleSize, extractor.sampleTime, 0)
-                            extractor.advance()
+                            decoderInstance.queueInputBuffer(inputIndex, 0, sampleSize, extractorInstance.sampleTime, 0)
+                            extractorInstance.advance()
                         }
                     }
                 }
 
                 if (!decodeDone) {
-                    val outputIndex = decoder.dequeueOutputBuffer(decoderInfo, 10_000)
+                    val outputIndex = decoderInstance.dequeueOutputBuffer(decoderInfo, 10_000)
                     when {
                         outputIndex >= 0 -> {
                             val render = decoderInfo.size > 0
-                            decoder.releaseOutputBuffer(outputIndex, render)
+                            decoderInstance.releaseOutputBuffer(outputIndex, render)
                             if (render) {
                                 firstDecodeObserved = true
                                 telemetry.decodedFrameCount += 1
@@ -238,7 +243,7 @@ class AnnotatedVideoCompositor(
                                 val overlay = resolver.overlayAt(presentationTimeMs)
                                 if (overlay != null) telemetry.overlayFramesConsumed += 1
                                 val instruction = buildRenderInstruction(overlay, drillType, drillCameraSide)
-                                val result = glCompositor.renderFrame(decoderInfo.presentationTimeUs, instruction, FRAME_SYNC_TIMEOUT_MS)
+                                val result = glCompositorInstance.renderFrame(decoderInfo.presentationTimeUs, instruction, FRAME_SYNC_TIMEOUT_MS)
                                 telemetry.frameAvailableWaitMs += result.frameWaitMs
                                 telemetry.compositorRenderMs += result.renderMs
                                 if (!result.rendered) {
@@ -271,7 +276,7 @@ class AnnotatedVideoCompositor(
             try {
                 val muxStart = System.currentTimeMillis()
                 if (muxStarted && !muxStopped) {
-                    muxer.stop()
+                    muxerInstance.stop()
                     muxStopped = true
                 }
                 telemetry.muxElapsedMs = System.currentTimeMillis() - muxStart
