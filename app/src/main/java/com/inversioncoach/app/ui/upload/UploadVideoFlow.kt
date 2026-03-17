@@ -36,6 +36,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.inversioncoach.app.model.AnnotatedExportStage
 import com.inversioncoach.app.model.AnnotatedExportStatus
+import com.inversioncoach.app.model.AnnotatedExportFailureReason
 import com.inversioncoach.app.model.DrillType
 import com.inversioncoach.app.model.FrameMetricRecord
 import com.inversioncoach.app.model.RawPersistStatus
@@ -57,9 +58,10 @@ import com.inversioncoach.app.recording.toTimelineFrame
 import com.inversioncoach.app.storage.ServiceLocator
 import com.inversioncoach.app.storage.repository.SessionRepository
 import com.inversioncoach.app.ui.components.ScaffoldedScreen
-import kotlinx.coroutines.Dispatchers
+import com.inversioncoach.app.ui.live.SessionDiagnostics
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -129,7 +131,37 @@ class DefaultUploadVideoAnalysisRunner(
     override suspend fun run(uri: Uri, onProgress: (UploadProgress) -> Unit, onLog: (String) -> Unit): UploadFlowResult = withContext(Dispatchers.IO) {
         val startedAt = System.currentTimeMillis()
         val drillType = DrillType.FREESTYLE
-        var currentStage = UploadStage.VIDEO_SELECTED
+        val sessionId = repository.saveSession(
+            SessionRecord(
+                title = "Uploaded Video Analysis",
+                drillType = drillType,
+                sessionSource = SessionSource.UPLOADED_VIDEO,
+                startedAtMs = startedAt,
+                completedAtMs = startedAt,
+                overallScore = 0,
+                strongestArea = "Upload analysis",
+                limitingFactor = "Pending analysis",
+                issues = "",
+                wins = "",
+                metricsJson = "{}",
+                annotatedVideoUri = null,
+                rawVideoUri = null,
+                notesUri = null,
+                bestFrameTimestampMs = null,
+                worstFrameTimestampMs = null,
+                topImprovementFocus = "Maintain body line",
+                rawPersistStatus = RawPersistStatus.PROCESSING,
+                annotatedExportStatus = AnnotatedExportStatus.NOT_STARTED,
+            ),
+        )
+        Log.i(TAG, "analysis_start sessionId=$sessionId uri=$uri")
+        SessionDiagnostics.record(
+            sessionId = sessionId,
+            stage = SessionDiagnostics.Stage.SESSION_START,
+            status = SessionDiagnostics.Status.STARTED,
+            message = "Uploaded video analysis session started",
+            metrics = mapOf("sourceUri" to uri.toString(), "workflow" to "upload"),
+        )
         var persistedRawUri: String? = null
         var sessionId = -1L
 
@@ -140,75 +172,52 @@ class DefaultUploadVideoAnalysisRunner(
         }
 
         try {
-            onProgress(UploadProgress(UploadStage.VIDEO_SELECTED, 0.03f, detail = "Selected URI: $uri"))
-            sessionId = repository.saveSession(
-                SessionRecord(
-                    title = "Uploaded Video Analysis",
-                    drillType = drillType,
-                    sessionSource = SessionSource.UPLOADED_VIDEO,
-                    startedAtMs = startedAt,
-                    completedAtMs = startedAt,
-                    overallScore = 0,
-                    strongestArea = "Upload analysis",
-                    limitingFactor = "Pending analysis",
-                    issues = "",
-                    wins = "",
-                    metricsJson = "{}",
-                    annotatedVideoUri = null,
-                    rawVideoUri = null,
-                    notesUri = null,
-                    bestFrameTimestampMs = null,
-                    worstFrameTimestampMs = null,
-                    topImprovementFocus = "Maintain body line",
-                    rawPersistStatus = RawPersistStatus.PROCESSING,
-                    annotatedExportStatus = AnnotatedExportStatus.NOT_STARTED,
-                ),
+            SessionDiagnostics.record(
+                sessionId = sessionId,
+                stage = SessionDiagnostics.Stage.RAW_PERSIST,
+                status = SessionDiagnostics.Status.STARTED,
+                message = "Persisting uploaded raw video",
+                metrics = mapOf("sourceUri" to uri.toString()),
             )
-            log("session_created uri=$uri")
-
-            currentStage = UploadStage.IMPORTING_RAW_VIDEO
-            onProgress(UploadProgress(currentStage, 0.08f, detail = "Persisting raw video"))
-            log("raw_import_start")
-            persistedRawUri = repository.saveRawVideoBlob(sessionId, uri.toString()) ?: error("Unable to import selected video")
+            persistedRawUri = repository.saveRawVideoBlob(sessionId, uri.toString())
+                ?: error("Unable to import selected video")
             repository.updateRawPersistStatus(sessionId, RawPersistStatus.SUCCEEDED)
-            repository.updateRawPersistFailureReason(sessionId, null)
-            repository.updateMediaPipelineState(sessionId) { session ->
-                session.copy(rawVideoUri = persistedRawUri, bestPlayableUri = persistedRawUri, rawPersistedAtMs = System.currentTimeMillis())
-            }
-
-            currentStage = UploadStage.RAW_IMPORT_COMPLETE
-            onProgress(UploadProgress(currentStage, 0.2f, detail = "Raw replay ready"))
-            log("raw_import_complete rawUri=$persistedRawUri")
+            SessionDiagnostics.record(
+                sessionId = sessionId,
+                stage = SessionDiagnostics.Stage.RAW_PERSIST,
+                status = SessionDiagnostics.Status.SUCCEEDED,
+                message = "Uploaded raw video persisted",
+                metrics = mapOf("rawUri" to persistedRawUri),
+            )
 
             val profile = ExistingDrillToProfileAdapter().fromDrill(drillType)
-            val frameSource = MlKitVideoPoseFrameSource(context.applicationContext)
-            val analyzer = UploadedVideoAnalyzer(profile, frameSource)
-
-            repository.updateAnnotatedExportStatus(sessionId, AnnotatedExportStatus.PROCESSING)
-            repository.updateAnnotatedExportProgress(
+            val prepareDurationMs = System.currentTimeMillis() - prepareStart
+            val frameSource = MlKitVideoPoseFrameSource(context.applicationContext, sampleFps = preset.analysisFps)
+            val analyzer = UploadedVideoAnalyzer(frameSource)
+            onProgress(UploadProgress(UploadStage.ANALYZING, 0.25f))
+            val analysisStart = System.currentTimeMillis()
+            val analysis = analyzer.analyze(Uri.parse(persistedRawUri), profile)
+            val analysisDurationMs = System.currentTimeMillis() - analysisStart
+            if (analysis.overlayTimeline.isEmpty()) {
+                SessionDiagnostics.record(
+                    sessionId = sessionId,
+                    stage = SessionDiagnostics.Stage.OVERLAY_CAPTURE,
+                    status = SessionDiagnostics.Status.FAILED,
+                    message = "No overlay samples detected in uploaded video",
+                    errorCode = AnnotatedExportFailureReason.OVERLAY_CAPTURE_EMPTY.name,
+                )
+                error("No body landmarks detected. Try another video with full-body side view.")
+            }
+            SessionDiagnostics.record(
                 sessionId = sessionId,
-                stage = AnnotatedExportStage.PREPARING,
-                percent = 25,
-                etaSeconds = null,
-                elapsedMs = System.currentTimeMillis() - startedAt,
+                stage = SessionDiagnostics.Stage.TIMESTAMP_ALIGNMENT,
+                status = SessionDiagnostics.Status.SUCCEEDED,
+                message = "Overlay timeline extracted from uploaded source",
+                metrics = mapOf(
+                    "overlayFrameCount" to analysis.overlayTimeline.size.toString(),
+                    "droppedFrames" to analysis.droppedFrames.toString(),
+                ),
             )
-
-            currentStage = UploadStage.PREPARING_ANALYSIS
-            onProgress(UploadProgress(currentStage, 0.28f, detail = "Loading analyzer"))
-            log("analysis_prepare_start")
-
-            currentStage = UploadStage.ANALYZING_VIDEO
-            onProgress(UploadProgress(currentStage, 0.45f, detail = "Extracting frame landmarks"))
-            repository.updateAnnotatedExportProgress(
-                sessionId = sessionId,
-                stage = AnnotatedExportStage.DECODING_SOURCE,
-                percent = 45,
-                etaSeconds = null,
-                elapsedMs = System.currentTimeMillis() - startedAt,
-            )
-
-            val analysis = analyzer.analyze(uri.toString())
-            log("analysis_complete frames=${analysis.overlayTimeline.size} dropped=${analysis.droppedFrames}")
 
             val orientationClassifier = FreestyleOrientationClassifier()
             val overlayFrames = analysis.overlayTimeline.map { point ->
@@ -274,6 +283,15 @@ class DefaultUploadVideoAnalysisRunner(
                 elapsedMs = System.currentTimeMillis() - startedAt,
             )
 
+            onProgress(UploadProgress(UploadStage.RENDERING, 0.7f))
+            SessionDiagnostics.record(
+                sessionId = sessionId,
+                stage = SessionDiagnostics.Stage.ANNOTATED_EXPORT_START,
+                status = SessionDiagnostics.Status.STARTED,
+                message = "Annotated export started for uploaded video",
+                metrics = mapOf("overlayFrameCount" to overlayFrames.size.toString()),
+            )
+            val renderStart = System.currentTimeMillis()
             val exportPipeline = AnnotatedExportPipeline(repository, AnnotatedVideoCompositor(context.applicationContext))
             val export = exportPipeline.export(
                 sessionId = sessionId,
@@ -290,6 +308,17 @@ class DefaultUploadVideoAnalysisRunner(
             )
 
             val overlayTimelineUri = repository.saveOverlayTimeline(sessionId, OverlayTimelineJson.encode(overlayTimeline))
+            if (!export.failureReason.isNullOrBlank()) {
+                Log.w(TAG, "analysis_export_failed sessionId=$sessionId reason=${export.failureReason}")
+                SessionDiagnostics.record(
+                    sessionId = sessionId,
+                    stage = SessionDiagnostics.Stage.ANNOTATED_EXPORT_VERIFY,
+                    status = SessionDiagnostics.Status.FAILED,
+                    message = "Uploaded annotated export failed",
+                    errorCode = export.failureReason,
+                )
+                repository.updateAnnotatedExportFailureReason(sessionId, export.failureReason)
+            }
 
             currentStage = UploadStage.VERIFYING_OUTPUT
             onProgress(UploadProgress(currentStage, 0.93f, detail = "Verifying media files"))
@@ -303,7 +332,31 @@ class DefaultUploadVideoAnalysisRunner(
 
             val now = System.currentTimeMillis()
             val replayUri = export.persistedUri ?: persistedRawUri
-            val isAnnotatedReady = !export.persistedUri.isNullOrBlank()
+            if (!export.persistedUri.isNullOrBlank()) {
+                SessionDiagnostics.record(
+                    sessionId = sessionId,
+                    stage = SessionDiagnostics.Stage.ANNOTATED_EXPORT_VERIFY,
+                    status = SessionDiagnostics.Status.SUCCEEDED,
+                    message = "Uploaded annotated export verified",
+                    metrics = mapOf("annotatedUri" to export.persistedUri),
+                )
+            }
+            SessionDiagnostics.record(
+                sessionId = sessionId,
+                stage = SessionDiagnostics.Stage.REPLAY_SOURCE_SELECT,
+                status = SessionDiagnostics.Status.PROGRESS,
+                message = "Replay source selected for uploaded workflow",
+                metrics = mapOf("selectedUri" to replayUri.orEmpty(), "annotatedUri" to export.persistedUri.orEmpty()),
+            )
+            if (export.persistedUri.isNullOrBlank() && !persistedRawUri.isNullOrBlank()) {
+                SessionDiagnostics.record(
+                    sessionId = sessionId,
+                    stage = SessionDiagnostics.Stage.FALLBACK_DECISION,
+                    status = SessionDiagnostics.Status.FALLBACK,
+                    message = "Uploaded workflow replay fell back to raw",
+                    errorCode = AnnotatedExportFailureReason.REPLAY_SELECTION_FELL_BACK_TO_RAW.name,
+                )
+            }
             repository.updateMediaPipelineState(sessionId) { session ->
                 session.copy(
                     completedAtMs = now,
@@ -367,47 +420,27 @@ class DefaultUploadVideoAnalysisRunner(
                 finalStage = UploadStage.COMPLETED_RAW_ONLY,
             )
         } catch (error: Throwable) {
-            val message = error.message ?: "UPLOAD_ANALYSIS_FAILED"
-            val stack = error.stackTraceToString().lineSequence().take(6).joinToString(" | ")
-            log("exception message=$message stack=$stack")
-            if (sessionId > 0L && !persistedRawUri.isNullOrBlank()) {
-                repository.updateRawPersistStatus(sessionId, RawPersistStatus.SUCCEEDED)
-                repository.updateAnnotatedExportStatus(sessionId, AnnotatedExportStatus.ANNOTATED_FAILED)
-                repository.updateAnnotatedExportFailureReason(sessionId, message)
-                repository.updateAnnotatedExportProgress(
-                    sessionId = sessionId,
-                    stage = AnnotatedExportStage.FAILED,
-                    percent = 100,
-                    etaSeconds = 0,
-                    elapsedMs = System.currentTimeMillis() - startedAt,
-                    failureReason = message,
-                    failureDetail = "Failure after raw import at stage=${currentStage.name}",
-                )
-                onProgress(UploadProgress(UploadStage.COMPLETED_RAW_ONLY, 1f, detail = "Raw replay ready; downstream stage failed"))
-                return@withContext UploadFlowResult(
-                    sessionId = sessionId,
-                    replayUri = persistedRawUri,
-                    rawReady = true,
-                    annotatedReady = false,
-                    exportFailureReason = message,
-                    finalStage = UploadStage.COMPLETED_RAW_ONLY,
+            SessionDiagnostics.record(
+                sessionId = sessionId,
+                stage = SessionDiagnostics.Stage.SESSION_FINALIZE,
+                status = SessionDiagnostics.Status.FAILED,
+                message = "Uploaded workflow failed",
+                errorCode = error.message ?: AnnotatedExportFailureReason.UNKNOWN_EXCEPTION.name,
+                throwable = error,
+            )
+            repository.updateRawPersistStatus(sessionId, if (persistedRawUri.isNullOrBlank()) RawPersistStatus.FAILED else RawPersistStatus.SUCCEEDED)
+            repository.updateAnnotatedExportStatus(sessionId, AnnotatedExportStatus.ANNOTATED_FAILED)
+            repository.updateAnnotatedExportFailureReason(sessionId, error.message ?: "UPLOAD_ANALYSIS_FAILED")
+            repository.updateMediaPipelineState(sessionId) { session ->
+                session.copy(
+                    completedAtMs = System.currentTimeMillis(),
+                    bestPlayableUri = persistedRawUri,
+                    rawVideoUri = persistedRawUri ?: session.rawVideoUri,
+                    annotatedVideoUri = null,
+                    limitingFactor = "Upload processing failed",
                 )
             }
-            if (sessionId > 0L) {
-                repository.updateRawPersistStatus(sessionId, RawPersistStatus.FAILED)
-                repository.updateRawPersistFailureReason(sessionId, message)
-                repository.updateAnnotatedExportStatus(sessionId, AnnotatedExportStatus.ANNOTATED_FAILED)
-                repository.updateAnnotatedExportFailureReason(sessionId, message)
-                repository.updateAnnotatedExportProgress(
-                    sessionId = sessionId,
-                    stage = AnnotatedExportStage.FAILED,
-                    percent = 100,
-                    etaSeconds = 0,
-                    elapsedMs = System.currentTimeMillis() - startedAt,
-                    failureReason = message,
-                    failureDetail = "Failure before raw import stage=${currentStage.name}",
-                )
-            }
+            SessionDiagnostics.persistReport(sessionId, repository.observeSession(sessionId).first(), repository)
             throw error
         }
     }
