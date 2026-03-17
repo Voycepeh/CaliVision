@@ -68,6 +68,11 @@ data class SessionStopResult(
     val minSessionDurationSeconds: Int,
 )
 
+internal fun shouldDiscardSessionForShortDuration(elapsedSessionMs: Long, minSessionDurationSeconds: Int): Boolean {
+    if (minSessionDurationSeconds <= 0) return false
+    return elapsedSessionMs.coerceAtLeast(0L) < minSessionDurationSeconds * 1000L
+}
+
 class LiveCoachingViewModel(
     private val drillType: DrillType,
     private val metricsEngine: AlignmentMetricsEngine,
@@ -186,8 +191,6 @@ class LiveCoachingViewModel(
             failureReason = "analyzer=${metricsEngine::class.simpleName};movementPattern=$movementPattern",
         )
         startSession()
-        overlayTimelineRecorder = OverlayTimelineRecorder(startedAtMs = sessionStartedAtMs, sampleIntervalMs = OVERLAY_TIMELINE_SAMPLE_INTERVAL_MS)
-        SessionDiagnostics.log("overlay_timeline_recorder_start sampleIntervalMs=$OVERLAY_TIMELINE_SAMPLE_INTERVAL_MS")
     }
 
     fun onCameraPermissionChanged(granted: Boolean) {
@@ -317,7 +320,13 @@ class LiveCoachingViewModel(
                 freestyleViewMode = freestyleViewMode,
             )
             overlayFrames += overlayFrame
-            overlayTimelineRecorder?.record(overlayFrame.toTimelineFrame())
+            if (overlayTimelineRecorder == null && sessionStartedAtMs > 0L) {
+                overlayTimelineRecorder = OverlayTimelineRecorder(startedAtMs = sessionStartedAtMs, sampleIntervalMs = OVERLAY_TIMELINE_SAMPLE_INTERVAL_MS)
+                SessionDiagnostics.log("overlay_timeline_recorder_start sampleIntervalMs=$OVERLAY_TIMELINE_SAMPLE_INTERVAL_MS")
+            }
+            sessionId?.let { activeSessionId ->
+                overlayTimelineRecorder?.record(overlayFrame.toTimelineFrame(activeSessionId, sessionStartedAtMs))
+            }
             lastOverlayCaptureTsMs = smoothed.timestampMs
             if (overlayFrames.size % OVERLAY_FRAME_LOG_INTERVAL == 0) {
                 SessionDiagnostics.record(
@@ -599,14 +608,16 @@ class LiveCoachingViewModel(
                 )
                 val invalidReasonSummary = invalidReasonCounts.entries.sortedByDescending { it.value }.joinToString(";") { "${it.key}:${it.value}" }
                 val completedAtMs = System.currentTimeMillis()
-                val elapsedSessionSeconds = ((completedAtMs - sessionStartedAtMs).coerceAtLeast(0L)) / 1000.0
-                val hasPersistedVideo = !rawVideoUri.isNullOrBlank() || !annotatedVideoUri.isNullOrBlank()
-                val shouldDeleteSession = !hasPersistedVideo && !sessionHadAnyVideo &&
-                    elapsedSessionSeconds < activeSettings.minSessionDurationSeconds
+                val elapsedSessionMs = (completedAtMs - sessionStartedAtMs).coerceAtLeast(0L)
+                val elapsedSessionSeconds = elapsedSessionMs / 1000.0
+                val shouldDeleteSession = shouldDiscardSessionForShortDuration(
+                    elapsedSessionMs = elapsedSessionMs,
+                    minSessionDurationSeconds = activeSettings.minSessionDurationSeconds,
+                )
                 SessionDiagnostics.log(
                     "session_finalize drill=$drillType validFrames=$validFrameCount invalidFrames=$invalidFrameCount invalidReasons={$invalidReasonSummary} " +
                         "aggregatedIssues=${aggregatedIssues.size} savedRaw=$rawVideoUri exportedAnnotated=$annotatedVideoUri elapsed=${"%.2f".format(elapsedSessionSeconds)}s " +
-                        "minKeepWithoutVideo=${activeSettings.minSessionDurationSeconds}s shouldDelete=$shouldDeleteSession",
+                        "minSessionDuration=${activeSettings.minSessionDurationSeconds}s shouldDelete=$shouldDeleteSession",
                 )
                 if (shouldDeleteSession) {
                     repository.deleteSession(activeSessionId)
@@ -614,7 +625,7 @@ class LiveCoachingViewModel(
                         SessionStopResult(
                             sessionId = activeSessionId,
                             wasDiscardedForShortDuration = true,
-                            elapsedSessionMs = (completedAtMs - sessionStartedAtMs).coerceAtLeast(0L),
+                            elapsedSessionMs = elapsedSessionMs,
                             minSessionDurationSeconds = activeSettings.minSessionDurationSeconds,
                         ),
                     )
@@ -758,7 +769,7 @@ class LiveCoachingViewModel(
                     SessionStopResult(
                         sessionId = activeSessionId,
                         wasDiscardedForShortDuration = false,
-                        elapsedSessionMs = (completedAtMs - sessionStartedAtMs).coerceAtLeast(0L),
+                        elapsedSessionMs = elapsedSessionMs,
                         minSessionDurationSeconds = activeSettings.minSessionDurationSeconds,
                     ),
                 )
@@ -825,6 +836,8 @@ class LiveCoachingViewModel(
                     topImprovementFocus = "pending",
                 ),
             )
+            overlayTimelineRecorder = OverlayTimelineRecorder(startedAtMs = now, sampleIntervalMs = OVERLAY_TIMELINE_SAMPLE_INTERVAL_MS)
+            SessionDiagnostics.log("overlay_timeline_recorder_start sampleIntervalMs=$OVERLAY_TIMELINE_SAMPLE_INTERVAL_MS;startedAtMs=$now")
             sessionId = newSessionId
             AnnotatedExportJobTracker.markFinished(newSessionId)
             pendingStopCallback?.let { callback ->
