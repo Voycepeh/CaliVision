@@ -450,8 +450,9 @@ fun UploadVideoScreen(
                     Text("Cancel")
                 }
             }
-            if (state.stage == UploadStage.SUCCESS && state.sessionId != null) {
-                Button(onClick = { onOpenResults(state.sessionId) }, modifier = Modifier.fillMaxWidth()) {
+            val resultSessionId = state.sessionId
+            if (state.stage == UploadStage.SUCCESS && resultSessionId != null) {
+                Button(onClick = { onOpenResults(resultSessionId) }, modifier = Modifier.fillMaxWidth()) {
                     Text("Open Results")
                 }
             }
