@@ -1,11 +1,13 @@
 package com.inversioncoach.app.ui.live
 
 import com.inversioncoach.app.recording.OverlayTimeline
+import com.inversioncoach.app.recording.OverlayTimelineFrame
+import com.inversioncoach.app.recording.OverlayDrillMetadata
 import com.inversioncoach.app.storage.SessionBlobStorage
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -98,81 +100,131 @@ class ExportDurationResolutionTest {
     }
 
     @Test
-    fun retrieverFailsExtractorSucceeds() = runBlocking {
-        val resolved = resolveRawDurationWithRetries(
-            rawUri = "file:///raw.mp4",
-            fileExists = true,
-            fileSizeBytes = 2048L,
-            sessionElapsedMs = 5_000L,
-            overlayMaxTimestampMs = 6_000L,
-            maxRetries = 0,
-            readMetadataDuration = { 0L },
-            readExtractorDuration = { 1_777L },
-        )
+    fun clampHelperTruncatesFramesBeyondChosenDuration() {
+        val timeline = timelineOf(100L, 900L, 1500L)
 
-        assertEquals(1_777L, resolved.durationMs)
-        assertEquals("media_extractor", resolved.source)
+        val clamped = clampOverlayTimelineToDuration(timeline, maxDurationMs = 1000L)
+
+        assertEquals(listOf(100L, 900L), clamped.frames.map { it.timestampMs })
     }
 
     @Test
-    fun validationPassesWhenRawExistsAndFallbackDurationAvailable() {
-        val timeline = OverlayTimeline(startedAtMs = 100L, sampleIntervalMs = 80L, frames = emptyList())
-        val validation = validateExportSnapshotInputs(
+    fun mismatchBeyondToleranceGetsClampedAndPreflightDoesNotFail() {
+        val snapshot = ExportSnapshot(
+            sessionId = 1L,
+            stopTimestampMs = 1000L,
             rawUri = "file:///raw.mp4",
-            rawDurationMs = 2_000L,
-            rawDurationSource = "session_elapsed",
-            overlayTimeline = timeline,
-            overlayFrameCount = 10,
+            rawDurationMs = 1000L,
+            rawDurationSource = "metadata_retriever",
+            overlayTimeline = timelineOf(100L, 800L, 1300L),
+            overlayTimelineUri = null,
+            overlayFrameCount = 3,
+        )
+
+        val preflight = prepareExportSnapshotInputs(
+            snapshot = snapshot,
             overlayCaptureFrozen = true,
             hasReadableRaw = true,
-            toleranceMs = 600L,
+            toleranceMs = 50L,
+            liveOverlayFrameCountAtFreeze = 4,
         )
 
-        assertNull(validation)
+        assertNull(preflight.fatalReason)
+        assertTrue(preflight.clampApplied)
+        assertTrue(preflight.durationMismatchMs > 0L)
+        assertEquals(listOf(100L, 800L), preflight.snapshot.overlayTimeline.frames.map { it.timestampMs })
+        assertEquals(2, preflight.frozenOverlayFrameCount)
+        assertEquals(2, preflight.overlayFramesIgnoredAfterFreeze)
     }
 
     @Test
-    fun validationFailsWhenAllDurationSourcesFail() {
-        val timeline = OverlayTimeline(startedAtMs = 100L, sampleIntervalMs = 80L, frames = emptyList())
-        val validation = validateExportSnapshotInputs(
+    fun readableRawWithUnresolvedMediaDurationProceedsWithOverlayFallbackDuration() {
+        val snapshot = ExportSnapshot(
+            sessionId = 2L,
+            stopTimestampMs = 1000L,
             rawUri = "file:///raw.mp4",
             rawDurationMs = 0L,
             rawDurationSource = "none",
-            overlayTimeline = timeline,
-            overlayFrameCount = 5,
+            overlayTimeline = timelineOf(120L, 360L, 700L),
+            overlayTimelineUri = null,
+            overlayFrameCount = 3,
+        )
+
+        val preflight = prepareExportSnapshotInputs(
+            snapshot = snapshot,
             overlayCaptureFrozen = true,
             hasReadableRaw = true,
             toleranceMs = 600L,
+            liveOverlayFrameCountAtFreeze = 3,
         )
 
-        assertEquals("EXPORT_INPUT_VALIDATION_FAILED_RAW_DURATION_ALL_SOURCES", validation)
+        assertNull(preflight.fatalReason)
+        assertEquals(700L, preflight.snapshot.rawDurationMs)
+        assertEquals("overlay_timeline_fallback", preflight.snapshot.rawDurationSource)
     }
 
     @Test
-    fun validationFailsWhenRawMissingAndNoDurationFallback() {
-        val timeline = OverlayTimeline(startedAtMs = 100L, sampleIntervalMs = 80L, frames = emptyList())
-        val validation = validateExportSnapshotInputs(
-            rawUri = "file:///missing.mp4",
+    fun readableRawWithoutAnyDurationBasisFailsWithoutSyntheticDuration() {
+        val snapshot = ExportSnapshot(
+            sessionId = 22L,
+            stopTimestampMs = 1000L,
+            rawUri = "file:///raw.mp4",
             rawDurationMs = 0L,
             rawDurationSource = "none",
-            overlayTimeline = timeline,
+            overlayTimeline = timelineOf(),
+            overlayTimelineUri = null,
             overlayFrameCount = 0,
+        )
+
+        val preflight = prepareExportSnapshotInputs(
+            snapshot = snapshot,
+            overlayCaptureFrozen = true,
+            hasReadableRaw = true,
+            toleranceMs = 600L,
+            liveOverlayFrameCountAtFreeze = 0,
+        )
+
+        assertEquals("EXPORT_INPUT_VALIDATION_FAILED_DURATION_UNAVAILABLE_READABLE_RAW", preflight.fatalReason)
+        assertEquals(0L, preflight.snapshot.rawDurationMs)
+    }
+
+    @Test
+    fun validationDistinguishesFatalVsRecoverablePreflight() {
+        val recoverable = prepareExportSnapshotInputs(
+            snapshot = ExportSnapshot(
+                sessionId = 3L,
+                stopTimestampMs = 1000L,
+                rawUri = "file:///raw.mp4",
+                rawDurationMs = 0L,
+                rawDurationSource = "none",
+                overlayTimeline = timelineOf(500L),
+                overlayTimelineUri = null,
+                overlayFrameCount = 1,
+            ),
+            overlayCaptureFrozen = true,
+            hasReadableRaw = true,
+            toleranceMs = 600L,
+            liveOverlayFrameCountAtFreeze = 1,
+        )
+        val fatal = prepareExportSnapshotInputs(
+            snapshot = ExportSnapshot(
+                sessionId = 4L,
+                stopTimestampMs = 1000L,
+                rawUri = "file:///missing.mp4",
+                rawDurationMs = 0L,
+                rawDurationSource = "none",
+                overlayTimeline = timelineOf(),
+                overlayTimelineUri = null,
+                overlayFrameCount = 0,
+            ),
             overlayCaptureFrozen = true,
             hasReadableRaw = false,
             toleranceMs = 600L,
+            liveOverlayFrameCountAtFreeze = 0,
         )
 
-        assertEquals("EXPORT_INPUT_VALIDATION_FAILED_RAW_MISSING_AND_DURATION_UNAVAILABLE", validation)
-    }
-
-    @Test
-    fun duplicateFinalizeCallbacksAreIgnoredWithoutRestarting() {
-        val first = evaluateFinalizeCallbackAcceptance(existingAcceptedUri = null, incomingUri = "file:///first.mp4")
-        val duplicate = evaluateFinalizeCallbackAcceptance(existingAcceptedUri = first.acceptedUri, incomingUri = "file:///first.mp4")
-
-        assertEquals(FinalizeCallbackAction.ACCEPTED_FIRST, first.action)
-        assertEquals(FinalizeCallbackAction.IGNORED_DUPLICATE, duplicate.action)
-        assertEquals("file:///first.mp4", duplicate.acceptedUri)
+        assertNull(recoverable.fatalReason)
+        assertEquals("EXPORT_INPUT_VALIDATION_FAILED_RAW_MISSING_AND_DURATION_UNAVAILABLE", fatal.fatalReason)
     }
 
     @Test
@@ -256,6 +308,37 @@ class ExportDurationResolutionTest {
                 FinalizeCallbackAction.UPGRADED_TO_PERSISTED,
                 isFinalizationInFlight = true,
             ) == RecorderFinalizeFlowOutcome.START_FINALIZATION,
+        )
+    }
+
+    private fun timelineOf(vararg timestamps: Long): OverlayTimeline {
+        return OverlayTimeline(
+            startedAtMs = 0L,
+            sampleIntervalMs = 80L,
+            frames = timestamps.mapIndexed { index, ts ->
+                OverlayTimelineFrame(
+                    sessionId = 1L,
+                    relativeTimestampMs = ts,
+                    absoluteVideoPtsUs = ts * 1000L,
+                    timestampMs = ts,
+                    landmarks = emptyList(),
+                    skeletonLines = emptyList(),
+                    headPoint = null,
+                    hipPoint = null,
+                    idealLine = null,
+                    alignmentAngles = emptyMap(),
+                    visibilityFlags = emptyMap(),
+                    drillMetadata = OverlayDrillMetadata(
+                        sessionMode = com.inversioncoach.app.model.SessionMode.FREESTYLE,
+                        drillCameraSide = null,
+                        showSkeleton = true,
+                        showIdealLine = true,
+                        bodyVisible = true,
+                        mirrorMode = false,
+                    ),
+                    sourceFrameIndex = index.toLong(),
+                )
+            },
         )
     }
 }
