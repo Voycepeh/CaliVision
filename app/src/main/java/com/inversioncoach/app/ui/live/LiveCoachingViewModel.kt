@@ -1296,22 +1296,30 @@ class LiveCoachingViewModel(
         val stopTimestamp = System.currentTimeMillis()
         val liveOverlayFrameCountAtFreeze = overlayFrames.size
         overlayCaptureFrozen = true
-        val timeline = frozenOverlayTimeline ?: (overlayTimelineRecorder?.snapshot()
+        val frozenSource = frozenOverlayTimeline ?: (overlayTimelineRecorder?.snapshot()
             ?: com.inversioncoach.app.recording.OverlayTimeline(
                 startedAtMs = sessionStartedAtMs,
                 sampleIntervalMs = OVERLAY_TIMELINE_SAMPLE_INTERVAL_MS,
                 frames = emptyList(),
             ))
-        frozenOverlayTimeline = timeline
-        overlayTimelineUri = repository.saveOverlayTimeline(activeSessionId, OverlayTimelineJson.encode(timeline))
+        val timeline = deepCopyOverlayTimelineForExport(frozenSource)
+        val normalizedTimeline = normalizeFrozenOverlayTimelineToRelative(timeline)
+        frozenOverlayTimeline = normalizedTimeline
+        overlayTimelineUri = repository.saveOverlayTimeline(activeSessionId, OverlayTimelineJson.encode(normalizedTimeline))
         repository.updateMediaPipelineState(activeSessionId) { session ->
             session.copy(
-                overlayFrameCount = timeline.frames.size,
+                overlayFrameCount = normalizedTimeline.frames.size,
                 overlayTimelineUri = overlayTimelineUri,
             )
         }
         val rawFile = resolveReadableFile(rawMasterUri)
-        val maxOverlayTimestampMs = timeline.frames.lastOrNull()?.timestampMs ?: 0L
+        val maxOverlayTimestampMs = normalizedTimeline.frames.lastOrNull()?.relativeTimestampMs ?: 0L
+        val firstLiveTs = overlayFrames.firstOrNull()?.timestampMs
+        val lastLiveTs = overlayFrames.lastOrNull()?.timestampMs
+        val firstFrozenTs = timeline.frames.firstOrNull()?.timestampMs
+        val lastFrozenTs = timeline.frames.lastOrNull()?.timestampMs
+        val firstNormalizedFrozenTs = normalizedTimeline.frames.firstOrNull()?.timestampMs
+        val lastNormalizedFrozenTs = normalizedTimeline.frames.lastOrNull()?.timestampMs
         val durationResolution = resolveRawDurationWithRetries(
             rawUri = rawMasterUri,
             fileExists = rawFile?.exists() == true,
@@ -1325,7 +1333,7 @@ class LiveCoachingViewModel(
                     drillType = drillType,
                     rawUri = rawMasterUri,
                     annotatedUri = null,
-                    overlayFrameCount = timeline.frames.size,
+                    overlayFrameCount = normalizedTimeline.frames.size,
                     failureReason = "attempt=${attempt.attemptIndex};uri=${attempt.uri};fileExists=${attempt.fileExists};fileSize=${attempt.fileSizeBytes};source=${attempt.source};durationMs=${attempt.durationMs}",
                 )
             },
@@ -1336,7 +1344,7 @@ class LiveCoachingViewModel(
                     drillType = drillType,
                     rawUri = rawMasterUri,
                     annotatedUri = null,
-                    overlayFrameCount = timeline.frames.size,
+                    overlayFrameCount = normalizedTimeline.frames.size,
                     failureReason = "retry=$retry;waitMs=$waitMs",
                 )
             },
@@ -1348,18 +1356,18 @@ class LiveCoachingViewModel(
             drillType = drillType,
             rawUri = rawMasterUri,
             annotatedUri = null,
-            overlayFrameCount = timeline.frames.size,
+            overlayFrameCount = normalizedTimeline.frames.size,
             failureReason = "source=${durationResolution.source};durationMs=$rawDurationMs",
         )
-        val overlayFramesIgnoredAfterFreeze = (liveOverlayFrameCountAtFreeze - timeline.frames.size).coerceAtLeast(0)
+        val overlayFramesIgnoredAfterFreeze = (liveOverlayFrameCountAtFreeze - normalizedTimeline.frames.size).coerceAtLeast(0)
         SessionDiagnostics.logStructured(
             event = "overlay_freeze_snapshot_created",
             sessionId = activeSessionId,
             drillType = drillType,
             rawUri = rawMasterUri,
             annotatedUri = null,
-            overlayFrameCount = timeline.frames.size,
-            failureReason = "overlayFreezeTs=$stopTimestamp;rawDurationMs=$rawDurationMs;source=${durationResolution.source};liveOverlayFrameCountAtFreeze=$liveOverlayFrameCountAtFreeze;frozenOverlayFrameCount=${timeline.frames.size};overlayFramesIgnoredAfterFreeze=$overlayFramesIgnoredAfterFreeze",
+            overlayFrameCount = normalizedTimeline.frames.size,
+            failureReason = "sessionStartTs=$sessionStartedAtMs;overlayFreezeTs=$stopTimestamp;rawDurationMs=$rawDurationMs;source=${durationResolution.source};firstLiveOverlayTs=$firstLiveTs;lastLiveOverlayTs=$lastLiveTs;firstFrozenOverlayTs=$firstFrozenTs;lastFrozenOverlayTs=$lastFrozenTs;firstFrozenOverlayTsAfterNormalization=$firstNormalizedFrozenTs;lastFrozenOverlayTsAfterNormalization=$lastNormalizedFrozenTs;liveOverlayFrameCountAtFreeze=$liveOverlayFrameCountAtFreeze;frozenOverlayFrameCount=${normalizedTimeline.frames.size};overlayFramesIgnoredAfterFreeze=$overlayFramesIgnoredAfterFreeze",
         )
         return ExportSnapshot(
             sessionId = activeSessionId,
@@ -1367,9 +1375,9 @@ class LiveCoachingViewModel(
             rawUri = rawMasterUri.orEmpty(),
             rawDurationMs = rawDurationMs,
             rawDurationSource = durationResolution.source,
-            overlayTimeline = timeline,
+            overlayTimeline = normalizedTimeline,
             overlayTimelineUri = overlayTimelineUri,
-            overlayFrameCount = timeline.frames.size,
+            overlayFrameCount = normalizedTimeline.frames.size,
         )
     }
 
@@ -1391,7 +1399,7 @@ class LiveCoachingViewModel(
             rawUri = preflight.snapshot.rawUri,
             annotatedUri = null,
             overlayFrameCount = preflight.snapshot.overlayFrameCount,
-            failureReason = "fatalReason=${preflight.fatalReason.orEmpty()};durationMs=${preflight.snapshot.rawDurationMs};durationSource=${preflight.snapshot.rawDurationSource};durationMismatchMs=${preflight.durationMismatchMs};clampApplied=${preflight.clampApplied};liveOverlayFrameCountAtFreeze=${preflight.liveOverlayFrameCountAtFreeze};frozenOverlayFrameCount=${preflight.frozenOverlayFrameCount};overlayFramesIgnoredAfterFreeze=${preflight.overlayFramesIgnoredAfterFreeze}",
+            failureReason = "fatalReason=${preflight.fatalReason.orEmpty()};sessionStartTs=$sessionStartedAtMs;freezeTs=${snapshot.stopTimestampMs};durationMs=${preflight.snapshot.rawDurationMs};durationSource=${preflight.snapshot.rawDurationSource};durationMismatchMs=${preflight.durationMismatchMs};clampApplied=${preflight.clampApplied};countBeforeTrim=${preflight.countBeforeTrim};countAfterTrim=${preflight.countAfterTrim};firstFrozenTsBeforeNormalization=${preflight.firstFrozenTsBeforeNormalization};lastFrozenTsBeforeNormalization=${preflight.lastFrozenTsBeforeNormalization};firstFrozenTsAfterNormalization=${preflight.firstFrozenTsAfterNormalization};lastFrozenTsAfterNormalization=${preflight.lastFrozenTsAfterNormalization};liveOverlayFrameCountAtFreeze=${preflight.liveOverlayFrameCountAtFreeze};frozenOverlayFrameCount=${preflight.frozenOverlayFrameCount};overlayFramesIgnoredAfterFreeze=${preflight.overlayFramesIgnoredAfterFreeze}",
         )
         return preflight
     }
@@ -1558,15 +1566,71 @@ internal data class ExportPreflightResult(
     val liveOverlayFrameCountAtFreeze: Int,
     val frozenOverlayFrameCount: Int,
     val overlayFramesIgnoredAfterFreeze: Int,
+    val countBeforeTrim: Int,
+    val countAfterTrim: Int,
+    val firstFrozenTsBeforeNormalization: Long?,
+    val lastFrozenTsBeforeNormalization: Long?,
+    val firstFrozenTsAfterNormalization: Long?,
+    val lastFrozenTsAfterNormalization: Long?,
 )
+
+internal fun deepCopyOverlayTimelineForExport(
+    timeline: com.inversioncoach.app.recording.OverlayTimeline,
+): com.inversioncoach.app.recording.OverlayTimeline = timeline.copy(
+    frames = timeline.frames.map { frame ->
+        frame.copy(
+            landmarks = frame.landmarks.toList(),
+            smoothedLandmarks = frame.smoothedLandmarks.toList(),
+            skeletonLines = frame.skeletonLines.toList(),
+            alignmentAngles = frame.alignmentAngles.toMap(),
+            visibilityFlags = frame.visibilityFlags.toMap(),
+        )
+    },
+)
+
+private const val RELATIVE_TIMESTAMP_FALLBACK_GAP_MS = 60_000L
+
+internal fun normalizeFrozenOverlayTimelineToRelative(
+    timeline: com.inversioncoach.app.recording.OverlayTimeline,
+): com.inversioncoach.app.recording.OverlayTimeline {
+    val normalizedFrames = timeline.frames.map { frame ->
+        val rawRelativeTs = frame.relativeTimestampMs.coerceAtLeast(0L)
+        val derivedRelativeTs = (frame.timestampMs - timeline.startedAtMs).coerceAtLeast(0L)
+        val relativeDelta = kotlin.math.abs(rawRelativeTs - derivedRelativeTs)
+        val shouldFallbackToDerivedRelative = timeline.startedAtMs > 0L &&
+            frame.timestampMs >= timeline.startedAtMs &&
+            relativeDelta >= RELATIVE_TIMESTAMP_FALLBACK_GAP_MS
+        val relativeTs = if (shouldFallbackToDerivedRelative) derivedRelativeTs else rawRelativeTs
+        frame.copy(
+            relativeTimestampMs = relativeTs,
+            timestampMs = relativeTs,
+            absoluteVideoPtsUs = frame.absoluteVideoPtsUs ?: (relativeTs * 1_000L),
+        )
+    }.sortedBy { it.relativeTimestampMs }
+    return timeline.copy(
+        startedAtMs = 0L,
+        frames = normalizedFrames,
+    )
+}
 
 internal fun clampOverlayTimelineToDuration(
     timeline: com.inversioncoach.app.recording.OverlayTimeline,
     maxDurationMs: Long,
 ): com.inversioncoach.app.recording.OverlayTimeline {
     if (maxDurationMs <= 0L) return timeline
-    val clampedFrames = timeline.frames.filter { it.timestampMs <= maxDurationMs }
+    if (timeline.frames.isEmpty()) return timeline
+    val clampedFrames = timeline.frames.filter { it.relativeTimestampMs <= maxDurationMs }
     return if (clampedFrames.size == timeline.frames.size) timeline else timeline.copy(frames = clampedFrames)
+}
+
+
+private fun com.inversioncoach.app.recording.OverlayTimeline.isRelativeNormalized(): Boolean {
+    if (startedAtMs != 0L) return false
+    for (frame in frames) {
+        if (frame.relativeTimestampMs < 0L) return false
+        if (frame.timestampMs != frame.relativeTimestampMs) return false
+    }
+    return true
 }
 
 internal fun prepareExportSnapshotInputs(
@@ -1589,13 +1653,23 @@ internal fun prepareExportSnapshotInputs(
         liveOverlayFrameCountAtFreeze = liveOverlayFrameCountAtFreeze,
         frozenOverlayFrameCount = outSnapshot.overlayFrameCount,
         overlayFramesIgnoredAfterFreeze = (liveOverlayFrameCountAtFreeze - outSnapshot.overlayFrameCount).coerceAtLeast(0),
+        countBeforeTrim = snapshot.overlayTimeline.frames.size,
+        countAfterTrim = outSnapshot.overlayFrameCount,
+        firstFrozenTsBeforeNormalization = snapshot.overlayTimeline.frames.firstOrNull()?.timestampMs,
+        lastFrozenTsBeforeNormalization = snapshot.overlayTimeline.frames.lastOrNull()?.timestampMs,
+        firstFrozenTsAfterNormalization = outSnapshot.overlayTimeline.frames.firstOrNull()?.timestampMs,
+        lastFrozenTsAfterNormalization = outSnapshot.overlayTimeline.frames.lastOrNull()?.timestampMs,
     )
 
     if (snapshot.rawUri.isBlank()) return result(snapshot, "EXPORT_INPUT_VALIDATION_FAILED_RAW_URI_EMPTY", false, 0L)
     if (!overlayCaptureFrozen) return result(snapshot, "EXPORT_INPUT_VALIDATION_FAILED_SNAPSHOT_NOT_FROZEN", false, 0L)
     if (!snapshot.overlayTimeline.isMonotonic()) return result(snapshot, "EXPORT_INPUT_VALIDATION_FAILED_TIMESTAMPS", false, 0L)
 
-    val overlayEndTimestamp = snapshot.overlayTimeline.frames.lastOrNull()?.timestampMs ?: 0L
+    if (!snapshot.overlayTimeline.isRelativeNormalized()) {
+        return result(snapshot, "EXPORT_INPUT_VALIDATION_FAILED_TIMESTAMPS_NOT_NORMALIZED", false, 0L)
+    }
+
+    val overlayEndTimestamp = snapshot.overlayTimeline.frames.lastOrNull()?.relativeTimestampMs ?: 0L
     val usableDurationMs = when {
         snapshot.rawDurationMs > 0L -> snapshot.rawDurationMs
         overlayEndTimestamp > 0L -> overlayEndTimestamp
@@ -1623,6 +1697,9 @@ internal fun prepareExportSnapshotInputs(
         clampOverlayTimelineToDuration(snapshot.overlayTimeline, usableDurationMs)
     } else {
         snapshot.overlayTimeline
+    }
+    if (snapshot.overlayTimeline.frames.isNotEmpty() && clampedTimeline.frames.isEmpty()) {
+        return result(snapshot, "EXPORT_INPUT_VALIDATION_FAILED_ALL_FRAMES_OUT_OF_RANGE_AFTER_NORMALIZATION", true, durationMismatchMs)
     }
 
     return result(
