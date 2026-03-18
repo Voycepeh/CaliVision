@@ -227,6 +227,162 @@ class ExportDurationResolutionTest {
         assertEquals("EXPORT_INPUT_VALIDATION_FAILED_RAW_MISSING_AND_DURATION_UNAVAILABLE", fatal.fatalReason)
     }
 
+
+
+    @Test
+    fun deepCopyOverlayTimelineForExportSurvivesLiveBufferMutation() {
+        val original = timelineOf(100L, 200L)
+        val copy = deepCopyOverlayTimelineForExport(original)
+
+        val mutated = original.copy(frames = emptyList())
+
+        assertEquals(0, mutated.frames.size)
+        assertEquals(2, copy.frames.size)
+        assertEquals(listOf(100L, 200L), copy.frames.map { it.timestampMs })
+    }
+
+    @Test
+    fun normalizeFrozenOverlayTimelineConvertsEpochTimestampsToSessionRelative() {
+        val sessionStart = 1_700_000_000_000L
+        val timeline = OverlayTimeline(
+            startedAtMs = sessionStart,
+            sampleIntervalMs = 80L,
+            frames = listOf(
+                timelineFrame(relativeTs = 120L, absoluteTs = sessionStart + 120L),
+                timelineFrame(relativeTs = 420L, absoluteTs = sessionStart + 420L),
+            ),
+        )
+
+        val normalized = normalizeFrozenOverlayTimelineToRelative(timeline)
+
+        assertEquals(0L, normalized.startedAtMs)
+        assertEquals(listOf(120L, 420L), normalized.frames.map { it.timestampMs })
+        assertEquals(listOf(120L, 420L), normalized.frames.map { it.relativeTimestampMs })
+    }
+
+
+    @Test
+    fun preflightFailsWhenSnapshotTimelineIsNotRelativeNormalized() {
+        val sessionStart = 1_700_000_000_000L
+        val snapshot = ExportSnapshot(
+            sessionId = 40L,
+            stopTimestampMs = sessionStart + 1500L,
+            rawUri = "file:///raw.mp4",
+            rawDurationMs = 1_500L,
+            rawDurationSource = "metadata_retriever",
+            overlayTimeline = OverlayTimeline(
+                startedAtMs = sessionStart,
+                sampleIntervalMs = 80L,
+                frames = listOf(
+                    timelineFrame(relativeTs = 120L, absoluteTs = sessionStart + 120L),
+                    timelineFrame(relativeTs = 450L, absoluteTs = sessionStart + 450L),
+                ),
+            ),
+            overlayTimelineUri = null,
+            overlayFrameCount = 2,
+        )
+
+        val preflight = prepareExportSnapshotInputs(
+            snapshot = snapshot,
+            overlayCaptureFrozen = true,
+            hasReadableRaw = true,
+            toleranceMs = 600L,
+            liveOverlayFrameCountAtFreeze = 2,
+        )
+
+        assertEquals("EXPORT_INPUT_VALIDATION_FAILED_TIMESTAMPS_NOT_NORMALIZED", preflight.fatalReason)
+    }
+
+
+    @Test
+    fun normalizeFrozenOverlayTimelineKeepsAlreadyValidRelativeTimestampsUnchanged() {
+        val sessionStart = 1_700_000_000_000L
+        val timeline = OverlayTimeline(
+            startedAtMs = sessionStart,
+            sampleIntervalMs = 80L,
+            frames = listOf(
+                timelineFrame(relativeTs = 300L, absoluteTs = sessionStart + 305L),
+                timelineFrame(relativeTs = 700L, absoluteTs = sessionStart + 710L),
+            ),
+        )
+
+        val normalized = normalizeFrozenOverlayTimelineToRelative(timeline)
+
+        assertEquals(listOf(300L, 700L), normalized.frames.map { it.relativeTimestampMs })
+        assertEquals(listOf(300L, 700L), normalized.frames.map { it.timestampMs })
+    }
+
+    @Test
+    fun normalizeFrozenOverlayTimelineFallsBackToDerivedRelativeWhenStoredRelativeLooksStale() {
+        val sessionStart = 1_700_000_000_000L
+        val timeline = OverlayTimeline(
+            startedAtMs = sessionStart,
+            sampleIntervalMs = 80L,
+            frames = listOf(
+                timelineFrame(relativeTs = 0L, absoluteTs = sessionStart + 250L),
+                timelineFrame(relativeTs = 10L, absoluteTs = sessionStart + 550L),
+            ),
+        )
+
+        val normalized = normalizeFrozenOverlayTimelineToRelative(timeline)
+
+        assertEquals(listOf(250L, 550L), normalized.frames.map { it.relativeTimestampMs })
+        assertEquals(listOf(250L, 550L), normalized.frames.map { it.timestampMs })
+    }
+
+    @Test
+    fun preflightUsesFrozenSnapshotAndDoesNotZeroValidOverlayWhenLiveBufferGrows() {
+        val snapshot = ExportSnapshot(
+            sessionId = 31L,
+            stopTimestampMs = 1000L,
+            rawUri = "file:///raw.mp4",
+            rawDurationMs = 1_000L,
+            rawDurationSource = "metadata_retriever",
+            overlayTimeline = timelineOf(100L, 400L, 900L),
+            overlayTimelineUri = null,
+            overlayFrameCount = 3,
+        )
+
+        val preflight = prepareExportSnapshotInputs(
+            snapshot = snapshot,
+            overlayCaptureFrozen = true,
+            hasReadableRaw = true,
+            toleranceMs = 100L,
+            liveOverlayFrameCountAtFreeze = 30,
+        )
+
+        assertNull(preflight.fatalReason)
+        assertEquals(3, preflight.snapshot.overlayTimeline.frames.size)
+        assertEquals(3, preflight.frozenOverlayFrameCount)
+        assertEquals(27, preflight.overlayFramesIgnoredAfterFreeze)
+    }
+
+    @Test
+    fun preflightAllowsExportWhenRawPersistsAndFrozenOverlayExists() {
+        val snapshot = ExportSnapshot(
+            sessionId = 32L,
+            stopTimestampMs = 1000L,
+            rawUri = "file:///raw.mp4",
+            rawDurationMs = 3_166L,
+            rawDurationSource = "metadata_retriever",
+            overlayTimeline = timelineOf(80L, 220L, 480L),
+            overlayTimelineUri = null,
+            overlayFrameCount = 3,
+        )
+
+        val preflight = prepareExportSnapshotInputs(
+            snapshot = snapshot,
+            overlayCaptureFrozen = true,
+            hasReadableRaw = true,
+            toleranceMs = 600L,
+            liveOverlayFrameCountAtFreeze = 3,
+        )
+
+        assertNull(preflight.fatalReason)
+        assertTrue(preflight.snapshot.overlayTimeline.frames.isNotEmpty())
+        assertEquals("metadata_retriever", preflight.snapshot.rawDurationSource)
+    }
+
     @Test
     fun callbackCanUpgradeFromCacheUriToPersistedBlobUri() {
         val cacheUri = "file:///cache/CameraX/transient_capture.mp4"
@@ -311,10 +467,8 @@ class ExportDurationResolutionTest {
         )
     }
 
-    
-
     @Test
-    fun preflightCanSurfaceFrozenNonEmptyBecomingEmpty() {
+    fun preflightFailsWhenAllNormalizedFramesAreOutOfRangeAfterTrim() {
         val snapshot = ExportSnapshot(
             sessionId = 23L,
             stopTimestampMs = 1000L,
@@ -334,11 +488,36 @@ class ExportDurationResolutionTest {
             liveOverlayFrameCountAtFreeze = 2,
         )
 
-        assertNull(preflight.fatalReason)
-        assertEquals(0, preflight.snapshot.overlayTimeline.frames.size)
-        assertEquals(2, preflight.overlayFramesIgnoredAfterFreeze)
+        assertEquals("EXPORT_INPUT_VALIDATION_FAILED_ALL_FRAMES_OUT_OF_RANGE_AFTER_NORMALIZATION", preflight.fatalReason)
+        assertEquals(2, preflight.snapshot.overlayTimeline.frames.size)
+        assertEquals(0, preflight.overlayFramesIgnoredAfterFreeze)
     }
-private fun timelineOf(vararg timestamps: Long): OverlayTimeline {
+
+    private fun timelineFrame(relativeTs: Long, absoluteTs: Long): OverlayTimelineFrame {
+        return OverlayTimelineFrame(
+            sessionId = 1L,
+            relativeTimestampMs = relativeTs,
+            absoluteVideoPtsUs = relativeTs * 1000L,
+            timestampMs = absoluteTs,
+            landmarks = emptyList(),
+            skeletonLines = emptyList(),
+            headPoint = null,
+            hipPoint = null,
+            idealLine = null,
+            alignmentAngles = emptyMap(),
+            visibilityFlags = emptyMap(),
+            drillMetadata = OverlayDrillMetadata(
+                sessionMode = com.inversioncoach.app.model.SessionMode.FREESTYLE,
+                drillCameraSide = null,
+                showSkeleton = true,
+                showIdealLine = true,
+                bodyVisible = true,
+                mirrorMode = false,
+            ),
+        )
+    }
+
+    private fun timelineOf(vararg timestamps: Long): OverlayTimeline {
         return OverlayTimeline(
             startedAtMs = 0L,
             sampleIntervalMs = 80L,
