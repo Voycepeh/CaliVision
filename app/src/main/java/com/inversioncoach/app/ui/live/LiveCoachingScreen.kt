@@ -195,9 +195,9 @@ fun LiveCoachingScreen(drillType: DrillType, options: LiveSessionOptions, onStop
         voiceCoach.speak(cue, volume = settings.audioVolume)
     }
 
-    LaunchedEffect(uiState.cameraPermissionGranted, uiState.cameraReady, uiState.startupState, settings.startupCountdownSeconds) {
+    LaunchedEffect(uiState.cameraPermissionGranted, uiState.cameraReady, settings.startupCountdownSeconds) {
         if (!uiState.cameraPermissionGranted || !uiState.cameraReady) return@LaunchedEffect
-        if (uiState.startupState != SessionStartupState.IDLE) return@LaunchedEffect
+        if (currentUiState.startupState != SessionStartupState.IDLE) return@LaunchedEffect
         val started = vm.beginStartupCountdown(settings.startupCountdownSeconds)
         if (!started) return@LaunchedEffect
         val countdownSeconds = settings.startupCountdownSeconds
