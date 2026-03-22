@@ -53,6 +53,7 @@ import com.inversioncoach.app.camera.CameraSessionManager
 import com.inversioncoach.app.coaching.VoiceCoach
 import com.inversioncoach.app.model.DrillType
 import com.inversioncoach.app.model.LiveSessionOptions
+import com.inversioncoach.app.model.SessionStartupState
 import com.inversioncoach.app.model.UserSettings
 import com.inversioncoach.app.model.SessionMode
 import com.inversioncoach.app.motion.DrillCatalog
@@ -104,6 +105,9 @@ fun LiveCoachingScreen(drillType: DrillType, options: LiveSessionOptions, onStop
     val voiceCoach = remember(context) { VoiceCoach(context) }
     val sessionRecorder = remember(context) { SessionRecorder(context) }
     val currentSessionTitle by rememberUpdatedState(newValue = vm.sessionTitle)
+    val currentUiState by rememberUpdatedState(newValue = uiState)
+    val currentAudioVolume by rememberUpdatedState(newValue = settings.audioVolume)
+    val voiceEnabled by rememberUpdatedState(newValue = options.voiceEnabled)
     val showDetailedStats = rememberSaveable { mutableStateOf(false) }
     val diagnosticsExpanded = rememberSaveable { mutableStateOf(false) }
     val clipboardManager = LocalClipboardManager.current
@@ -170,10 +174,11 @@ fun LiveCoachingScreen(drillType: DrillType, options: LiveSessionOptions, onStop
 
     DisposableEffect(Unit) {
         onDispose {
-            if (uiState.isRecording) {
+            if (currentUiState.isRecording) {
                 stopRecordingsAndPersist()
                 vm.setRecording(false)
             }
+            vm.cancelStartup()
             vm.finalizeSessionSilentlyIfActive()
             analyzer.close()
             analyzerExecutor.shutdown()
@@ -190,15 +195,69 @@ fun LiveCoachingScreen(drillType: DrillType, options: LiveSessionOptions, onStop
         voiceCoach.speak(cue, volume = settings.audioVolume)
     }
 
-    LaunchedEffect(options.recordingEnabled, uiState.cameraPermissionGranted, uiState.cameraReady, uiState.isRecording) {
+    LaunchedEffect(uiState.cameraPermissionGranted, uiState.cameraReady, uiState.startupState, settings.startupCountdownSeconds) {
+        if (!uiState.cameraPermissionGranted || !uiState.cameraReady) return@LaunchedEffect
+        if (uiState.startupState != SessionStartupState.IDLE) return@LaunchedEffect
+        val started = vm.beginStartupCountdown(settings.startupCountdownSeconds)
+        if (!started) return@LaunchedEffect
+        val countdownSeconds = settings.startupCountdownSeconds
+        if (countdownSeconds > 0) {
+            for (remaining in countdownSeconds downTo 1) {
+                if (currentUiState.startupState != SessionStartupState.COUNTDOWN) return@LaunchedEffect
+                vm.onSessionCountdownTick(remaining)
+                if (voiceEnabled && currentAudioVolume > 0f) {
+                    voiceCoach.speak(
+                        cue = com.inversioncoach.app.model.CoachingCue(
+                            id = "session_countdown_$remaining",
+                            text = remaining.toString(),
+                            severity = 0,
+                            generatedAtMs = System.currentTimeMillis(),
+                        ),
+                        volume = currentAudioVolume,
+                    )
+                }
+                kotlinx.coroutines.delay(1000L)
+                if (currentUiState.startupState != SessionStartupState.COUNTDOWN) return@LaunchedEffect
+            }
+        }
+        vm.onSessionCountdownTick(0)
+        if (!options.recordingEnabled) {
+            val activated = vm.activateSessionIfStartupReady()
+            if (!activated) return@LaunchedEffect
+            if (voiceEnabled && currentAudioVolume > 0f) {
+                voiceCoach.speak(
+                    cue = com.inversioncoach.app.model.CoachingCue(
+                        id = "session_initiated",
+                        text = "Session initiated.",
+                        severity = 0,
+                        generatedAtMs = System.currentTimeMillis(),
+                    ),
+                    volume = currentAudioVolume,
+                )
+            }
+        }
+    }
+
+    LaunchedEffect(
+        options.recordingEnabled,
+        uiState.cameraPermissionGranted,
+        uiState.cameraReady,
+        uiState.isRecording,
+        uiState.startupState,
+        uiState.sessionCountdownRemainingSeconds,
+    ) {
         if (!options.recordingEnabled) return@LaunchedEffect
         if (!uiState.cameraPermissionGranted || !uiState.cameraReady || uiState.isRecording) return@LaunchedEffect
+        if (uiState.startupState != SessionStartupState.COUNTDOWN) return@LaunchedEffect
+        if (uiState.sessionCountdownRemainingSeconds != 0) return@LaunchedEffect
 
         val capture = cameraManager.videoCapture()
         if (capture == null) {
             vm.onAnalyzerWarning("Recording unavailable until camera is ready")
             return@LaunchedEffect
         }
+        val activated = vm.activateSessionIfStartupReady()
+        if (!activated) return@LaunchedEffect
 
         sessionRecorder.startRecording(
             capture = capture,
@@ -216,6 +275,17 @@ fun LiveCoachingScreen(drillType: DrillType, options: LiveSessionOptions, onStop
             },
         )
         vm.setRecording(true)
+        if (voiceEnabled && currentAudioVolume > 0f) {
+            voiceCoach.speak(
+                cue = com.inversioncoach.app.model.CoachingCue(
+                    id = "session_initiated",
+                    text = "Session initiated.",
+                    severity = 0,
+                    generatedAtMs = System.currentTimeMillis(),
+                ),
+                volume = currentAudioVolume,
+            )
+        }
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -261,6 +331,7 @@ fun LiveCoachingScreen(drillType: DrillType, options: LiveSessionOptions, onStop
             sessionDurationMs = sessionDurationMs,
             trackingLabel = if (uiState.cameraReady) "Tracking ${uiState.smoothedAlignmentScore}%" else "Calibrating",
             phase = uiState.currentPhase.uppercase(),
+            countdownRemainingSeconds = uiState.sessionCountdownRemainingSeconds,
             warningMessage = when {
                 !uiState.cameraPermissionGranted -> "Camera permission required for live coaching."
                 uiState.cameraPermissionGranted && !uiState.cameraReady -> "Starting camera..."
@@ -316,6 +387,7 @@ fun LiveCoachingScreen(drillType: DrillType, options: LiveSessionOptions, onStop
                         vm.setRecording(false)
                         vm.stopSession(onStop)
                     } else {
+                        vm.cancelStartup()
                         vm.stopSession(onStop)
                     }
                 }) { Text("Stop") }
@@ -331,6 +403,7 @@ private fun TopHud(
     sessionDurationMs: Long,
     trackingLabel: String,
     phase: String,
+    countdownRemainingSeconds: Int?,
     warningMessage: String?,
     errorMessage: String?,
 ) {
@@ -364,6 +437,9 @@ private fun TopHud(
                     .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(999.dp))
                     .padding(horizontal = 8.dp, vertical = 6.dp),
             )
+        }
+        countdownRemainingSeconds?.takeIf { it > 0 }?.let { remaining ->
+            Text("Session starts in ${remaining}s", color = Color.Yellow, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         warningMessage?.let { Text(it, color = Color.Yellow, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis) }
         errorMessage?.let { Text(it, color = Color.Red, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis) }
