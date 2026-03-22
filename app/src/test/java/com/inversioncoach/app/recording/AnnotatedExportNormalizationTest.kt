@@ -36,7 +36,7 @@ class AnnotatedExportNormalizationTest {
         )
 
         assertTrue(transform.requiresAxisSwap)
-        assertEquals(90, transform.rotationDegrees)
+        assertEquals(270, transform.rotationDegrees)
         assertTrue(transform.outputHeight > transform.outputWidth)
     }
 
@@ -51,10 +51,10 @@ class AnnotatedExportNormalizationTest {
         )
         val rotated = mapOverlayPointToExportSpace(
             point = point,
-            transform = ExportTransform(rotationDegrees = 90, outputWidth = 720, outputHeight = 1280),
+            transform = ExportTransform(rotationDegrees = 270, outputWidth = 720, outputHeight = 1280),
         )
-        assertEquals(0.25f, rotated.x, 0.0001f)
-        assertEquals(0.25f, rotated.y, 0.0001f)
+        assertEquals(0.75f, rotated.x, 0.0001f)
+        assertEquals(0.75f, rotated.y, 0.0001f)
     }
 
     @Test
@@ -71,5 +71,45 @@ class AnnotatedExportNormalizationTest {
         )
         assertFalse(verification.passed)
         assertTrue(verification.failureDetail?.contains("output_duration_too_short") == true)
+    }
+
+    @Test
+    fun verificationFailsWhenOutputCarriesRotationMetadata() {
+        val verification = verifyExportedVideo(
+            sourceDurationMs = 11_000L,
+            output = OutputVideoMetadata(
+                durationMs = 11_000L,
+                width = 720,
+                height = 1280,
+                rotationDegrees = 90,
+            ),
+            expectedWidth = 720,
+            expectedHeight = 1280,
+            expectedRotationDegrees = 0,
+        )
+        assertFalse(verification.passed)
+        assertTrue(verification.failureDetail?.contains("output_rotation_mismatch") == true)
+    }
+
+    @Test
+    fun normalizedPointMappingMatchesOverlayPointMappingForUprightCompositionSpace() {
+        val overlayPoint = JointPoint(
+            name = "left_hip",
+            x = 0.3f,
+            y = 0.6f,
+            z = 0f,
+            visibility = 1f,
+        )
+        val transform = ExportTransform(rotationDegrees = 270, outputWidth = 720, outputHeight = 1280)
+
+        val mappedOverlay = mapOverlayPointToExportSpace(overlayPoint, transform)
+        val mappedNormalized = mapNormalizedPointToExportSpace(
+            x = overlayPoint.x,
+            y = overlayPoint.y,
+            rotationDegrees = transform.rotationDegrees,
+        )
+
+        assertEquals(mappedNormalized.first, mappedOverlay.x, 0.0001f)
+        assertEquals(mappedNormalized.second, mappedOverlay.y, 0.0001f)
     }
 }
