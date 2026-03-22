@@ -21,6 +21,7 @@ import com.inversioncoach.app.model.LiveSessionOptions
 import com.inversioncoach.app.model.sessionMode
 import com.inversioncoach.app.model.LiveSessionUiState
 import com.inversioncoach.app.model.SessionMode
+import com.inversioncoach.app.model.SessionStartupState
 import com.inversioncoach.app.model.PoseFrame
 import com.inversioncoach.app.model.RawPersistStatus
 import com.inversioncoach.app.model.RetainedAssetType
@@ -107,6 +108,8 @@ class LiveCoachingViewModel(
             drillType = drillType,
             sessionMode = sessionMode,
             isRecording = false,
+            startupState = SessionStartupState.IDLE,
+            sessionCountdownRemainingSeconds = null,
             showOverlay = options.showSkeletonOverlay,
             showIdealLine = options.showIdealLine,
             drillCameraSide = if (sessionMode == SessionMode.FREESTYLE) null else options.drillCameraSide,
@@ -169,6 +172,7 @@ class LiveCoachingViewModel(
     private var frozenOverlayTimeline: com.inversioncoach.app.recording.OverlayTimeline? = null
     private var activeSettings: UserSettings = UserSettings()
     private var sessionHadAnyVideo = false
+    private var startupCancelled = false
     private val drillConfig = DrillConfigs.byTypeOrNull(drillType)
     private val readinessEngine = drillConfig?.let { SharedReadinessEngine(drillType, it, options.drillCameraSide) }
     private val issueAggregator = IssueEventAggregator()
@@ -331,6 +335,15 @@ class LiveCoachingViewModel(
         val sideForAnalysis = readiness?.actualSide ?: options.drillCameraSide
         val frameForSession = if (sessionMode == SessionMode.FREESTYLE) frame else frame.filterForDrillSide(sideForAnalysis)
         val smoothed = smoother.smooth(frameForSession)
+        _smoothedFrame.value = smoothed
+        val freestyleViewMode = if (sessionMode == SessionMode.FREESTYLE) freestyleOrientationClassifier.classify(smoothed.joints) else FreestyleViewMode.UNKNOWN
+        _uiState.value = _uiState.value.copy(
+            confidence = smoothed.confidence,
+            freestyleViewMode = freestyleViewMode,
+        )
+        if (_uiState.value.startupState != SessionStartupState.ACTIVE) {
+            return
+        }
         val calibration = if (settings.alignmentStrictness.name == "CUSTOM") {
             UserCalibrationSettings(
                 strictness = settings.alignmentStrictness,
@@ -347,9 +360,7 @@ class LiveCoachingViewModel(
             UserCalibrationSettings(settings.alignmentStrictness)
         }
         val motionEligible = sessionMode == SessionMode.DRILL && (readiness?.timerEligible ?: false)
-        val freestyleViewMode = if (sessionMode == SessionMode.FREESTYLE) freestyleOrientationClassifier.classify(smoothed.joints) else FreestyleViewMode.UNKNOWN
         val motion = if (motionEligible) motionPipeline.analyze(frameForSession, settings.alignmentStrictness, calibration) else null
-        _smoothedFrame.value = smoothed
         if (!overlayCaptureFrozen && shouldCaptureOverlayFrame(smoothed.timestampMs)) {
             val overlayFrame = overlayStabilizer.stabilize(
                 frame = smoothed,
@@ -614,8 +625,69 @@ class LiveCoachingViewModel(
         _uiState.value = _uiState.value.copy(isRecording = isRecording)
     }
 
+    fun beginStartupCountdown(countdownSeconds: Int): Boolean {
+        if (_uiState.value.startupState != SessionStartupState.IDLE) return false
+        startupCancelled = false
+        _uiState.value = _uiState.value.copy(
+            startupState = SessionStartupState.COUNTDOWN,
+            sessionCountdownRemainingSeconds = if (countdownSeconds > 0) countdownSeconds else 0,
+        )
+        return true
+    }
+
+    fun onSessionCountdownTick(remainingSeconds: Int) {
+        if (_uiState.value.startupState != SessionStartupState.COUNTDOWN || startupCancelled) return
+        val boundedRemaining = remainingSeconds.coerceAtLeast(0)
+        _uiState.value = _uiState.value.copy(
+            sessionCountdownRemainingSeconds = boundedRemaining,
+        )
+    }
+
+    fun activateSessionIfStartupReady(): Boolean {
+        if (_uiState.value.startupState != SessionStartupState.COUNTDOWN || startupCancelled) return false
+        val initiatedAtMs = System.currentTimeMillis()
+        sessionStartedAtMs = initiatedAtMs
+        overlayFrames.clear()
+        overlayTimelineRecorder = OverlayTimelineRecorder(
+            startedAtMs = initiatedAtMs,
+            sampleIntervalMs = OVERLAY_TIMELINE_SAMPLE_INTERVAL_MS,
+        )
+        _uiState.value = _uiState.value.copy(
+            startupState = SessionStartupState.ACTIVE,
+            sessionCountdownRemainingSeconds = null,
+            warningMessage = null,
+        )
+        return true
+    }
+
+    fun cancelStartup() {
+        if (_uiState.value.startupState == SessionStartupState.ACTIVE) return
+        startupCancelled = true
+        _uiState.value = _uiState.value.copy(
+            startupState = SessionStartupState.CANCELLED,
+            sessionCountdownRemainingSeconds = null,
+            warningMessage = null,
+        )
+    }
+
     fun stopSession(onSessionFinalized: (SessionStopResult) -> Unit) {
         viewModelScope.launch {
+            if (_uiState.value.startupState != SessionStartupState.ACTIVE) {
+                cancelStartup()
+                val currentSessionId = sessionId
+                if (currentSessionId != null) {
+                    repository.deleteSession(currentSessionId)
+                }
+                onSessionFinalized(
+                    SessionStopResult(
+                        sessionId = currentSessionId ?: 0L,
+                        wasDiscardedForShortDuration = true,
+                        elapsedSessionMs = 0L,
+                        minSessionDurationSeconds = activeSettings.minSessionDurationSeconds,
+                    ),
+                )
+                return@launch
+            }
             pendingStopCallbacks += onSessionFinalized
             if (isSessionFinalizing) return@launch
             val activeSessionId = sessionId
@@ -849,6 +921,14 @@ class LiveCoachingViewModel(
     }
 
     fun finalizeSessionSilentlyIfActive() {
+        if (_uiState.value.startupState != SessionStartupState.ACTIVE) {
+            cancelStartup()
+            val staleSessionId = sessionId
+            if (staleSessionId != null) {
+                viewModelScope.launch { repository.deleteSession(staleSessionId) }
+            }
+            return
+        }
         stopSession { }
     }
 
@@ -896,8 +976,6 @@ class LiveCoachingViewModel(
                     topImprovementFocus = "pending",
                 ),
             )
-            overlayTimelineRecorder = OverlayTimelineRecorder(startedAtMs = now, sampleIntervalMs = OVERLAY_TIMELINE_SAMPLE_INTERVAL_MS)
-            SessionDiagnostics.log("overlay_timeline_recorder_start sampleIntervalMs=$OVERLAY_TIMELINE_SAMPLE_INTERVAL_MS;startedAtMs=$now")
             SessionDiagnostics.logStructured(
                 event = "recording_start_timestamp_captured",
                 sessionId = newSessionId,
