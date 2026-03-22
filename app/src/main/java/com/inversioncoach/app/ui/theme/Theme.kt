@@ -6,33 +6,35 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-private val InversionCoachDarkColors = darkColorScheme(
-    primary = Color(0xFF66F2FF),
-    onPrimary = Color(0xFF002A36),
-    primaryContainer = Color(0xFF0E3D57),
-    onPrimaryContainer = Color(0xFFD7FBFF),
-    secondary = Color(0xFF9DEBFF),
-    onSecondary = Color(0xFF062B3A),
-    secondaryContainer = Color(0xFF11344A),
-    onSecondaryContainer = Color(0xFFD7F5FF),
-    tertiary = Color(0xFF7EE6FF),
-    onTertiary = Color(0xFF032B37),
-    background = Color(0xFF020B1C),
-    onBackground = Color(0xFFF3FBFF),
-    surface = Color(0xFF071427),
-    onSurface = Color(0xFFF3FBFF),
-    surfaceVariant = Color(0xFF10263A),
-    onSurfaceVariant = Color(0xFFAFC9D8),
-    outline = Color(0xFF2A5972),
-    outlineVariant = Color(0xFF17384D),
-    error = Color(0xFFFF6B7A),
-    onError = Color(0xFF3B0910),
+private val AppColorScheme = darkColorScheme(
+    primary = Color(0xFF67E8F9),
+    onPrimary = Color(0xFF062B38),
+    primaryContainer = Color(0xFF123E52),
+    onPrimaryContainer = Color(0xFFE8FCFF),
+
+    secondary = Color(0xFF7DD3FC),
+    onSecondary = Color(0xFF082535),
+    secondaryContainer = Color(0xFF103246),
+    onSecondaryContainer = Color(0xFFEAF8FF),
+
+    background = Color(0xFF020B16),
+    onBackground = Color(0xFFF4FBFF),
+    surface = Color(0xFF06111F),
+    onSurface = Color(0xFFF4FBFF),
+    surfaceVariant = Color(0xFF0D2234),
+    onSurfaceVariant = Color(0xFFB8D4E3),
+
+    outline = Color(0xFF3C5A6B),
+    outlineVariant = Color(0xFF233847),
+
+    error = Color(0xFFFF7A7A),
+    onError = Color(0xFF2B0000)
 )
 
 @Composable
 fun InversionCoachTheme(content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = InversionCoachDarkColors,
+        colorScheme = AppColorScheme,
         typography = Typography(),
         content = content,
     )
