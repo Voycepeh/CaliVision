@@ -31,44 +31,70 @@ internal data class OutputVerificationResult(
     val failureDetail: String? = null,
 )
 
+internal fun normalizedRotationDegrees(rawRotationDegrees: Int): Int = ((rawRotationDegrees % 360) + 360) % 360
+
+internal fun sourceToUprightRotationDegrees(rawRotationDegrees: Int): Int = when (normalizedRotationDegrees(rawRotationDegrees)) {
+    90 -> 270
+    270 -> 90
+    else -> normalizedRotationDegrees(rawRotationDegrees)
+}
+
 internal fun buildExportTransform(
     source: SourceVideoMetadata,
     preset: ExportPreset,
 ): ExportTransform {
-    val normalizedRotation = ((source.rotationDegrees % 360) + 360) % 360
-    val orientedWidth = if (normalizedRotation == 90 || normalizedRotation == 270) source.height else source.width
-    val orientedHeight = if (normalizedRotation == 90 || normalizedRotation == 270) source.width else source.height
+    val sourceRotation = normalizedRotationDegrees(source.rotationDegrees)
+    val orientedWidth = if (sourceRotation == 90 || sourceRotation == 270) source.height else source.width
+    val orientedHeight = if (sourceRotation == 90 || sourceRotation == 270) source.width else source.height
     val scale = (preset.targetHeight.toFloat() / orientedHeight.toFloat()).coerceAtMost(1f)
     val outputWidth = ((orientedWidth * scale) / 2f).roundToInt().coerceAtLeast(2) * 2
     val outputHeight = ((orientedHeight * scale) / 2f).roundToInt().coerceAtLeast(2) * 2
     return ExportTransform(
-        rotationDegrees = normalizedRotation,
+        rotationDegrees = sourceToUprightRotationDegrees(source.rotationDegrees),
         outputWidth = outputWidth,
         outputHeight = outputHeight,
     )
 }
 
 internal fun mapOverlayPointToExportSpace(point: JointPoint, transform: ExportTransform): JointPoint {
-    val (mappedX, mappedY) = when (transform.rotationDegrees) {
-        90 -> 1f - point.y to point.x
-        180 -> 1f - point.x to 1f - point.y
-        270 -> point.y to 1f - point.x
-        else -> point.x to point.y
-    }
+    val (mappedX, mappedY) = mapNormalizedPointToExportSpace(point.x, point.y, transform.rotationDegrees)
     return point.copy(
         x = mappedX.coerceIn(0f, 1f),
         y = mappedY.coerceIn(0f, 1f),
     )
 }
 
+internal fun mapNormalizedPointToExportSpace(
+    x: Float,
+    y: Float,
+    rotationDegrees: Int,
+): Pair<Float, Float> = when (normalizedRotationDegrees(rotationDegrees)) {
+    90 -> 1f - y to x
+    180 -> 1f - x to 1f - y
+    270 -> y to 1f - x
+    else -> x to y
+}
+
 internal fun verifyExportedVideo(
     sourceDurationMs: Long,
     output: OutputVideoMetadata?,
     toleranceMs: Long = 500L,
+    expectedWidth: Int? = null,
+    expectedHeight: Int? = null,
+    expectedRotationDegrees: Int = 0,
 ): OutputVerificationResult {
     if (output == null) return OutputVerificationResult(false, "output_metadata_unreadable")
     if (output.durationMs <= 0L) return OutputVerificationResult(false, "output_duration_non_positive")
     if (output.width <= 0 || output.height <= 0) return OutputVerificationResult(false, "output_dimensions_invalid")
+    if (expectedWidth != null && output.width != expectedWidth) {
+        return OutputVerificationResult(false, "output_width_mismatch expected=$expectedWidth actual=${output.width}")
+    }
+    if (expectedHeight != null && output.height != expectedHeight) {
+        return OutputVerificationResult(false, "output_height_mismatch expected=$expectedHeight actual=${output.height}")
+    }
+    if (output.rotationDegrees != expectedRotationDegrees) {
+        return OutputVerificationResult(false, "output_rotation_mismatch expected=$expectedRotationDegrees actual=${output.rotationDegrees}")
+    }
     if (sourceDurationMs > 0L) {
         val deltaMs = abs(sourceDurationMs - output.durationMs)
         if (output.durationMs + toleranceMs < sourceDurationMs) {
