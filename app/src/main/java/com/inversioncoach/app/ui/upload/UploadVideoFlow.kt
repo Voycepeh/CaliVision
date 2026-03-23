@@ -74,6 +74,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.coroutineContext
 
 private const val TAG = "UploadVideoFlow"
 
@@ -300,6 +301,7 @@ class DefaultUploadVideoAnalysisRunner(
             logStage("ANALYZING_UPLOADED_VIDEO", "analysis_started=true")
             onProgress(UploadProgress(currentStage, 0.25f, detail = "Analyzing uploaded frames"))
             val analysisStart = System.currentTimeMillis()
+            val progressScope = CoroutineScope(coroutineContext)
             var lastAnalysisPercent = 25
             val analysis = analyzer.analyze(
                 Uri.parse(persistedRawUri),
@@ -313,13 +315,15 @@ class DefaultUploadVideoAnalysisRunner(
                         val percent = (25f + progressWindow).toInt().coerceIn(25, 60)
                         if (percent > lastAnalysisPercent) {
                             lastAnalysisPercent = percent
-                            repository.updateAnnotatedExportProgress(
-                                sessionId = sessionId,
-                                stage = AnnotatedExportStage.PROCESSING,
-                                percent = percent,
-                                etaSeconds = null,
-                                elapsedMs = System.currentTimeMillis() - startedAt,
-                            )
+                            progressScope.launch {
+                                repository.updateAnnotatedExportProgress(
+                                    sessionId = sessionId,
+                                    stage = AnnotatedExportStage.DECODING_SOURCE,
+                                    percent = percent,
+                                    etaSeconds = null,
+                                    elapsedMs = System.currentTimeMillis() - startedAt,
+                                )
+                            }
                             onProgress(
                                 UploadProgress(
                                     currentStage,
