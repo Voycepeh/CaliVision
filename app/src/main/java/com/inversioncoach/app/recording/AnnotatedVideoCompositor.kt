@@ -31,6 +31,7 @@ import com.inversioncoach.app.overlay.OverlayDrawingFrame
 import com.inversioncoach.app.overlay.OverlayFrameRenderer
 import com.inversioncoach.app.overlay.OverlayGeometry
 import com.inversioncoach.app.overlay.OverlayRenderModel
+import com.inversioncoach.app.pose.PoseScaleMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -363,6 +364,11 @@ class AnnotatedVideoCompositor(
             model = model,
             drawSkeleton = overlay.showSkeleton,
             drawIdealLine = overlay.showIdealLine,
+            sourceWidth = overlay.sourceWidth,
+            sourceHeight = overlay.sourceHeight,
+            sourceRotationDegrees = overlay.sourceRotationDegrees,
+            mirrored = overlay.mirrorMode,
+            scaleMode = overlay.scaleMode,
         )
     }
 
@@ -482,6 +488,11 @@ class AnnotatedVideoCompositor(
         val model: OverlayRenderModel? = null,
         val drawSkeleton: Boolean = false,
         val drawIdealLine: Boolean = false,
+        val sourceWidth: Int = 0,
+        val sourceHeight: Int = 0,
+        val sourceRotationDegrees: Int = 0,
+        val mirrored: Boolean = false,
+        val scaleMode: PoseScaleMode = PoseScaleMode.FIT,
     )
 
     private class CompositorInitException(val reason: AnnotatedExportFailureReason, message: String) : IllegalStateException(message)
@@ -698,6 +709,11 @@ class AnnotatedVideoCompositor(
                 frame = OverlayDrawingFrame(
                     drawSkeleton = instruction.drawSkeleton,
                     drawIdealLine = instruction.drawIdealLine,
+                    sourceWidth = instruction.sourceWidth,
+                    sourceHeight = instruction.sourceHeight,
+                    sourceRotationDegrees = instruction.sourceRotationDegrees,
+                    mirrored = instruction.mirrored,
+                    scaleMode = instruction.scaleMode,
                 ),
             )
         }

@@ -4,6 +4,7 @@ import com.inversioncoach.app.model.JointPoint
 import com.inversioncoach.app.model.SessionMode
 import com.inversioncoach.app.overlay.DrillCameraSide
 import com.inversioncoach.app.overlay.FreestyleViewMode
+import com.inversioncoach.app.pose.PoseScaleMode
 
 /**
  * Lightweight timeline payload used to reconstruct overlays for post-session video rendering.
@@ -25,6 +26,8 @@ data class OverlayTimelineFrame(
     val confidence: Float = 0f,
     val captureWidth: Int? = null,
     val captureHeight: Int? = null,
+    val captureRotationDegrees: Int? = null,
+    val scaleMode: PoseScaleMode = PoseScaleMode.FIT,
     val sourceFrameIndex: Long? = null,
 )
 
@@ -71,6 +74,10 @@ fun AnnotatedOverlayFrame.toTimelineFrame(sessionId: Long, sessionStartedAtMs: L
             bodyVisible = bodyVisible,
             mirrorMode = mirrorMode,
         ),
+        captureWidth = sourceWidth.takeIf { it > 0 },
+        captureHeight = sourceHeight.takeIf { it > 0 },
+        captureRotationDegrees = sourceRotationDegrees,
+        scaleMode = scaleMode,
     )
 }
 
@@ -86,4 +93,8 @@ fun OverlayTimelineFrame.toAnnotatedOverlayFrame(): AnnotatedOverlayFrame = Anno
     showSkeleton = drillMetadata.showSkeleton,
     showIdealLine = drillMetadata.showIdealLine,
     mirrorMode = drillMetadata.mirrorMode,
+    sourceWidth = captureWidth ?: 0,
+    sourceHeight = captureHeight ?: 0,
+    sourceRotationDegrees = captureRotationDegrees ?: 0,
+    scaleMode = scaleMode,
 )

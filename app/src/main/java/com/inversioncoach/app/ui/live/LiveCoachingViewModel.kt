@@ -36,6 +36,7 @@ import com.inversioncoach.app.overlay.DrillCameraSide
 import com.inversioncoach.app.overlay.FreestyleOrientationClassifier
 import com.inversioncoach.app.overlay.FreestyleViewMode
 import com.inversioncoach.app.pose.PoseSmoothingEngine
+import com.inversioncoach.app.pose.PoseScaleMode
 import com.inversioncoach.app.pose.PoseValidationAndCorrectionEngine
 import com.inversioncoach.app.recording.MediaVerificationHelper
 import com.inversioncoach.app.recording.MediaVerificationResult
@@ -384,6 +385,7 @@ class LiveCoachingViewModel(
                 showIdealLine = options.showIdealLine,
                 showSkeleton = options.showSkeletonOverlay,
                 freestyleViewMode = freestyleViewMode,
+                scaleMode = PoseScaleMode.FILL,
             )
             overlayFrames += overlayFrame
             if (overlayTimelineRecorder == null && sessionStartedAtMs > 0L) {
