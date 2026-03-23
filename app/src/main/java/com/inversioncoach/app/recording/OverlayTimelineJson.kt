@@ -4,6 +4,7 @@ import com.inversioncoach.app.model.JointPoint
 import com.inversioncoach.app.model.SessionMode
 import com.inversioncoach.app.overlay.DrillCameraSide
 import com.inversioncoach.app.overlay.FreestyleViewMode
+import com.inversioncoach.app.pose.PoseScaleMode
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -21,6 +22,8 @@ object OverlayTimelineJson {
                     put("timestampMs", frame.timestampMs)
                     put("captureWidth", frame.captureWidth)
                     put("captureHeight", frame.captureHeight)
+                    put("captureRotationDegrees", frame.captureRotationDegrees)
+                    put("scaleMode", frame.scaleMode.name)
                     put("sourceFrameIndex", frame.sourceFrameIndex)
                     put("confidence", frame.confidence)
                     put("landmarks", encodeJoints(frame.landmarks))
@@ -57,6 +60,11 @@ object OverlayTimelineJson {
                         timestampMs = frame.optLong("timestampMs", obj.optLong("startedAtMs") + relativeTimestampMs),
                         captureWidth = if (frame.has("captureWidth") && !frame.isNull("captureWidth")) frame.optInt("captureWidth") else null,
                         captureHeight = if (frame.has("captureHeight") && !frame.isNull("captureHeight")) frame.optInt("captureHeight") else null,
+                        captureRotationDegrees = if (frame.has("captureRotationDegrees") && !frame.isNull("captureRotationDegrees")) frame.optInt("captureRotationDegrees") else null,
+                        scaleMode = frame.optString("scaleMode")
+                            .takeIf { it.isNotBlank() }
+                            ?.let { mode -> runCatching { PoseScaleMode.valueOf(mode) }.getOrDefault(PoseScaleMode.FIT) }
+                            ?: PoseScaleMode.FIT,
                         sourceFrameIndex = if (frame.has("sourceFrameIndex") && !frame.isNull("sourceFrameIndex")) frame.optLong("sourceFrameIndex") else null,
                         confidence = frame.optDouble("confidence", 0.0).toFloat(),
                         landmarks = decodeJoints(frame.optJSONArray("landmarks")),

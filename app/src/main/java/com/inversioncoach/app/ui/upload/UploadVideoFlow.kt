@@ -62,6 +62,7 @@ import com.inversioncoach.app.storage.ServiceLocator
 import com.inversioncoach.app.storage.repository.SessionRepository
 import com.inversioncoach.app.ui.components.ScaffoldedScreen
 import com.inversioncoach.app.ui.live.SessionDiagnostics
+import com.inversioncoach.app.pose.PoseScaleMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CoroutineScope
@@ -170,6 +171,7 @@ class DefaultUploadVideoAnalysisRunner(
         val durationMs: Long,
         val width: Int,
         val height: Int,
+        val rotationDegrees: Int,
     )
 
     override suspend fun run(
@@ -546,6 +548,10 @@ class DefaultUploadVideoAnalysisRunner(
                     showSkeleton = true,
                     showIdealLine = true,
                     mirrorMode = false,
+                    sourceWidth = metadata.width,
+                    sourceHeight = metadata.height,
+                    sourceRotationDegrees = metadata.rotationDegrees,
+                    scaleMode = PoseScaleMode.FIT,
                 )
             }
 
@@ -841,6 +847,7 @@ class DefaultUploadVideoAnalysisRunner(
                 durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L,
                 width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0,
                 height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0,
+                rotationDegrees = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0,
             )
         } finally {
             runCatching { retriever.release() }

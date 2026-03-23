@@ -2,6 +2,7 @@ package com.inversioncoach.app.recording
 
 import com.inversioncoach.app.model.SessionMode
 import com.inversioncoach.app.overlay.DrillCameraSide
+import com.inversioncoach.app.pose.PoseScaleMode
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -26,6 +27,10 @@ class OverlayTimelineJsonTest {
                     alignmentAngles = mapOf("hip" to 12.5f),
                     visibilityFlags = mapOf("bodyVisible" to true),
                     confidence = 0.8f,
+                    captureWidth = 720,
+                    captureHeight = 1280,
+                    captureRotationDegrees = 90,
+                    scaleMode = PoseScaleMode.FILL,
                     drillMetadata = OverlayDrillMetadata(
                         sessionMode = SessionMode.DRILL,
                         drillCameraSide = DrillCameraSide.LEFT,
@@ -44,5 +49,9 @@ class OverlayTimelineJsonTest {
         assertEquals(20L, decoded.frames.first().relativeTimestampMs)
         assertEquals(120L, decoded.frames.first().timestampMs)
         assertEquals(12.5f, decoded.frames.first().alignmentAngles["hip"])
+        assertEquals(720, decoded.frames.first().captureWidth)
+        assertEquals(1280, decoded.frames.first().captureHeight)
+        assertEquals(90, decoded.frames.first().captureRotationDegrees)
+        assertEquals(PoseScaleMode.FILL, decoded.frames.first().scaleMode)
     }
 }
