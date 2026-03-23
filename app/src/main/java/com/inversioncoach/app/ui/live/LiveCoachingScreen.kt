@@ -61,6 +61,7 @@ import com.inversioncoach.app.motion.RepMode
 import com.inversioncoach.app.overlay.FreestyleViewMode
 import com.inversioncoach.app.overlay.OverlayRenderer
 import com.inversioncoach.app.pose.PoseAnalyzer
+import com.inversioncoach.app.pose.PoseScaleMode
 import com.inversioncoach.app.recording.SessionRecorder
 import com.inversioncoach.app.recording.AnnotatedExportPipeline
 import com.inversioncoach.app.recording.AnnotatedVideoCompositor
@@ -269,7 +270,7 @@ fun LiveCoachingScreen(drillType: DrillType, options: LiveSessionOptions, onStop
                 modifier = Modifier.fillMaxSize(),
                 factory = { ctx ->
                     PreviewView(ctx).apply {
-                        scaleType = ScaleType.FIT_CENTER
+                        scaleType = ScaleType.FILL_CENTER
                         post {
                             cameraManager.bind(lifecycleOwner, this, analyzer, options.zoomOutCamera) { ready, error ->
                                 vm.onCameraReady(ready, error)
@@ -293,6 +294,7 @@ fun LiveCoachingScreen(drillType: DrillType, options: LiveSessionOptions, onStop
                     cueText = if (uiState.sessionMode == SessionMode.FREESTYLE) "" else uiState.currentCue,
                     drillCameraSide = options.drillCameraSide,
                     freestyleViewMode = uiState.freestyleViewMode,
+                    scaleMode = PoseScaleMode.FILL,
                 )
             }
         }

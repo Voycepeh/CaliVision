@@ -2,6 +2,8 @@ package com.inversioncoach.app.overlay
 
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.util.Log
+import androidx.compose.ui.geometry.Rect
 import com.inversioncoach.app.pose.PoseCoordinateMapper
 import com.inversioncoach.app.pose.PoseProjectionInput
 import com.inversioncoach.app.pose.PoseScaleMode
@@ -13,9 +15,13 @@ data class OverlayDrawingFrame(
     val sourceHeight: Int = 0,
     val sourceRotationDegrees: Int = 0,
     val mirrored: Boolean = false,
+    val previewContentRect: Rect? = null,
+    val scaleMode: PoseScaleMode = PoseScaleMode.FIT,
+    val enableProjectionDiagnostics: Boolean = false,
 )
 
 object OverlayFrameRenderer {
+    private const val TAG = "OverlayFrameRenderer"
     private val mapper = PoseCoordinateMapper()
     private val skeletonPaint = Paint().apply {
         color = 0xFF7CF0A9.toInt()
@@ -49,15 +55,24 @@ object OverlayFrameRenderer {
                 sourceHeight = frame.sourceHeight.coerceAtLeast(1),
                 previewWidth = width.toFloat(),
                 previewHeight = height.toFloat(),
+                previewContentRect = frame.previewContentRect,
                 rotationDegrees = frame.sourceRotationDegrees,
                 mirrored = frame.mirrored,
-                scaleMode = PoseScaleMode.FIT,
+                scaleMode = frame.scaleMode,
             )
+            var minX = Float.POSITIVE_INFINITY
+            var minY = Float.POSITIVE_INFINITY
+            var maxX = Float.NEGATIVE_INFINITY
+            var maxY = Float.NEGATIVE_INFINITY
             model.connections.forEach { (from, to) ->
                 val start = model.joints.firstOrNull { it.name == from } ?: return@forEach
                 val end = model.joints.firstOrNull { it.name == to } ?: return@forEach
                 val startMapped = mapper.map(start.x, start.y, projection)
                 val endMapped = mapper.map(end.x, end.y, projection)
+                minX = minOf(minX, startMapped.x, endMapped.x)
+                minY = minOf(minY, startMapped.y, endMapped.y)
+                maxX = maxOf(maxX, startMapped.x, endMapped.x)
+                maxY = maxOf(maxY, startMapped.y, endMapped.y)
                 canvas.drawLine(
                     startMapped.x,
                     startMapped.y,
@@ -72,11 +87,25 @@ object OverlayFrameRenderer {
                 val alphaColor = style.color.copy(alpha = style.color.alpha * joint.visibility.coerceIn(0.2f, 1f))
                 jointFillPaint.color = alphaColor.toArgbCompat()
                 val mapped = mapper.map(joint.x, joint.y, projection)
+                minX = minOf(minX, mapped.x)
+                minY = minOf(minY, mapped.y)
+                maxX = maxOf(maxX, mapped.x)
+                maxY = maxOf(maxY, mapped.y)
                 canvas.drawCircle(
                     mapped.x,
                     mapped.y,
                     style.radius,
                     jointFillPaint,
+                )
+            }
+            if (frame.enableProjectionDiagnostics && model.joints.isNotEmpty()) {
+                val diagnostics = mapper.diagnostics(projection)
+                Log.d(
+                    TAG,
+                    "overlay_projection canvas=0,0,$width,$height contentRect=${frame.previewContentRect ?: Rect(0f, 0f, width.toFloat(), height.toFloat())} " +
+                        "effectiveRect=${diagnostics.contentRect} scaleMode=${frame.scaleMode} " +
+                        "skeletonBounds=[$minX,$minY,$maxX,$maxY] source=${frame.sourceWidth}x${frame.sourceHeight} " +
+                        "rotation=${frame.sourceRotationDegrees} mirrored=${frame.mirrored}",
                 )
             }
         }
@@ -87,9 +116,10 @@ object OverlayFrameRenderer {
                 sourceHeight = frame.sourceHeight.coerceAtLeast(1),
                 previewWidth = width.toFloat(),
                 previewHeight = height.toFloat(),
+                previewContentRect = frame.previewContentRect,
                 rotationDegrees = frame.sourceRotationDegrees,
                 mirrored = frame.mirrored,
-                scaleMode = PoseScaleMode.FIT,
+                scaleMode = frame.scaleMode,
             )
             val (lineStart, lineEnd) = model.idealLine
             val mappedStart = mapper.map(lineStart.x, lineStart.y, projection)

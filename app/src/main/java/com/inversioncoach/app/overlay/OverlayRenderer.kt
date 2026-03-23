@@ -5,6 +5,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.nativeCanvas
@@ -13,6 +14,7 @@ import com.inversioncoach.app.model.AngleDebugMetric
 import com.inversioncoach.app.model.DrillType
 import com.inversioncoach.app.model.SessionMode
 import com.inversioncoach.app.model.SmoothedPoseFrame
+import com.inversioncoach.app.pose.PoseScaleMode
 
 @Composable
 fun OverlayRenderer(
@@ -29,9 +31,21 @@ fun OverlayRenderer(
     cueText: String = "",
     drillCameraSide: DrillCameraSide = DrillCameraSide.LEFT,
     freestyleViewMode: FreestyleViewMode = FreestyleViewMode.UNKNOWN,
+    scaleMode: PoseScaleMode = PoseScaleMode.FILL,
 ) {
     Canvas(modifier = modifier) {
         val joints = frame?.joints.orEmpty()
+        val sourceWidth = frame?.analysisWidth ?: 0
+        val sourceHeight = frame?.analysisHeight ?: 0
+        val rotation = frame?.analysisRotationDegrees ?: 0
+        val previewContentRect = computePreviewContentRect(
+            canvasWidth = size.width,
+            canvasHeight = size.height,
+            sourceWidth = sourceWidth,
+            sourceHeight = sourceHeight,
+            rotationDegrees = rotation,
+            scaleMode = scaleMode,
+        )
         val model = OverlayGeometry.build(drillType, sessionMode, joints, drillCameraSide, freestyleViewMode)
         OverlayFrameRenderer.drawAndroid(
             canvas = drawContext.canvas.nativeCanvas,
@@ -41,8 +55,13 @@ fun OverlayRenderer(
             frame = OverlayDrawingFrame(
                 drawSkeleton = joints.isNotEmpty(),
                 drawIdealLine = showIdealLine,
-                // Live analyzer joints are already normalized into preview orientation,
-                // so overlay projection must stay in neutral mode here.
+                sourceWidth = sourceWidth,
+                sourceHeight = sourceHeight,
+                sourceRotationDegrees = rotation,
+                mirrored = frame?.mirrored ?: false,
+                previewContentRect = previewContentRect,
+                scaleMode = scaleMode,
+                enableProjectionDiagnostics = showDebugOverlay,
             ),
         )
 
@@ -51,6 +70,42 @@ fun OverlayRenderer(
             renderAngleDebug(debugAngles)
             renderFaultAndPhaseDebug(currentPhase, activeFault, cueText)
         }
+    }
+}
+
+private fun computePreviewContentRect(
+    canvasWidth: Float,
+    canvasHeight: Float,
+    sourceWidth: Int,
+    sourceHeight: Int,
+    rotationDegrees: Int,
+    scaleMode: PoseScaleMode,
+): Rect {
+    val container = Rect(0f, 0f, canvasWidth, canvasHeight)
+    if (sourceWidth <= 0 || sourceHeight <= 0 || canvasWidth <= 0f || canvasHeight <= 0f) {
+        return container
+    }
+    if (scaleMode == PoseScaleMode.FILL) {
+        return container
+    }
+    val normalizedRotation = ((rotationDegrees % 360) + 360) % 360
+    val rotated = normalizedRotation == 90 || normalizedRotation == 270
+    val effectiveSourceWidth = if (rotated) sourceHeight.toFloat() else sourceWidth.toFloat()
+    val effectiveSourceHeight = if (rotated) sourceWidth.toFloat() else sourceHeight.toFloat()
+    if (effectiveSourceWidth <= 0f || effectiveSourceHeight <= 0f) {
+        return container
+    }
+
+    val sourceAspect = effectiveSourceWidth / effectiveSourceHeight
+    val canvasAspect = canvasWidth / canvasHeight
+    return if (sourceAspect > canvasAspect) {
+        val contentHeight = canvasWidth / sourceAspect
+        val top = (canvasHeight - contentHeight) / 2f
+        Rect(0f, top, canvasWidth, top + contentHeight)
+    } else {
+        val contentWidth = canvasHeight * sourceAspect
+        val left = (canvasWidth - contentWidth) / 2f
+        Rect(left, 0f, left + contentWidth, canvasHeight)
     }
 }
 
