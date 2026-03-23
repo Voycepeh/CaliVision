@@ -349,7 +349,7 @@ class AnnotatedVideoCompositor(
         overlay: AnnotatedOverlayFrame?,
         drillType: DrillType,
         drillCameraSide: DrillCameraSide,
-        private val transform: ExportTransform,
+        transform: ExportTransform,
     ): RenderInstruction {
         if (overlay == null) return RenderInstruction()
         val joints = overlay.smoothedLandmarks.ifEmpty { overlay.landmarks }
