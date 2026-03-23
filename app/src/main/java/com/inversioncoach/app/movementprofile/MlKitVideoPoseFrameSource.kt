@@ -18,6 +18,9 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
+import kotlin.math.roundToLong
+import kotlin.system.measureNanoTime
 
 private const val TAG = "UploadPoseFrameSource"
 private const val MAX_ANALYSIS_DIMENSION = 720
@@ -33,11 +36,15 @@ class MlKitVideoPoseFrameSource(
         val workerCount: Int,
         val maxQueueBacklog: Int,
         val averageWorkerActive: Double,
+        val averageDecodeMs: Double,
+        val maxDecodeMs: Long,
+        val averageInferenceMs: Double,
+        val maxInferenceMs: Long,
     )
 
     private val boundedWorkerCount = workerCount.coerceIn(1, 2)
     @Volatile
-    var lastDecodeTelemetry: DecodeTelemetry = DecodeTelemetry(0, boundedWorkerCount, 0, 0.0)
+    var lastDecodeTelemetry: DecodeTelemetry = DecodeTelemetry(0, boundedWorkerCount, 0, 0.0, 0.0, 0L, 0.0, 0L)
         private set
 
     override fun decode(videoUri: Uri): Sequence<PoseFrame> = decode(videoUri, observer = AnalysisProgressObserver { })
@@ -56,6 +63,9 @@ class MlKitVideoPoseFrameSource(
                 }
                 val intervalMs = (1000f / sampleFps.coerceAtLeast(1)).toLong().coerceAtLeast(16L)
                 val estimatedTotalFrames = (durationMs / intervalMs).toInt().coerceAtLeast(1) + 1
+                val sourceWidth = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
+                val sourceHeight = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
+                val decodeTarget = computeDecodeTargetDimensions(sourceWidth, sourceHeight)
                 Log.i(TAG, "decode_loop_start uri=$videoUri durationMs=$durationMs intervalMs=$intervalMs estimatedTotalFrames=$estimatedTotalFrames")
                 observer.onProgress(
                     AnalysisProgressEvent(
@@ -74,6 +84,10 @@ class MlKitVideoPoseFrameSource(
                 val activeWorkers = AtomicInteger(0)
                 var activeSamples = 0L
                 var activeTicks = 0
+                val totalDecodeNanos = AtomicLong(0L)
+                val maxDecodeNanos = AtomicLong(0L)
+                val totalInferenceNanos = AtomicLong(0L)
+                val maxInferenceNanos = AtomicLong(0L)
 
                 coroutineScope {
                     val workers = (0 until boundedWorkerCount).map {
@@ -87,7 +101,15 @@ class MlKitVideoPoseFrameSource(
                                 for (packet in frameQueue) {
                                     activeWorkers.incrementAndGet()
                                     try {
-                                        val poseFrame = mapBitmapToPoseFrame(packet.bitmap, detector, packet.index, packet.timestampMs)
+                                        var poseFrame: PoseFrame
+                                        val inferenceNanos = measureNanoTime {
+                                            poseFrame = mapBitmapToPoseFrame(packet.bitmap, detector, packet.index, packet.timestampMs)
+                                        }
+                                        poseFrame = poseFrame.copy(inferenceTimeMs = (inferenceNanos / 1_000_000.0).roundToLong())
+                                        totalInferenceNanos.addAndGet(inferenceNanos)
+                                        maxInferenceNanos.accumulateAndGet(inferenceNanos) { current, candidate ->
+                                            maxOf(current, candidate)
+                                        }
                                         resultQueue.send(packet.index to poseFrame)
                                         observer.onProgress(
                                             AnalysisProgressEvent(
@@ -95,7 +117,7 @@ class MlKitVideoPoseFrameSource(
                                                 processedFrames = packet.index + 1,
                                                 estimatedTotalFrames = estimatedTotalFrames,
                                                 timestampMs = packet.timestampMs,
-                                                detail = "Pose detection completed",
+                                                detail = "Pose detection completed (inferenceMs=${poseFrame.inferenceTimeMs})",
                                             ),
                                         )
                                     } finally {
@@ -115,11 +137,29 @@ class MlKitVideoPoseFrameSource(
                         var index = 0
                         while (timestampMs <= durationMs) {
                             try {
-                                retriever.getFrameAtTime(timestampMs * 1000L, MediaMetadataRetriever.OPTION_CLOSEST)?.let { bitmap ->
+                                val frameTimeUs = timestampMs * 1000L
+                                var bitmap: Bitmap? = null
+                                val decodeNanos = measureNanoTime {
+                                    bitmap = retriever.getScaledFrameAtTime(
+                                        frameTimeUs,
+                                        MediaMetadataRetriever.OPTION_CLOSEST,
+                                        decodeTarget.first,
+                                        decodeTarget.second,
+                                    ) ?: retriever.getFrameAtTime(frameTimeUs, MediaMetadataRetriever.OPTION_CLOSEST)
+                                }
+                                totalDecodeNanos.addAndGet(decodeNanos)
+                                maxDecodeNanos.accumulateAndGet(decodeNanos) { current, candidate ->
+                                    maxOf(current, candidate)
+                                }
+                                val decodeMs = (decodeNanos / 1_000_000.0).roundToLong()
+                                bitmap?.let { nonNullBitmap ->
                                     if (index % 2 == 0) {
-                                        Log.i(TAG, "decode_sample frameIndex=$index timestampMs=$timestampMs/$durationMs")
+                                        Log.i(
+                                            TAG,
+                                            "decode_sample frameIndex=$index timestampMs=$timestampMs/$durationMs decodeMs=$decodeMs target=${decodeTarget.first}x${decodeTarget.second}",
+                                        )
                                     }
-                                    frameQueue.send(FramePacket(index = index, timestampMs = timestampMs, bitmap = bitmap))
+                                    frameQueue.send(FramePacket(index = index, timestampMs = timestampMs, bitmap = nonNullBitmap))
                                     maxBacklog = maxOf(maxBacklog, backlog.incrementAndGet())
                                     activeSamples += activeWorkers.get().toLong()
                                     activeTicks += 1
@@ -129,12 +169,12 @@ class MlKitVideoPoseFrameSource(
                                             processedFrames = index + 1,
                                             estimatedTotalFrames = estimatedTotalFrames,
                                             timestampMs = timestampMs,
-                                            detail = "Frame sampled for pose detection",
+                                            detail = "Frame sampled for pose detection (decodeMs=$decodeMs)",
                                         ),
                                     )
                                     index += 1
                                 } ?: run {
-                                    Log.w(TAG, "decode_frame_missing timestampMs=$timestampMs index=$index")
+                                    Log.w(TAG, "decode_frame_missing timestampMs=$timestampMs index=$index decodeMs=$decodeMs")
                                 }
                             } catch (e: Exception) {
                                 Log.e(TAG, "decode_exception frameIndex=$index timestampMs=$timestampMs message=${e.message}", e)
@@ -157,11 +197,18 @@ class MlKitVideoPoseFrameSource(
                 }
 
                 frames += orderedFrames.toSortedMap().values
+                val sampledFrames = frames.size.coerceAtLeast(1)
+                val avgDecodeMs = totalDecodeNanos.get().toDouble() / sampledFrames.toDouble() / 1_000_000.0
+                val avgInferenceMs = totalInferenceNanos.get().toDouble() / sampledFrames.toDouble() / 1_000_000.0
                 lastDecodeTelemetry = DecodeTelemetry(
                     sampledFrames = frames.size,
                     workerCount = boundedWorkerCount,
                     maxQueueBacklog = maxBacklog,
                     averageWorkerActive = if (activeTicks == 0) 0.0 else activeSamples.toDouble() / activeTicks.toDouble(),
+                    averageDecodeMs = avgDecodeMs,
+                    maxDecodeMs = (maxDecodeNanos.get() / 1_000_000.0).roundToLong(),
+                    averageInferenceMs = avgInferenceMs,
+                    maxInferenceMs = (maxInferenceNanos.get() / 1_000_000.0).roundToLong(),
                 )
                 observer.onProgress(
                     AnalysisProgressEvent(
@@ -173,7 +220,7 @@ class MlKitVideoPoseFrameSource(
                 )
                 Log.i(
                     TAG,
-                    "decode_pipeline_complete sampled=${frames.size} workers=$boundedWorkerCount maxBacklog=$maxBacklog avgActive=${"%.2f".format(lastDecodeTelemetry.averageWorkerActive)}",
+                    "decode_pipeline_complete sampled=${frames.size} workers=$boundedWorkerCount maxBacklog=$maxBacklog avgActive=${"%.2f".format(lastDecodeTelemetry.averageWorkerActive)} avgDecodeMs=${"%.2f".format(lastDecodeTelemetry.averageDecodeMs)} maxDecodeMs=${lastDecodeTelemetry.maxDecodeMs} avgInferenceMs=${"%.2f".format(lastDecodeTelemetry.averageInferenceMs)} maxInferenceMs=${lastDecodeTelemetry.maxInferenceMs}",
                 )
             }
             finally {
@@ -227,6 +274,20 @@ class MlKitVideoPoseFrameSource(
             droppedFrames = 0,
             rejectionReason = if (landmarks.isEmpty()) "no_person_detected" else "none",
         )
+    }
+
+    private fun computeDecodeTargetDimensions(sourceWidth: Int, sourceHeight: Int): Pair<Int, Int> {
+        if (sourceWidth <= 0 || sourceHeight <= 0) {
+            return MAX_ANALYSIS_DIMENSION to MAX_ANALYSIS_DIMENSION
+        }
+        val maxDimension = maxOf(sourceWidth, sourceHeight)
+        if (maxDimension <= MAX_ANALYSIS_DIMENSION) {
+            return sourceWidth to sourceHeight
+        }
+        val scale = MAX_ANALYSIS_DIMENSION.toFloat() / maxDimension.toFloat()
+        val targetWidth = (sourceWidth * scale).roundToLong().toInt().coerceAtLeast(1)
+        val targetHeight = (sourceHeight * scale).roundToLong().toInt().coerceAtLeast(1)
+        return targetWidth to targetHeight
     }
 
     private fun downscaleForAnalysis(bitmap: Bitmap): Bitmap {
