@@ -659,7 +659,7 @@ class AnnotatedVideoCompositor(
             val rotatedCoordinates = FloatArray(baseCoordinates.size)
             var idx = 0
             while (idx < baseCoordinates.size) {
-                val (x, y) = mapNormalizedPointToExportSpace(
+                val (x, y) = mapTextureCoordinateToExportSpace(
                     x = baseCoordinates[idx],
                     y = baseCoordinates[idx + 1],
                     rotationDegrees = rotationDegrees,

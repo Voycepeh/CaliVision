@@ -77,6 +77,26 @@ internal fun mapNormalizedPointToExportSpace(
     else -> x to y
 }
 
+/**
+ * Maps GL texture coordinates for decoder OES sampling into export orientation space.
+ *
+ * OES texture space uses a bottom-left origin while export/overlay normalized space is top-left.
+ * With identity SurfaceTexture matrix, we rotate in top-left space, then convert back.
+ */
+internal fun mapTextureCoordinateToExportSpace(
+    x: Float,
+    y: Float,
+    rotationDegrees: Int,
+): Pair<Float, Float> {
+    val topLeftY = 1f - y
+    val (rotatedX, rotatedTopLeftY) = mapNormalizedPointToExportSpace(
+        x = x,
+        y = topLeftY,
+        rotationDegrees = rotationDegrees,
+    )
+    return rotatedX to (1f - rotatedTopLeftY)
+}
+
 internal fun verifyExportedVideo(
     sourceDurationMs: Long,
     output: OutputVideoMetadata?,
