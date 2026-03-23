@@ -246,4 +246,12 @@ class AnnotatedExportNormalizationTest {
         assertEquals(0.8f to 0.2f, mapNormalizedPointToExportSpace(0.2f, 0.8f, 180))
         assertEquals(0.8f to 0.8f, mapNormalizedPointToExportSpace(0.2f, 0.8f, 270))
     }
+
+    @Test
+    fun textureCoordinateMappingAccountsForOesYAxisAcrossCanonicalRotations() {
+        assertEquals(0.2f to 0.8f, mapTextureCoordinateToExportSpace(0.2f, 0.8f, 0))
+        assertEquals(0.8f to 0.8f, mapTextureCoordinateToExportSpace(0.2f, 0.2f, 90))
+        assertEquals(0.8f to 0.2f, mapTextureCoordinateToExportSpace(0.2f, 0.8f, 180))
+        assertEquals(0.2f to 0.2f, mapTextureCoordinateToExportSpace(0.2f, 0.8f, 270))
+    }
 }
