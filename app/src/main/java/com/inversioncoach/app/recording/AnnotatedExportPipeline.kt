@@ -23,6 +23,11 @@ private const val MAX_EXPORT_TIMEOUT_MS = 300_000L
 private const val DEFAULT_STALL_WINDOW_MS = 20_000L
 private const val SOFT_SLOW_EXPORT_THRESHOLD_MS = 90_000L
 private const val MAX_EXPORT_FPS = 12
+private const val LONG_EXPORT_SESSION_MS = 30_000L
+private const val BASE_EXPORT_TIMEOUT_MS = 180_000L
+private const val MAX_EXPORT_TIMEOUT_MS = 300_000L
+private const val EXPORT_TIMEOUT_PER_FRAME_MS = 80L
+private const val EXPORT_TIMEOUT_DURATION_DIVISOR = 2L
 
 data class AnnotatedOverlayFrame(
     val timestampMs: Long,
