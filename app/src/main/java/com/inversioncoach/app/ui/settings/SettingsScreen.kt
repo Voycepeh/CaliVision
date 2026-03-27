@@ -31,13 +31,19 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.inversioncoach.app.model.AlignmentStrictness
+import com.inversioncoach.app.model.DrillType
 import com.inversioncoach.app.model.UserSettings
 import com.inversioncoach.app.storage.ServiceLocator
 import com.inversioncoach.app.ui.components.ScaffoldedScreen
 import kotlinx.coroutines.launch
 
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onDeveloperTuning: () -> Unit, onNavigateHome: () -> Unit) {
+fun SettingsScreen(
+    onBack: () -> Unit,
+    onDeveloperTuning: () -> Unit,
+    onCalibration: () -> Unit,
+    onNavigateHome: () -> Unit,
+) {
     val context = LocalContext.current
     val repository = remember { ServiceLocator.repository(context) }
 
@@ -55,6 +61,7 @@ fun SettingsScreen(onBack: () -> Unit, onDeveloperTuning: () -> Unit, onNavigate
     var customHoldThreshold by remember { mutableIntStateOf(72) }
     var showSaveConfirmation by remember { mutableStateOf(false) }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
+    var calibrationStatus by remember { mutableStateOf("Not calibrated yet") }
 
     LaunchedEffect(Unit) {
         repository.observeSettings().collect { s ->
@@ -70,6 +77,13 @@ fun SettingsScreen(onBack: () -> Unit, onDeveloperTuning: () -> Unit, onNavigate
             customRepThreshold = s.customRepAcceptanceThreshold
             customHoldThreshold = s.customHoldAlignedThreshold
         }
+    }
+
+    LaunchedEffect(Unit) {
+        val profile = ServiceLocator.calibrationProfileProvider(context).resolve(DrillType.FREE_HANDSTAND)
+        calibrationStatus = profile.userBodyProfile?.let {
+            "Saved (v${profile.profileVersion})"
+        } ?: "Not calibrated yet"
     }
 
     ScaffoldedScreen(title = "Settings", onBack = onBack) { padding ->
@@ -160,6 +174,11 @@ fun SettingsScreen(onBack: () -> Unit, onDeveloperTuning: () -> Unit, onNavigate
             }
 
             Button(onClick = { showSaveConfirmation = true }, modifier = Modifier.fillMaxWidth()) { Text("Save settings") }
+            SettingsCard(title = "Structural calibration") {
+                Text("Status: $calibrationStatus")
+                Text("Capture front, side, overhead, and stable hold poses to build your body profile.")
+                Button(onClick = onCalibration, modifier = Modifier.fillMaxWidth()) { Text("Start calibration") }
+            }
             Button(onClick = onDeveloperTuning, modifier = Modifier.fillMaxWidth()) { Text("Developer threshold tuning") }
             Button(onClick = { showDeleteConfirmation = true }, modifier = Modifier.fillMaxWidth()) { Text("Delete all sessions") }
         }

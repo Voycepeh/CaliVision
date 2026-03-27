@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.inversioncoach.app.biomechanics.AlignmentMetricsEngine
 import com.inversioncoach.app.calibration.CalibrationProfileProvider
 import com.inversioncoach.app.calibration.DefaultCalibrationProfileProvider
+import com.inversioncoach.app.calibration.DrillMovementProfileRepository
 import com.inversioncoach.app.coaching.CueEngine
 import com.inversioncoach.app.calibration.storage.DrillMovementProfileJson
 import com.inversioncoach.app.calibration.storage.RoomDrillMovementProfileRepository
@@ -17,6 +18,8 @@ object ServiceLocator {
     private var db: InversionCoachDatabase? = null
     @Volatile
     private var calibrationProvider: CalibrationProfileProvider? = null
+    @Volatile
+    private var drillMovementProfileRepository: DrillMovementProfileRepository? = null
 
     private fun db(context: Context): InversionCoachDatabase {
         return db ?: synchronized(this) {
@@ -48,11 +51,17 @@ object ServiceLocator {
     fun calibrationProfileProvider(context: Context): CalibrationProfileProvider {
         return calibrationProvider ?: synchronized(this) {
             calibrationProvider ?: DefaultCalibrationProfileProvider(
-                RoomDrillMovementProfileRepository(
-                    dao = db(context).calibrationDao(),
-                    json = DrillMovementProfileJson(),
-                ),
+                drillMovementProfileRepository(context),
             ).also { calibrationProvider = it }
+        }
+    }
+
+    fun drillMovementProfileRepository(context: Context): DrillMovementProfileRepository {
+        return drillMovementProfileRepository ?: synchronized(this) {
+            drillMovementProfileRepository ?: RoomDrillMovementProfileRepository(
+                dao = db(context).calibrationDao(),
+                json = DrillMovementProfileJson(),
+            ).also { drillMovementProfileRepository = it }
         }
     }
 }
