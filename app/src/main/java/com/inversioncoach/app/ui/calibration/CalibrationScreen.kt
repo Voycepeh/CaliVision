@@ -39,6 +39,8 @@ import com.inversioncoach.app.overlay.DrillCameraSide
 import com.inversioncoach.app.overlay.FreestyleViewMode
 import com.inversioncoach.app.overlay.OverlayRenderer
 import com.inversioncoach.app.pose.PoseAnalyzer
+import com.inversioncoach.app.pose.PoseCoordinateMapper
+import com.inversioncoach.app.pose.PoseProjectionInput
 import com.inversioncoach.app.pose.PoseScaleMode
 import com.inversioncoach.app.storage.ServiceLocator
 import com.inversioncoach.app.ui.components.ScaffoldedScreen
@@ -121,7 +123,7 @@ private fun CalibrationCaptureContent(
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Step ${state.stepIndex}/${state.totalSteps}: ${state.title}", style = MaterialTheme.typography.titleMedium)
         Text(state.instruction)
-        Text("Camera: ${state.cameraPlacement}")
+        Text("Camera setup: ${state.cameraPlacement}")
         Icon(Icons.Default.Accessibility, contentDescription = null)
 
         LinearProgressIndicator(
@@ -129,14 +131,14 @@ private fun CalibrationCaptureContent(
             modifier = Modifier.fillMaxWidth(),
             strokeCap = StrokeCap.Round,
         )
-        Text("Accepted frames: ${state.acceptedFrames}/${state.requiredFrames}")
+        Text("Stable frames: ${state.acceptedFrames}/${state.requiredFrames}")
 
         Card {
             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Readiness: ${if (state.isReady) "Ready" else "Not ready"}")
+                Text("Readiness: ${if (state.isReady) "Ready" else "Adjust position"}")
                 Text(state.readinessMessage)
                 if (state.missingRequiredJoints.isNotEmpty()) {
-                    Text("Missing required joints: ${state.missingRequiredJoints.joinToString()}")
+                    Text("Adjust these landmarks: ${state.missingRequiredJoints.joinToString { it.toDisplayLabel() }}")
                 }
             }
         }
@@ -187,6 +189,7 @@ private fun CalibrationCaptureContent(
 
 @Composable
 private fun CalibrationGuideOverlay(modifier: Modifier, state: CalibrationUiState) {
+    val mapper = remember { PoseCoordinateMapper() }
     Box(modifier = modifier) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val margin = size.minDimension * 0.08f
@@ -199,12 +202,23 @@ private fun CalibrationGuideOverlay(modifier: Modifier, state: CalibrationUiStat
 
             val jointsByName = state.latestFrame?.joints?.associateBy { it.name }.orEmpty()
             val missing = state.missingRequiredJoints.toSet()
+            val frame = state.latestFrame
+            val projectionInput = PoseProjectionInput(
+                sourceWidth = frame?.analysisWidth?.takeIf { it > 0 } ?: size.width.toInt().coerceAtLeast(1),
+                sourceHeight = frame?.analysisHeight?.takeIf { it > 0 } ?: size.height.toInt().coerceAtLeast(1),
+                previewWidth = size.width,
+                previewHeight = size.height,
+                rotationDegrees = 0,
+                mirrored = frame?.mirrored ?: false,
+                scaleMode = PoseScaleMode.FILL,
+            )
             state.requiredJointNames.forEach { name ->
                 val p = jointsByName[name] ?: return@forEach
+                val mapped = mapper.map(p.x, p.y, projectionInput)
                 drawCircle(
                     color = if (missing.contains(name)) Color.Red else Color(0xFF00E676),
                     radius = 8f,
-                    center = Offset(p.x * size.width, p.y * size.height),
+                    center = Offset(mapped.x, mapped.y),
                 )
             }
         }
@@ -220,3 +234,8 @@ private fun CalibrationGuideOverlay(modifier: Modifier, state: CalibrationUiStat
         )
     }
 }
+
+private fun String.toDisplayLabel(): String =
+    replace('_', ' ')
+        .split(' ')
+        .joinToString(" ") { token -> token.replaceFirstChar { c -> c.titlecase() } }
