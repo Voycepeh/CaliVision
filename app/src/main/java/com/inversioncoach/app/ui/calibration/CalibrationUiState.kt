@@ -23,8 +23,6 @@ data class CalibrationUiState(
     val readinessMessage: String = "Position yourself fully in frame.",
     val requiredJointNames: List<String> = emptyList(),
     val missingRequiredJoints: List<String> = emptyList(),
-    val isCapturing: Boolean = false,
-    val isComplete: Boolean = false,
     val errorMessage: String? = null,
     val stepResultMessage: String? = null,
     val visibleJointCount: Int = 0,

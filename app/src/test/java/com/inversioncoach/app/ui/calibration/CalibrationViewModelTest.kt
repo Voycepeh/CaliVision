@@ -31,6 +31,7 @@ class CalibrationViewModelTest {
 
         repeat(20) { viewModel.onPoseFrame(sampleFrame()) }
 
+        assertEquals(CalibrationPhase.CAPTURING, viewModel.state.value.phase)
         assertEquals("SIDE NEUTRAL", viewModel.state.value.currentStep.name.replace('_', ' '))
         kotlinx.coroutines.Dispatchers.resetMain()
     }
@@ -46,7 +47,7 @@ class CalibrationViewModelTest {
         advanceUntilIdle()
 
         assertNotNull(repo.saved)
-        assertTrue(viewModel.state.value.isComplete)
+        assertEquals(CalibrationPhase.COMPLETED, viewModel.state.value.phase)
         kotlinx.coroutines.Dispatchers.resetMain()
     }
 
@@ -61,6 +62,20 @@ class CalibrationViewModelTest {
         advanceUntilIdle()
 
         assertEquals(5, repo.saved?.profileVersion)
+        kotlinx.coroutines.Dispatchers.resetMain()
+    }
+
+    @Test
+    fun ignoresFramesUntilCalibrationStarts() = runTest(dispatcher) {
+        kotlinx.coroutines.Dispatchers.setMain(dispatcher)
+        val repo = FakeRepo()
+        val viewModel = CalibrationViewModel(DrillType.FREE_HANDSTAND, FakeProvider(repo), repo)
+
+        repeat(30) { viewModel.onPoseFrame(sampleFrame()) }
+
+        assertEquals(CalibrationPhase.INTRO, viewModel.state.value.phase)
+        assertEquals(0, viewModel.state.value.acceptedFrames)
+        assertTrue(repo.saved == null)
         kotlinx.coroutines.Dispatchers.resetMain()
     }
 

@@ -50,7 +50,7 @@ class CalibrationViewModel(
 
     fun onPoseFrame(frame: PoseFrame) {
         val current = _state.value
-        if (current.phase != CalibrationPhase.CAPTURING || !current.isCapturing || current.isComplete) return
+        if (current.phase != CalibrationPhase.CAPTURING) return
 
         val readiness = readinessEvaluator.evaluate(current.currentStep, frame)
         val isStillEnough = isStillEnough(frame)
@@ -123,7 +123,6 @@ class CalibrationViewModel(
                 _state.update {
                     it.copy(
                         phase = CalibrationPhase.CAPTURING,
-                        isCapturing = true,
                         errorMessage = "Calibration incomplete. Finish all required steps.",
                     )
                 }
@@ -141,8 +140,6 @@ class CalibrationViewModel(
             _state.update {
                 it.copy(
                     phase = CalibrationPhase.COMPLETED,
-                    isCapturing = false,
-                    isComplete = true,
                     stepResultMessage = "Calibration saved.",
                     errorMessage = null,
                 )
@@ -170,8 +167,6 @@ class CalibrationViewModel(
             readinessMessage = "Get into position...",
             missingRequiredJoints = emptyList(),
             requiredJointNames = requiredJointsFor(step),
-            isCapturing = true,
-            isComplete = false,
             stepResultMessage = null,
             errorMessage = null,
         )
