@@ -234,72 +234,34 @@ object DatabaseMigrations {
         override fun migrate(db: SupportSQLiteDatabase) {
             db.execSQL(
                 """
-                CREATE TABLE IF NOT EXISTS `user_settings_new` (
-                    `id` INTEGER NOT NULL,
-                    `cueStyle` TEXT NOT NULL,
-                    `cueFrequencySeconds` REAL NOT NULL,
-                    `audioVolume` REAL NOT NULL,
-                    `localOnlyPrivacyMode` INTEGER NOT NULL,
-                    `retainDays` INTEGER NOT NULL,
-                    `debugOverlayEnabled` INTEGER NOT NULL,
-                    `maxStorageMb` INTEGER NOT NULL,
-                    `startupCountdownSeconds` INTEGER NOT NULL,
-                    `minSessionDurationSeconds` INTEGER NOT NULL,
-                    `alignmentStrictness` TEXT NOT NULL,
-                    `customLineDeviation` REAL NOT NULL,
-                    `customMinimumGoodFormScore` INTEGER NOT NULL,
-                    `customRepAcceptanceThreshold` INTEGER NOT NULL,
-                    `customHoldAlignedThreshold` INTEGER NOT NULL,
-                    `drillCameraSideSelections` TEXT NOT NULL,
-                    `userBodyProfileJson` TEXT,
+                CREATE TABLE IF NOT EXISTS `user_profile_records` (
+                    `id` TEXT NOT NULL,
+                    `displayName` TEXT NOT NULL,
+                    `createdAtMs` INTEGER NOT NULL,
+                    `updatedAtMs` INTEGER NOT NULL,
+                    `isArchived` INTEGER NOT NULL,
                     PRIMARY KEY(`id`)
                 )
                 """.trimIndent(),
             )
             db.execSQL(
                 """
-                INSERT INTO `user_settings_new` (
-                    `id`,
-                    `cueStyle`,
-                    `cueFrequencySeconds`,
-                    `audioVolume`,
-                    `localOnlyPrivacyMode`,
-                    `retainDays`,
-                    `debugOverlayEnabled`,
-                    `maxStorageMb`,
-                    `startupCountdownSeconds`,
-                    `minSessionDurationSeconds`,
-                    `alignmentStrictness`,
-                    `customLineDeviation`,
-                    `customMinimumGoodFormScore`,
-                    `customRepAcceptanceThreshold`,
-                    `customHoldAlignedThreshold`,
-                    `drillCameraSideSelections`,
-                    `userBodyProfileJson`
+                CREATE TABLE IF NOT EXISTS `body_profile_records` (
+                    `id` TEXT NOT NULL,
+                    `userProfileId` TEXT NOT NULL,
+                    `version` INTEGER NOT NULL,
+                    `payloadJson` TEXT NOT NULL,
+                    `createdAtMs` INTEGER NOT NULL,
+                    `updatedAtMs` INTEGER NOT NULL,
+                    PRIMARY KEY(`id`)
                 )
-                SELECT
-                    `id`,
-                    `cueStyle`,
-                    `cueFrequencySeconds`,
-                    `audioVolume`,
-                    `localOnlyPrivacyMode`,
-                    `retainDays`,
-                    `debugOverlayEnabled`,
-                    `maxStorageMb`,
-                    `startupCountdownSeconds`,
-                    `minSessionDurationSeconds`,
-                    `alignmentStrictness`,
-                    `customLineDeviation`,
-                    `customMinimumGoodFormScore`,
-                    `customRepAcceptanceThreshold`,
-                    `customHoldAlignedThreshold`,
-                    `drillCameraSideSelections`,
-                    `userBodyProfileJson`
-                FROM `user_settings`
                 """.trimIndent(),
             )
-            db.execSQL("DROP TABLE `user_settings`")
-            db.execSQL("ALTER TABLE `user_settings_new` RENAME TO `user_settings`")
+            db.execSQL("ALTER TABLE session_records ADD COLUMN userProfileId TEXT")
+            db.execSQL("ALTER TABLE session_records ADD COLUMN bodyProfileId TEXT")
+            db.execSQL("ALTER TABLE session_records ADD COLUMN bodyProfileVersion INTEGER")
+            db.execSQL("ALTER TABLE session_records ADD COLUMN usedDefaultBodyModel INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE user_settings ADD COLUMN activeUserProfileId TEXT")
         }
     }
 

@@ -48,7 +48,7 @@ import com.inversioncoach.app.model.SessionMode
 import com.inversioncoach.app.model.SessionComparisonRecord
 import com.inversioncoach.app.model.SessionRecord
 import com.inversioncoach.app.model.SessionSource
-import com.inversioncoach.app.calibration.CalibrationProfileProvider
+import com.inversioncoach.app.calibration.RuntimeBodyProfileResolver
 import com.inversioncoach.app.movementprofile.ExistingDrillToProfileAdapter
 import com.inversioncoach.app.movementprofile.AnalysisProgressObserver
 import com.inversioncoach.app.movementprofile.MlKitVideoPoseFrameSource
@@ -178,7 +178,7 @@ interface UploadVideoAnalysisRunner {
 class DefaultUploadVideoAnalysisRunner(
     private val context: Context,
     private val repository: SessionRepository,
-    private val calibrationProfileProvider: CalibrationProfileProvider,
+    private val runtimeBodyProfileResolver: RuntimeBodyProfileResolver? = null,
     private val frameSourceFactory: (Context, Int) -> VideoPoseFrameSource = { appContext, fps ->
         MlKitVideoPoseFrameSource(appContext, sampleFps = fps)
     },
@@ -208,9 +208,10 @@ class DefaultUploadVideoAnalysisRunner(
     ): UploadFlowResult = withContext(Dispatchers.IO) {
         val startedAt = System.currentTimeMillis()
         val drillDefinition = selectedDrillId?.let { repository.getDrill(it) }
+        val activeProfileContext = runtimeBodyProfileResolver?.resolve()
         validateSelectedDrillForUpload(selectedDrillId, drillDefinition)?.let { error(it) }
-        val drillType = DrillType.FREE_HANDSTAND
-        val resolvedCalibrationProfile = if (selectedDrillId == null) calibrationProfileProvider.resolve(drillType) else null
+        val drillType = DrillType.FREESTYLE
+        val resolvedCalibrationProfile: com.inversioncoach.app.calibration.DrillMovementProfile? = null
         val sessionId = repository.saveSession(
             SessionRecord(
                 title = drillDefinition?.name?.let { "$it Upload Analysis" } ?: "Uploaded Video Analysis",
@@ -234,8 +235,12 @@ class DefaultUploadVideoAnalysisRunner(
                 ),
                 annotatedVideoUri = null,
                 rawVideoUri = null,
-                calibrationProfileVersion = resolvedCalibrationProfile?.profileVersion,
-                calibrationUpdatedAtMs = resolvedCalibrationProfile?.updatedAtMs,
+                calibrationProfileVersion = null,
+                calibrationUpdatedAtMs = null,
+                userProfileId = activeProfileContext?.userProfileId,
+                bodyProfileId = activeProfileContext?.bodyProfileId,
+                bodyProfileVersion = activeProfileContext?.bodyProfileVersion,
+                usedDefaultBodyModel = activeProfileContext?.usedDefaultBodyModel ?: true,
                 notesUri = null,
                 bestFrameTimestampMs = null,
                 worstFrameTimestampMs = null,
@@ -1407,7 +1412,7 @@ fun UploadVideoScreen(
             DefaultUploadVideoAnalysisRunner(
                 context = context.applicationContext,
                 repository = repository,
-                calibrationProfileProvider = ServiceLocator.calibrationProfileProvider(context),
+                runtimeBodyProfileResolver = ServiceLocator.runtimeBodyProfileResolver(context),
             ),
             repository,
             selectedDrillId,

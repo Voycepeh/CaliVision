@@ -67,9 +67,7 @@ sealed class Route(val value: String) {
         fun create(drillId: String): String = "reference-training/$drillId"
     }
     data object ReferenceTemplatePicker : Route("reference-template-picker")
-    data object Calibration : Route("calibration/{drill}") {
-        fun create(drillType: DrillType): String = "calibration/${drillType.name}"
-    }
+    data object Calibration : Route("calibration")
 }
 
 @Composable
@@ -181,20 +179,12 @@ fun AppNavHost(modifier: Modifier = Modifier) {
             SettingsScreen(
                 onBack = { navController.popBackStack() },
                 onDeveloperTuning = { navController.navigate(Route.DevTuning.value) },
-                onCalibration = { navController.navigate(Route.Calibration.create(DrillType.FREE_HANDSTAND)) },
+                onCalibration = { navController.navigate(Route.Calibration.value) },
                 onNavigateHome = { navController.popBackStack(Route.Home.value, false) },
             )
         }
-        composable(
-            Route.Calibration.value,
-            arguments = listOf(navArgument("drill") { type = NavType.StringType }),
-        ) { backStack ->
-            val drill = parseDrillTypeOrDefault(
-                rawValue = backStack.arguments?.getString("drill"),
-                fallback = DrillType.FREE_HANDSTAND,
-            )
+        composable(Route.Calibration.value) {
             CalibrationScreen(
-                drillType = drill,
                 onBack = { navController.popBackStack() },
             )
         }
