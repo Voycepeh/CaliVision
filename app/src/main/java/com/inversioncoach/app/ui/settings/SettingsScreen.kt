@@ -51,7 +51,6 @@ fun SettingsScreen(
 
     val scope = rememberCoroutineScope()
     var cueFrequency by remember { mutableFloatStateOf(2f) }
-    var overlay by remember { mutableFloatStateOf(1f) }
     var debug by remember { mutableStateOf(false) }
     var localOnlyPrivacyMode by remember { mutableStateOf(true) }
     var maxStorageMb by remember { mutableIntStateOf(1024) }
@@ -86,7 +85,6 @@ fun SettingsScreen(
     LaunchedEffect(Unit) {
         repository.observeSettings().collect { s ->
             cueFrequency = s.cueFrequencySeconds
-            overlay = s.overlayIntensity
             debug = s.debugOverlayEnabled
             localOnlyPrivacyMode = s.localOnlyPrivacyMode
             maxStorageMb = s.maxStorageMb
@@ -115,8 +113,6 @@ fun SettingsScreen(
             Text("Voice style: concise / technical / encouraging")
             Text("Cue frequency: ${"%.1f".format(cueFrequency)}s")
             Slider(value = cueFrequency, onValueChange = { cueFrequency = it }, valueRange = 1.5f..4f)
-            Text("Overlay intensity: ${"%.1f".format(overlay)}")
-            Slider(value = overlay, onValueChange = { overlay = it }, valueRange = 0.2f..1f)
             Text("Max video storage: ${maxStorageMb} MB")
             Slider(
                 value = maxStorageMb.toFloat(),
@@ -143,8 +139,6 @@ fun SettingsScreen(
             }
 
             SettingsCard(title = "Overlay") {
-                Text("Overlay intensity: ${"%.1f".format(overlay)}")
-                Slider(value = overlay, onValueChange = { overlay = it }, valueRange = 0.2f..1f)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Debug overlay (raw metrics/angles)")
                     Checkbox(checked = debug, onCheckedChange = { debug = it })
@@ -223,7 +217,6 @@ fun SettingsScreen(
                                 repository.saveSettings(
                                     UserSettings(
                                         cueFrequencySeconds = cueFrequency,
-                                        overlayIntensity = overlay,
                                         debugOverlayEnabled = debug,
                                         localOnlyPrivacyMode = localOnlyPrivacyMode,
                                         maxStorageMb = maxStorageMb,
