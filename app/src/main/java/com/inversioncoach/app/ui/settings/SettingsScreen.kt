@@ -30,8 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.inversioncoach.app.model.CueStyle
-import com.inversioncoach.app.model.DrillType
+import com.inversioncoach.app.model.AlignmentStrictness
 import com.inversioncoach.app.model.UserSettings
 import com.inversioncoach.app.storage.ServiceLocator
 import com.inversioncoach.app.ui.components.ScaffoldedScreen
@@ -48,7 +47,7 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val repository = remember { ServiceLocator.repository(context) }
-    val calibrationDrillType = DrillType.FREE_HANDSTAND
+    val userProfileManager = remember { ServiceLocator.userProfileManager(context) }
 
     val scope = rememberCoroutineScope()
     var cueStyle by remember { mutableStateOf(CueStyle.CONCISE) }
@@ -57,20 +56,29 @@ fun SettingsScreen(
     var localOnlyPrivacyMode by remember { mutableStateOf(true) }
     var maxStorageMb by remember { mutableIntStateOf(1024) }
     var startupCountdownSeconds by remember { mutableIntStateOf(10) }
+    var alignmentStrictness by remember { mutableStateOf(AlignmentStrictness.BEGINNER) }
+    var customLineDeviation by remember { mutableFloatStateOf(0.14f) }
+    var customGoodForm by remember { mutableIntStateOf(72) }
+    var customRepThreshold by remember { mutableIntStateOf(70) }
+    var customHoldThreshold by remember { mutableIntStateOf(72) }
+    var activeUserProfileId by remember { mutableStateOf<String?>(null) }
+    var userBodyProfileJson by remember { mutableStateOf<String?>(null) }
     var showSaveConfirmation by remember { mutableStateOf(false) }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
     var showClearCalibrationConfirmation by remember { mutableStateOf(false) }
     var calibrationStatus by remember { mutableStateOf("Not calibrated yet") }
     var calibrationSummary by remember { mutableStateOf<String?>(null) }
     var calibrationUpdatedAt by remember { mutableStateOf<Long?>(null) }
+    var activeProfileName by remember { mutableStateOf("Primary User") }
 
     suspend fun refreshCalibrationStatus() {
-        val profile = ServiceLocator.calibrationProfileProvider(context).resolve(calibrationDrillType)
-        calibrationUpdatedAt = profile.userBodyProfile?.let { profile.updatedAtMs }
-        calibrationSummary = profile.userBodyProfile?.let {
-            "v${profile.profileVersion} • symmetry ${(it.leftRightConsistency * 100f).toInt()}%"
+        val active = userProfileManager.resolveActiveProfileContext()
+        activeProfileName = active.userProfile.displayName
+        calibrationUpdatedAt = active.bodyProfileRecord?.updatedAtMs
+        calibrationSummary = active.bodyProfile?.let {
+            "v${active.bodyProfileRecord?.version ?: 1} • symmetry ${(it.leftRightConsistency * 100f).toInt()}%"
         }
-        calibrationStatus = profile.userBodyProfile?.let {
+        calibrationStatus = active.bodyProfile?.let {
             "Saved"
         } ?: "Not calibrated yet"
     }
@@ -83,6 +91,13 @@ fun SettingsScreen(
             localOnlyPrivacyMode = s.localOnlyPrivacyMode
             maxStorageMb = s.maxStorageMb
             startupCountdownSeconds = s.startupCountdownSeconds
+            alignmentStrictness = s.alignmentStrictness
+            customLineDeviation = s.customLineDeviation
+            customGoodForm = s.customMinimumGoodFormScore
+            customRepThreshold = s.customRepAcceptanceThreshold
+            customHoldThreshold = s.customHoldAlignedThreshold
+            activeUserProfileId = s.activeUserProfileId
+            userBodyProfileJson = s.userBodyProfileJson
         }
     }
 
@@ -148,8 +163,8 @@ fun SettingsScreen(
             }
 
             Button(onClick = { showSaveConfirmation = true }, modifier = Modifier.fillMaxWidth()) { Text("Save settings") }
-            SettingsCard(title = "Calibration") {
-                Text("Scope: ${calibrationDrillType.displayName} profile")
+            SettingsCard(title = "Structural calibration") {
+                Text("Active profile: $activeProfileName")
                 Text("Status: $calibrationStatus")
                 calibrationUpdatedAt?.let {
                     Text("Last calibrated on ${DateFormat.getDateTimeInstance().format(Date(it))}")
@@ -187,6 +202,13 @@ fun SettingsScreen(
                                         maxStorageMb = maxStorageMb,
                                         startupCountdownSeconds = startupCountdownSeconds,
                                         minSessionDurationSeconds = 0,
+                                        alignmentStrictness = alignmentStrictness,
+                                        customLineDeviation = customLineDeviation,
+                                        customMinimumGoodFormScore = customGoodForm,
+                                        customRepAcceptanceThreshold = customRepThreshold,
+                                        customHoldAlignedThreshold = customHoldThreshold,
+                                        activeUserProfileId = activeUserProfileId,
+                                        userBodyProfileJson = userBodyProfileJson,
                                     ),
                                 )
                                 onNavigateHome()
@@ -226,13 +248,13 @@ fun SettingsScreen(
             AlertDialog(
                 onDismissRequest = { showClearCalibrationConfirmation = false },
                 title = { Text("Clear calibration?") },
-                text = { Text("This will remove your saved body profile for ${calibrationDrillType.displayName} calibration.") },
+                text = { Text("This will remove the saved body profile for $activeProfileName.") },
                 confirmButton = {
                     Button(
                         onClick = {
                             showClearCalibrationConfirmation = false
                             scope.launch {
-                                ServiceLocator.drillMovementProfileRepository(context).clear(calibrationDrillType)
+                                userProfileManager.clearBodyProfileForActiveUser()
                                 refreshCalibrationStatus()
                             }
                         },

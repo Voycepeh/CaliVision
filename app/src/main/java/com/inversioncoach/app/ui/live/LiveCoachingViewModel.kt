@@ -51,6 +51,7 @@ import com.inversioncoach.app.storage.repository.SessionRepository
 import com.inversioncoach.app.summary.SummaryGenerator
 import com.inversioncoach.app.calibration.CalibrationProfileProvider
 import com.inversioncoach.app.calibration.DrillMovementProfile
+import com.inversioncoach.app.calibration.RuntimeBodyProfileResolver
 import com.inversioncoach.app.calibration.UserBodyProfile
 import com.inversioncoach.app.calibration.rep.SessionRepTemplateUpdater
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -84,6 +85,7 @@ class LiveCoachingViewModel(
     private val cueEngine: CueEngine,
     private val repository: SessionRepository,
     private val calibrationProfileProvider: CalibrationProfileProvider,
+    private val runtimeBodyProfileResolver: RuntimeBodyProfileResolver? = null,
     private val options: LiveSessionOptions,
     private val summaryGenerator: SummaryGenerator = SummaryGenerator(com.inversioncoach.app.summary.RecommendationEngine()),
     private val smoother: PoseSmoothingEngine = PoseSmoothingEngine(),
@@ -177,6 +179,11 @@ class LiveCoachingViewModel(
     private var activeSettings: UserSettings = UserSettings()
     private var sessionHadAnyVideo = false
     private var activeMovementProfile: DrillMovementProfile? = null
+    private var activeUserProfileId: String? = null
+    private var activeBodyProfileId: String? = null
+    private var activeBodyProfileVersion: Int? = null
+    private var activeUsesDefaultBodyModel: Boolean = true
+    private var legacyBodyProfileFallback: UserBodyProfile? = null
     private var startupCancelled = false
     private val drillConfig = DrillConfigs.byTypeOrNull(drillType)
     private val readinessEngine = drillConfig?.let { SharedReadinessEngine(drillType, it, options.drillCameraSide) }
@@ -338,7 +345,7 @@ class LiveCoachingViewModel(
         val readiness = readinessEngine?.evaluate(frame)
         val sideForAnalysis = readiness?.actualSide ?: options.drillCameraSide
         val frameForSession = if (sessionMode == SessionMode.FREESTYLE) frame else frame.filterForDrillSide(sideForAnalysis)
-        val bodyProfile = UserBodyProfile.decode(settings.userBodyProfileJson)
+        val bodyProfile = activeMovementProfile?.userBodyProfile ?: legacyBodyProfileFallback
         val corrected = correctionEngine.process(frameForSession, bodyProfile)
         if (corrected.inversionDetected) {
             SessionDiagnostics.logStructured(
@@ -903,6 +910,10 @@ class LiveCoachingViewModel(
                         overlayTimelineUri = overlayTimelineUri,
                         calibrationProfileVersion = calibrationProfileForSession?.profileVersion,
                         calibrationUpdatedAtMs = calibrationProfileForSession?.updatedAtMs,
+                        userProfileId = activeUserProfileId,
+                        bodyProfileId = activeBodyProfileId,
+                        bodyProfileVersion = activeBodyProfileVersion,
+                        usedDefaultBodyModel = activeUsesDefaultBodyModel,
                         notesUri = null,
                         bestFrameTimestampMs = bestFrame,
                         worstFrameTimestampMs = worstFrame,
@@ -984,6 +995,16 @@ class LiveCoachingViewModel(
             smoother.reset()
             correctionEngine.reset()
             activeMovementProfile = calibrationProfileProvider.resolve(drillType)
+            runtimeBodyProfileResolver?.resolve()?.let { resolved ->
+                activeUserProfileId = resolved.userProfileId
+                activeBodyProfileId = resolved.bodyProfileId
+                activeBodyProfileVersion = resolved.bodyProfileVersion
+                activeUsesDefaultBodyModel = resolved.usedDefaultBodyModel
+                legacyBodyProfileFallback = resolved.bodyProfile
+            } ?: run {
+                activeUsesDefaultBodyModel = activeMovementProfile?.userBodyProfile == null
+                legacyBodyProfileFallback = UserBodyProfile.decode(activeSettings.userBodyProfileJson)
+            }
             motionPipeline.setRepTemplate(activeMovementProfile?.repTemplate)
             val now = System.currentTimeMillis()
             sessionStartedAtMs = now
@@ -1021,6 +1042,10 @@ class LiveCoachingViewModel(
                     overlayTimelineUri = null,
                     calibrationProfileVersion = activeMovementProfile?.profileVersion,
                     calibrationUpdatedAtMs = activeMovementProfile?.updatedAtMs,
+                    userProfileId = activeUserProfileId,
+                    bodyProfileId = activeBodyProfileId,
+                    bodyProfileVersion = activeBodyProfileVersion,
+                    usedDefaultBodyModel = activeUsesDefaultBodyModel,
                     notesUri = null,
                     bestFrameTimestampMs = null,
                     worstFrameTimestampMs = null,
