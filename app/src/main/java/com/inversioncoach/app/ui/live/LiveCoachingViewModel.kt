@@ -1318,24 +1318,7 @@ class LiveCoachingViewModel(
             }
 
             if (snapshot.overlayTimeline.frames.isEmpty()) {
-                setAnnotatedExportState(AnnotatedExportStatus.SKIPPED, AnnotatedExportFailureReason.OVERLAY_CAPTURE_EMPTY.name)
-                exportLifecycleState = ExportLifecycleState.IDLE
-                annotatedExportStage = AnnotatedExportStage.COMPLETED
-                annotatedExportPercent = 100
-                annotatedExportEtaSeconds = null
-                annotatedExportElapsedMs = 0L
-                annotatedExportLastUpdatedAt = System.currentTimeMillis()
-                repository.updateAnnotatedExportStatus(activeSessionId, AnnotatedExportStatus.SKIPPED)
-                repository.updateAnnotatedExportFailureReason(activeSessionId, AnnotatedExportFailureReason.OVERLAY_CAPTURE_EMPTY.name)
-                SessionDiagnostics.logStructured(
-                    event = "annotated_export_skipped_no_overlay",
-                    sessionId = activeSessionId,
-                    drillType = drillType,
-                    rawUri = rawVideoUri,
-                    annotatedUri = null,
-                    overlayFrameCount = 0,
-                    failureReason = AnnotatedExportFailureReason.OVERLAY_CAPTURE_EMPTY.name,
-                )
+                markAnnotatedExportSkippedNoOverlay(activeSessionId)
                 return
             }
 
@@ -1379,17 +1362,7 @@ class LiveCoachingViewModel(
                 return
             }
 
-            exportLaunchAttemptCount += 1
-            if (AnnotatedExportJobTracker.isActive(activeSessionId) || annotatedExportStatus == AnnotatedExportStatus.ANNOTATED_READY) {
-                SessionDiagnostics.logStructured(
-                    event = "duplicate_export_launch_ignored",
-                    sessionId = activeSessionId,
-                    drillType = drillType,
-                    rawUri = rawMasterUri,
-                    annotatedUri = annotatedVideoUri,
-                    overlayFrameCount = exportSnapshot.overlayFrameCount,
-                    failureReason = "exportLaunchAttemptCount=$exportLaunchAttemptCount",
-                )
+            if (shouldSkipDuplicateExportLaunch(activeSessionId, exportSnapshot)) {
                 return
             }
             SessionDiagnostics.logStructured(
@@ -1402,16 +1375,7 @@ class LiveCoachingViewModel(
                 failureReason = "exportLaunchAttemptCount=$exportLaunchAttemptCount",
             )
 
-            exportLifecycleState = ExportLifecycleState.PROCESSING
-            setAnnotatedExportState(AnnotatedExportStatus.PROCESSING, null)
-            annotatedExportStage = AnnotatedExportStage.PREPARING
-            annotatedExportPercent = 20
-            annotatedExportEtaSeconds = null
-            annotatedExportElapsedMs = 0L
-            annotatedExportLastUpdatedAt = System.currentTimeMillis()
-            repository.updateAnnotatedExportStatus(activeSessionId, AnnotatedExportStatus.PROCESSING)
-            repository.updateAnnotatedExportFailureReason(activeSessionId, null)
-            repository.updateAnnotatedExportProgress(activeSessionId, AnnotatedExportStage.PREPARING, 20, null, 0L)
+            markAnnotatedExportLaunchStarted(activeSessionId)
             AnnotatedExportJobTracker.markStarted(activeSessionId)
             SessionDiagnostics.logStructured(
                 event = "annotated_export_launched",
@@ -1545,6 +1509,60 @@ class LiveCoachingViewModel(
             failureReason = "owner=$existingOwner",
         )
         return false
+    }
+
+    private suspend fun markAnnotatedExportSkippedNoOverlay(activeSessionId: Long) {
+        setAnnotatedExportState(AnnotatedExportStatus.SKIPPED, AnnotatedExportFailureReason.OVERLAY_CAPTURE_EMPTY.name)
+        exportLifecycleState = ExportLifecycleState.IDLE
+        annotatedExportStage = AnnotatedExportStage.COMPLETED
+        annotatedExportPercent = 100
+        annotatedExportEtaSeconds = null
+        annotatedExportElapsedMs = 0L
+        annotatedExportLastUpdatedAt = System.currentTimeMillis()
+        repository.updateAnnotatedExportStatus(activeSessionId, AnnotatedExportStatus.SKIPPED)
+        repository.updateAnnotatedExportFailureReason(activeSessionId, AnnotatedExportFailureReason.OVERLAY_CAPTURE_EMPTY.name)
+        SessionDiagnostics.logStructured(
+            event = "annotated_export_skipped_no_overlay",
+            sessionId = activeSessionId,
+            drillType = drillType,
+            rawUri = rawVideoUri,
+            annotatedUri = null,
+            overlayFrameCount = 0,
+            failureReason = AnnotatedExportFailureReason.OVERLAY_CAPTURE_EMPTY.name,
+        )
+    }
+
+    private fun shouldSkipDuplicateExportLaunch(
+        activeSessionId: Long,
+        exportSnapshot: ExportSnapshot,
+    ): Boolean {
+        exportLaunchAttemptCount += 1
+        if (!AnnotatedExportJobTracker.isActive(activeSessionId) && annotatedExportStatus != AnnotatedExportStatus.ANNOTATED_READY) {
+            return false
+        }
+        SessionDiagnostics.logStructured(
+            event = "duplicate_export_launch_ignored",
+            sessionId = activeSessionId,
+            drillType = drillType,
+            rawUri = rawMasterUri,
+            annotatedUri = annotatedVideoUri,
+            overlayFrameCount = exportSnapshot.overlayFrameCount,
+            failureReason = "exportLaunchAttemptCount=$exportLaunchAttemptCount",
+        )
+        return true
+    }
+
+    private suspend fun markAnnotatedExportLaunchStarted(activeSessionId: Long) {
+        exportLifecycleState = ExportLifecycleState.PROCESSING
+        setAnnotatedExportState(AnnotatedExportStatus.PROCESSING, null)
+        annotatedExportStage = AnnotatedExportStage.PREPARING
+        annotatedExportPercent = 20
+        annotatedExportEtaSeconds = null
+        annotatedExportElapsedMs = 0L
+        annotatedExportLastUpdatedAt = System.currentTimeMillis()
+        repository.updateAnnotatedExportStatus(activeSessionId, AnnotatedExportStatus.PROCESSING)
+        repository.updateAnnotatedExportFailureReason(activeSessionId, null)
+        repository.updateAnnotatedExportProgress(activeSessionId, AnnotatedExportStage.PREPARING, 20, null, 0L)
     }
 
     private suspend fun createExportSnapshot(activeSessionId: Long): ExportSnapshot {
