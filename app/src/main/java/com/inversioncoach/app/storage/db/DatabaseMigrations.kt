@@ -230,11 +230,47 @@ object DatabaseMigrations {
         }
     }
 
+    val MIGRATION_16_17: Migration = object : Migration(16, 17) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `user_profile_records` (
+                    `id` TEXT NOT NULL,
+                    `displayName` TEXT NOT NULL,
+                    `createdAtMs` INTEGER NOT NULL,
+                    `updatedAtMs` INTEGER NOT NULL,
+                    `isArchived` INTEGER NOT NULL,
+                    PRIMARY KEY(`id`)
+                )
+                """.trimIndent(),
+            )
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `body_profile_records` (
+                    `id` TEXT NOT NULL,
+                    `userProfileId` TEXT NOT NULL,
+                    `version` INTEGER NOT NULL,
+                    `payloadJson` TEXT NOT NULL,
+                    `createdAtMs` INTEGER NOT NULL,
+                    `updatedAtMs` INTEGER NOT NULL,
+                    PRIMARY KEY(`id`)
+                )
+                """.trimIndent(),
+            )
+            db.execSQL("ALTER TABLE session_records ADD COLUMN userProfileId TEXT")
+            db.execSQL("ALTER TABLE session_records ADD COLUMN bodyProfileId TEXT")
+            db.execSQL("ALTER TABLE session_records ADD COLUMN bodyProfileVersion INTEGER")
+            db.execSQL("ALTER TABLE session_records ADD COLUMN usedDefaultBodyModel INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE user_settings ADD COLUMN activeUserProfileId TEXT")
+        }
+    }
+
     val ALL: Array<Migration> = arrayOf(
         MIGRATION_11_12,
         MIGRATION_12_13,
         MIGRATION_13_14,
         MIGRATION_14_15,
         MIGRATION_15_16,
+        MIGRATION_16_17,
     )
 }

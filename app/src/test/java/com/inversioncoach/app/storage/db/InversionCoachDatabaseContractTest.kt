@@ -3,11 +3,13 @@ package com.inversioncoach.app.storage.db
 import androidx.room.Database
 import com.inversioncoach.app.calibration.storage.CalibrationEntity
 import com.inversioncoach.app.model.CalibrationConfigRecord
+import com.inversioncoach.app.model.BodyProfileRecord
 import com.inversioncoach.app.model.DrillDefinitionRecord
 import com.inversioncoach.app.model.MovementProfileRecord
 import com.inversioncoach.app.model.ReferenceAssetRecord
 import com.inversioncoach.app.model.ReferenceTemplateRecord
 import com.inversioncoach.app.model.SessionComparisonRecord
+import com.inversioncoach.app.model.UserProfileRecord
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -24,7 +26,9 @@ class InversionCoachDatabaseContractTest {
         assertTrue("ReferenceAssetRecord must be registered", entities.contains(ReferenceAssetRecord::class.java))
         assertTrue("MovementProfileRecord must be registered", entities.contains(MovementProfileRecord::class.java))
         assertTrue("CalibrationConfigRecord must be registered", entities.contains(CalibrationConfigRecord::class.java))
-        assertTrue("Database version must include portable drill migrations", annotation.version >= 16)
+        assertTrue("UserProfileRecord must be registered", entities.contains(UserProfileRecord::class.java))
+        assertTrue("BodyProfileRecord must be registered", entities.contains(BodyProfileRecord::class.java))
+        assertTrue("Database version must include body profile migrations", annotation.version >= 17)
     }
 
     @Test
@@ -49,6 +53,8 @@ class InversionCoachDatabaseContractTest {
         val hasComparisonDao = methods.any { method ->
             method.name == "sessionComparisonDao" && method.returnType == SessionComparisonDao::class.java
         }
+        val hasUserProfileDao = methods.any { it.name == "userProfileDao" && it.returnType == UserProfileDao::class.java }
+        val hasBodyProfileDao = methods.any { it.name == "bodyProfileDao" && it.returnType == BodyProfileDao::class.java }
 
         assertTrue("InversionCoachDatabase must expose drillDefinitionDao()", hasDrillDao)
         assertTrue("InversionCoachDatabase must expose referenceAssetDao()", hasReferenceAssetDao)
@@ -56,5 +62,7 @@ class InversionCoachDatabaseContractTest {
         assertTrue("InversionCoachDatabase must expose calibrationConfigDao()", hasCalibrationConfigDao)
         assertTrue("InversionCoachDatabase must expose referenceTemplateDao()", hasReferenceDao)
         assertTrue("InversionCoachDatabase must expose sessionComparisonDao()", hasComparisonDao)
+        assertTrue("InversionCoachDatabase must expose userProfileDao()", hasUserProfileDao)
+        assertTrue("InversionCoachDatabase must expose bodyProfileDao()", hasBodyProfileDao)
     }
 }

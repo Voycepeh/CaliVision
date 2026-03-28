@@ -25,25 +25,39 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenu
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.inversioncoach.app.storage.ServiceLocator
+import kotlinx.coroutines.launch
 import com.inversioncoach.app.ui.common.computeSessionDurationMs
 import com.inversioncoach.app.ui.common.formatSessionDateTime
 import com.inversioncoach.app.ui.common.formatSessionDuration
 import com.inversioncoach.app.ui.components.ScaffoldedScreen
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun HomeScreen(
     onStart: () -> Unit,
     onStartFreestyle: () -> Unit,
@@ -56,7 +70,16 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     val repository = remember { ServiceLocator.repository(context) }
+    val userProfileManager = remember { ServiceLocator.userProfileManager(context) }
     val sessions by repository.observeSessions().collectAsState(initial = emptyList())
+    val settings by repository.observeSettings().collectAsState(initial = com.inversioncoach.app.model.UserSettings())
+    val profiles by userProfileManager.observeAvailableProfiles().collectAsState(initial = emptyList())
+    val scope = rememberCoroutineScope()
+    val activeProfile = profiles.firstOrNull { it.id == settings.activeUserProfileId } ?: profiles.firstOrNull()
+    val activeProfileContext by produceState<com.inversioncoach.app.calibration.ActiveProfileContext?>(initialValue = null, activeProfile?.id) {
+        value = if (activeProfile == null) null else userProfileManager.resolveActiveProfileContext()
+    }
+    val activeHasCalibration = activeProfileContext?.bodyProfile != null
     val latestSession = sessions.maxByOrNull { it.startedAtMs }
 
     ScaffoldedScreen(title = "Inversion Coach") { padding ->
@@ -72,11 +95,34 @@ fun HomeScreen(
             onManageDrills = onManageDrills,
             latestSessionStartMs = latestSession?.startedAtMs ?: 0L,
             latestSessionDurationMs = computeSessionDurationMs(latestSession?.startedAtMs ?: 0L, latestSession?.completedAtMs ?: 0L),
+            profiles = profiles.map { it.id to it.displayName },
+            activeProfileId = activeProfile?.id,
+            activeProfileName = activeProfile?.displayName ?: "No profile",
+            activeHasCalibration = activeHasCalibration,
+            activeBodyProfileVersion = activeProfileContext?.bodyProfileRecord?.version,
+            onSelectProfile = { profileId ->
+                scope.launch {
+                    userProfileManager.setActiveProfile(profileId)
+                }
+            },
+            onCreateProfile = { profileName ->
+                scope.launch {
+                    val created = userProfileManager.createProfile(profileName)
+                    userProfileManager.setActiveProfile(created.id)
+                }
+            },
+            onRenameProfile = { profileId, newName ->
+                scope.launch { userProfileManager.renameProfile(profileId, newName) }
+            },
+            onArchiveProfile = { profileId ->
+                scope.launch { userProfileManager.archiveProfile(profileId) }
+            },
         )
     }
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun Content(
     padding: PaddingValues,
     onStart: () -> Unit,
@@ -89,7 +135,21 @@ private fun Content(
     onManageDrills: () -> Unit,
     latestSessionStartMs: Long,
     latestSessionDurationMs: Long,
+    profiles: List<Pair<String, String>>,
+    activeProfileId: String?,
+    activeProfileName: String,
+    activeHasCalibration: Boolean,
+    activeBodyProfileVersion: Int?,
+    onSelectProfile: (String) -> Unit,
+    onCreateProfile: (String) -> Unit,
+    onRenameProfile: (String, String) -> Unit,
+    onArchiveProfile: (String) -> Unit,
 ) {
+    var expanded by remember { mutableStateOf(false) }
+    var showCreateDialog by remember { mutableStateOf(false) }
+    var newProfileName by remember { mutableStateOf("") }
+    var renameTargetProfileId by remember { mutableStateOf<String?>(null) }
+    var renameTargetName by remember { mutableStateOf("") }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -104,6 +164,57 @@ private fun Content(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Card {
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Active profile: $activeProfileName", fontWeight = FontWeight.SemiBold)
+                Text(
+                    if (activeHasCalibration) "Body profile: Calibrated (v${activeBodyProfileVersion ?: 1})"
+                    else "Body profile: Default model (no calibration yet)",
+                )
+                ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+                    OutlinedTextField(
+                        value = activeProfileName,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Switch profile") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth(),
+                    )
+                    ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        profiles.forEach { (id, name) ->
+                            DropdownMenuItem(
+                                text = { Text(name) },
+                                onClick = {
+                                    expanded = false
+                                    onSelectProfile(id)
+                                },
+                            )
+                        }
+                    }
+                }
+                Button(onClick = { showCreateDialog = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Create profile")
+                }
+                profiles.forEach { (id, name) ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = if (id == activeProfileId) "• $name (Active)" else "• $name",
+                            modifier = Modifier.weight(1f),
+                        )
+                        Button(
+                            onClick = {
+                                renameTargetProfileId = id
+                                renameTargetName = name
+                            },
+                        ) { Text("Rename") }
+                        Button(
+                            onClick = { onArchiveProfile(id) },
+                            enabled = profiles.size > 1 && id != activeProfileId,
+                        ) { Text("Archive") }
+                    }
+                }
+            }
+        }
 
         ActionTile(
             label = "Start Live Coaching",
@@ -143,7 +254,11 @@ private fun Content(
 
         ActionTile(
             label = "Latest Session",
-            subtitle = "${formatSessionDateTime(latestSessionStartMs)} • ${formatSessionDuration(latestSessionDurationMs)}",
+            subtitle = if (latestSessionStartMs > 0L) {
+                "${formatSessionDateTime(latestSessionStartMs)} • ${formatSessionDuration(latestSessionDurationMs)}"
+            } else {
+                "Open history to review saved sessions"
+            },
             icon = { Icon(Icons.Default.History, contentDescription = null) },
             onClick = onHistory,
         )
@@ -171,6 +286,61 @@ private fun Content(
             icon = { Icon(Icons.Default.Settings, contentDescription = null) },
             onClick = onSettings,
         )
+
+        if (showCreateDialog) {
+            AlertDialog(
+                onDismissRequest = { showCreateDialog = false },
+                title = { Text("Create profile") },
+                text = {
+                    OutlinedTextField(
+                        value = newProfileName,
+                        onValueChange = { newProfileName = it },
+                        label = { Text("Profile name") },
+                        singleLine = true,
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val name = newProfileName.trim().ifBlank { "User" }
+                            onCreateProfile(name)
+                            newProfileName = ""
+                            showCreateDialog = false
+                        },
+                    ) { Text("Create") }
+                },
+                dismissButton = {
+                    Button(onClick = { showCreateDialog = false }) { Text("Cancel") }
+                },
+            )
+        }
+
+        if (renameTargetProfileId != null) {
+            AlertDialog(
+                onDismissRequest = { renameTargetProfileId = null },
+                title = { Text("Rename profile") },
+                text = {
+                    OutlinedTextField(
+                        value = renameTargetName,
+                        onValueChange = { renameTargetName = it },
+                        label = { Text("Profile name") },
+                        singleLine = true,
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val id = renameTargetProfileId ?: return@Button
+                            onRenameProfile(id, renameTargetName)
+                            renameTargetProfileId = null
+                        },
+                    ) { Text("Save") }
+                },
+                dismissButton = {
+                    Button(onClick = { renameTargetProfileId = null }) { Text("Cancel") }
+                },
+            )
+        }
     }
 }
 

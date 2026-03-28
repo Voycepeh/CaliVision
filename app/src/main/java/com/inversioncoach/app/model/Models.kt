@@ -380,10 +380,33 @@ data class SessionRecord(
     val overlayTimelineUri: String? = null,
     val calibrationProfileVersion: Int? = null,
     val calibrationUpdatedAtMs: Long? = null,
+    val userProfileId: String? = null,
+    val bodyProfileId: String? = null,
+    val bodyProfileVersion: Int? = null,
+    val usedDefaultBodyModel: Boolean = false,
     val notesUri: String?,
     val bestFrameTimestampMs: Long?,
     val worstFrameTimestampMs: Long?,
     val topImprovementFocus: String,
+)
+
+@Entity(tableName = "user_profile_records")
+data class UserProfileRecord(
+    @PrimaryKey val id: String,
+    val displayName: String,
+    val createdAtMs: Long,
+    val updatedAtMs: Long,
+    val isArchived: Boolean = false,
+)
+
+@Entity(tableName = "body_profile_records")
+data class BodyProfileRecord(
+    @PrimaryKey val id: String,
+    val userProfileId: String,
+    val version: Int,
+    val payloadJson: String,
+    val createdAtMs: Long,
+    val updatedAtMs: Long,
 )
 
 @Entity(tableName = "frame_metric_records")
@@ -439,6 +462,7 @@ data class UserSettings(
     val customRepAcceptanceThreshold: Int = 70,
     val customHoldAlignedThreshold: Int = 72,
     val drillCameraSideSelections: String = "",
+    val activeUserProfileId: String? = null,
     val userBodyProfileJson: String? = null,
 )
 

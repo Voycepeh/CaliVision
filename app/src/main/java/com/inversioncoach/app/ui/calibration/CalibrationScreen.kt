@@ -51,13 +51,14 @@ import com.inversioncoach.app.ui.components.ScaffoldedScreen
 import java.util.concurrent.Executors
 
 @Composable
-fun CalibrationScreen(drillType: DrillType, onBack: () -> Unit) {
+fun CalibrationScreen(onBack: () -> Unit, templateDrillType: DrillType? = null) {
     val context = LocalContext.current
     val vm = remember {
         CalibrationViewModel(
-            drillType = drillType,
+            templateDrillType = templateDrillType,
             calibrationProfileProvider = ServiceLocator.calibrationProfileProvider(context),
             drillMovementProfileRepository = ServiceLocator.drillMovementProfileRepository(context),
+            userProfileManager = ServiceLocator.userProfileManager(context),
         )
     }
     val state by vm.state.collectAsState()
@@ -92,7 +93,7 @@ fun CalibrationScreen(drillType: DrillType, onBack: () -> Unit) {
 
             CalibrationPhase.CAPTURING -> CalibrationCaptureContent(
                 state = state,
-                drillType = drillType,
+                drillType = templateDrillType ?: DrillType.FREESTYLE,
                 lifecycleOwner = lifecycleOwner,
                 cameraManager = cameraManager,
                 analyzer = analyzer,
