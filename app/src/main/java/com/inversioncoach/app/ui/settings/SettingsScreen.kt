@@ -50,6 +50,7 @@ fun SettingsScreen(
     val userProfileManager = remember { ServiceLocator.userProfileManager(context) }
 
     val scope = rememberCoroutineScope()
+    var cueStyle by remember { mutableStateOf(CueStyle.CONCISE) }
     var cueFrequency by remember { mutableFloatStateOf(2f) }
     var debug by remember { mutableStateOf(false) }
     var localOnlyPrivacyMode by remember { mutableStateOf(true) }
@@ -84,6 +85,7 @@ fun SettingsScreen(
 
     LaunchedEffect(Unit) {
         repository.observeSettings().collect { s ->
+            cueStyle = s.cueStyle
             cueFrequency = s.cueFrequencySeconds
             debug = s.debugOverlayEnabled
             localOnlyPrivacyMode = s.localOnlyPrivacyMode
@@ -110,32 +112,23 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Voice style: concise / technical / encouraging")
-            Text("Cue frequency: ${"%.1f".format(cueFrequency)}s")
-            Slider(value = cueFrequency, onValueChange = { cueFrequency = it }, valueRange = 1.5f..4f)
-            Text("Max video storage: ${maxStorageMb} MB")
-            Slider(
-                value = maxStorageMb.toFloat(),
-                onValueChange = { maxStorageMb = it.toInt().coerceIn(256, 4096) },
-                valueRange = 256f..4096f,
-            )
-            Text("Startup countdown: ${startupCountdownSeconds}s")
-            Slider(
-                value = startupCountdownSeconds.toFloat(),
-                onValueChange = { startupCountdownSeconds = it.toInt().coerceIn(0, 30) },
-                valueRange = 0f..30f,
-            )
-            Text("Time before recording starts.")
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Debug overlay (raw metrics/angles)")
-                Checkbox(checked = debug, onCheckedChange = { debug = it })
-            }
             Text("Preferences", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
 
             SettingsCard(title = "Voice cues") {
                 Text("Cue frequency: ${"%.1f".format(cueFrequency)}s")
                 Slider(value = cueFrequency, onValueChange = { cueFrequency = it }, valueRange = 1.5f..4f)
-                Text("Voice style: concise / technical / encouraging")
+                Text("Voice style")
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CueStyle.entries.forEach { style ->
+                        Button(
+                            onClick = { cueStyle = style },
+                            enabled = cueStyle != style,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text(style.name.lowercase().replaceFirstChar { it.uppercase() })
+                        }
+                    }
+                }
             }
 
             SettingsCard(title = "Overlay") {
@@ -145,30 +138,14 @@ fun SettingsScreen(
                 }
             }
 
-            SettingsCard(title = "Alignment") {
-                Text("Alignment strictness: ${alignmentStrictness.name.lowercase().replaceFirstChar { it.uppercase() }}")
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AlignmentStrictness.entries.forEach { level ->
-                        Button(
-                            onClick = { alignmentStrictness = level },
-                            modifier = Modifier.weight(1f),
-                            enabled = alignmentStrictness != level,
-                        ) {
-                            Text(level.name.lowercase().replaceFirstChar { it.uppercase() })
-                        }
-                    }
-                }
-                Text("Beginner is forgiving. Advanced is strict. Custom uses your thresholds from saved settings.")
-                if (alignmentStrictness == AlignmentStrictness.CUSTOM) {
-                    Text("Line deviation: ${"%.2f".format(customLineDeviation)}")
-                    Slider(value = customLineDeviation, onValueChange = { customLineDeviation = it }, valueRange = 0.06f..0.24f)
-                    Text("Minimum good form score: $customGoodForm")
-                    Slider(value = customGoodForm.toFloat(), onValueChange = { customGoodForm = it.toInt().coerceIn(40, 95) }, valueRange = 40f..95f)
-                    Text("Rep acceptance threshold: $customRepThreshold")
-                    Slider(value = customRepThreshold.toFloat(), onValueChange = { customRepThreshold = it.toInt().coerceIn(40, 95) }, valueRange = 40f..95f)
-                    Text("Hold aligned threshold: $customHoldThreshold")
-                    Slider(value = customHoldThreshold.toFloat(), onValueChange = { customHoldThreshold = it.toInt().coerceIn(40, 95) }, valueRange = 40f..95f)
-                }
+            SettingsCard(title = "Session") {
+                Text("Startup countdown: ${startupCountdownSeconds}s")
+                Slider(
+                    value = startupCountdownSeconds.toFloat(),
+                    onValueChange = { startupCountdownSeconds = it.toInt().coerceIn(0, 30) },
+                    valueRange = 0f..30f,
+                )
+                Text("Time before recording starts.")
             }
 
             SettingsCard(title = "Storage & privacy") {
@@ -182,6 +159,7 @@ fun SettingsScreen(
                     Text("Local-only privacy mode")
                     Checkbox(checked = localOnlyPrivacyMode, onCheckedChange = { localOnlyPrivacyMode = it })
                 }
+                Button(onClick = { showDeleteConfirmation = true }, modifier = Modifier.fillMaxWidth()) { Text("Delete all sessions") }
             }
 
             Button(onClick = { showSaveConfirmation = true }, modifier = Modifier.fillMaxWidth()) { Text("Save settings") }
@@ -200,8 +178,9 @@ fun SettingsScreen(
                     enabled = calibrationUpdatedAt != null,
                 ) { Text("Clear calibration") }
             }
-            Button(onClick = onDeveloperTuning, modifier = Modifier.fillMaxWidth()) { Text("Developer threshold tuning") }
-            Button(onClick = { showDeleteConfirmation = true }, modifier = Modifier.fillMaxWidth()) { Text("Delete all sessions") }
+            SettingsCard(title = "Developer tools") {
+                Button(onClick = onDeveloperTuning, modifier = Modifier.fillMaxWidth()) { Text("Developer threshold tuning") }
+            }
         }
 
         if (showSaveConfirmation) {
@@ -216,6 +195,7 @@ fun SettingsScreen(
                             scope.launch {
                                 repository.saveSettings(
                                     UserSettings(
+                                        cueStyle = cueStyle,
                                         cueFrequencySeconds = cueFrequency,
                                         debugOverlayEnabled = debug,
                                         localOnlyPrivacyMode = localOnlyPrivacyMode,
