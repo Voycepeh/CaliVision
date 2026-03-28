@@ -196,6 +196,11 @@ class DefaultUploadVideoAnalysisRunner(
         val rotationDegrees: Int,
     )
 
+    private data class AnalysisStagePresentation(
+        val phaseLabel: String,
+        val progressDetail: String,
+    )
+
     override suspend fun run(
         uri: Uri,
         trackingMode: UploadTrackingMode,
@@ -450,26 +455,15 @@ class DefaultUploadVideoAnalysisRunner(
                         null
                     }
 
-                    val phaseLabel = when (event.stage) {
-                        "decode_start" -> "Analyzing uploaded video"
-                        "frame_sampled" -> "Sampling video frames"
-                        "analysis_complete" -> "Finalizing results..."
-                        else -> "Analyzing movement"
-                    }
-                    val progressDetail = when (event.stage) {
-                        "decode_start" -> "Analyzing uploaded video"
-                        "frame_sampled" -> if (estimatedTotal != null && boundedProcessed > 0) {
-                            "Sampling uploaded frames: $boundedProcessed / $estimatedTotal"
-                        } else {
-                            "Sampling uploaded frames"
-                        }
-                        "analysis_complete" -> "Finalizing results..."
-                        else -> if (totalFramesForUi > 0 && analyzedFramesForUi > 0) {
-                            "Analyzing movement: $analyzedFramesForUi / $totalFramesForUi frames"
-                        } else {
-                            "Analyzing movement"
-                        }
-                    }
+                    val presentation = analysisStagePresentation(
+                        stage = event.stage,
+                        estimatedTotal = estimatedTotal,
+                        boundedProcessed = boundedProcessed,
+                        analyzedFramesForUi = analyzedFramesForUi,
+                        totalFramesForUi = totalFramesForUi,
+                    )
+                    val phaseLabel = presentation.phaseLabel
+                    val progressDetail = presentation.progressDetail
                     val processedForPersistence = analyzedFramesForUi
                     val totalForPersistence = totalFramesForUi.takeIf { it > 0 } ?: (estimatedTotal ?: 0)
                     persistUploadProgressThrottled(
@@ -1024,6 +1018,39 @@ class DefaultUploadVideoAnalysisRunner(
             pairs[key] = value
         }
         return pairs.entries.joinToString(separator = "|") { (key, value) -> "$key:$value" }
+    }
+
+    private fun analysisStagePresentation(
+        stage: String,
+        estimatedTotal: Int?,
+        boundedProcessed: Int,
+        analyzedFramesForUi: Int,
+        totalFramesForUi: Int,
+    ): AnalysisStagePresentation {
+        val phaseLabel = when (stage) {
+            "decode_start" -> "Analyzing uploaded video"
+            "frame_sampled" -> "Sampling video frames"
+            "analysis_complete" -> "Finalizing results..."
+            else -> "Analyzing movement"
+        }
+        val progressDetail = when (stage) {
+            "decode_start" -> "Analyzing uploaded video"
+            "frame_sampled" -> if (estimatedTotal != null && boundedProcessed > 0) {
+                "Sampling uploaded frames: $boundedProcessed / $estimatedTotal"
+            } else {
+                "Sampling uploaded frames"
+            }
+            "analysis_complete" -> "Finalizing results..."
+            else -> if (totalFramesForUi > 0 && analyzedFramesForUi > 0) {
+                "Analyzing movement: $analyzedFramesForUi / $totalFramesForUi frames"
+            } else {
+                "Analyzing movement"
+            }
+        }
+        return AnalysisStagePresentation(
+            phaseLabel = phaseLabel,
+            progressDetail = progressDetail,
+        )
     }
 
     private fun buildMovementProfileFromDrill(drill: com.inversioncoach.app.model.DrillDefinitionRecord): MovementProfile {
