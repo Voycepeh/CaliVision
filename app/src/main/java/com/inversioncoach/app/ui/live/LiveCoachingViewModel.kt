@@ -186,6 +186,7 @@ class LiveCoachingViewModel(
     private var validFrameCount = 0
     private var invalidFrameCount = 0
     private val validFrameScores = mutableListOf<Int>()
+    private var activeBodyProfile: UserBodyProfile? = null
 
     val sessionTitle: String
         get() = if (sessionMode == SessionMode.FREESTYLE) "Freestyle Live Coaching session" else "${drillType.displayName} session"
@@ -214,6 +215,9 @@ class LiveCoachingViewModel(
             overlayFrameCount = 0,
             failureReason = "analyzer=${metricsEngine::class.simpleName};movementPattern=$movementPattern",
         )
+        viewModelScope.launch {
+            activeBodyProfile = repository.getActiveProfileCalibration()
+        }
     }
 
     fun onCameraPermissionChanged(granted: Boolean) {
@@ -339,8 +343,7 @@ class LiveCoachingViewModel(
         val readiness = readinessEngine?.evaluate(frame)
         val sideForAnalysis = readiness?.actualSide ?: options.drillCameraSide
         val frameForSession = if (sessionMode == SessionMode.FREESTYLE) frame else frame.filterForDrillSide(sideForAnalysis)
-        val bodyProfile = UserBodyProfile.decode(settings.userBodyProfileJson)
-        val corrected = correctionEngine.process(frameForSession, bodyProfile)
+        val corrected = correctionEngine.process(frameForSession, activeBodyProfile)
         if (corrected.inversionDetected) {
             SessionDiagnostics.logStructured(
                 event = "pose_inversion_detected",

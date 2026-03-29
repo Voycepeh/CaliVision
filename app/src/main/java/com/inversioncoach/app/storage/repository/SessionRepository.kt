@@ -8,6 +8,7 @@ import com.inversioncoach.app.model.RetainedAssetType
 import com.inversioncoach.app.model.DrillType
 import com.inversioncoach.app.model.FrameMetricRecord
 import com.inversioncoach.app.model.IssueEvent
+import com.inversioncoach.app.model.ProfileCalibrationEntity
 import com.inversioncoach.app.model.RawPersistStatus
 import com.inversioncoach.app.model.SessionRecord
 import com.inversioncoach.app.model.UserSettings
@@ -15,16 +16,18 @@ import com.inversioncoach.app.calibration.UserBodyProfile
 import com.inversioncoach.app.overlay.DrillCameraSide
 import com.inversioncoach.app.storage.SessionBlobStorage
 import com.inversioncoach.app.storage.db.FrameMetricDao
+import com.inversioncoach.app.storage.db.ProfileDao
 import com.inversioncoach.app.storage.db.SessionDao
 import com.inversioncoach.app.storage.db.UserSettingsDao
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
-import org.json.JSONObject
 
 private const val STALE_EXPORT_RECONCILIATION_MS = 2 * 60 * 1000L
 private const val DEFAULT_PROFILE_NAME = "Profile 1"
 
 data class UserProfileStatus(
+    val id: Long,
     val name: String,
     val isActive: Boolean,
     val isCalibrated: Boolean,
@@ -34,6 +37,7 @@ class SessionRepository(
     private val sessionDao: SessionDao,
     private val userSettingsDao: UserSettingsDao,
     private val frameMetricDao: FrameMetricDao,
+    private val profileDao: ProfileDao,
     private val sessionBlobStorage: SessionBlobStorage,
 ) {
     fun observeSessions(drillType: DrillType? = null): Flow<List<SessionRecord>> =
@@ -320,176 +324,154 @@ class SessionRepository(
 
     /**
      * Legacy compatibility only: `userBodyProfileJson` predates profile-based calibration storage.
-     * New code should use getCalibrationForActiveProfile()/saveCalibrationForProfile().
+     * New code should use getActiveProfileCalibration()/saveCalibrationForActiveProfile().
      */
     suspend fun saveUserBodyProfile(profile: UserBodyProfile?) {
-        val settings = userSettingsDao.getSettings() ?: UserSettings()
-        userSettingsDao.upsert(settings.copy(userBodyProfileJson = profile?.encode()))
+        val activeProfile = getActiveProfile() ?: return
+        saveCalibration(activeProfile.id, profile)
     }
 
     /**
-     * Legacy compatibility only: prefer getCalibrationForActiveProfile() for canonical profile-based lookup.
+     * Legacy compatibility only: prefer getActiveProfileCalibration() for canonical profile-based lookup.
      */
-    suspend fun getUserBodyProfile(): UserBodyProfile? {
-        val settings = userSettingsDao.getSettings() ?: return null
-        return UserBodyProfile.decode(settings.userBodyProfileJson)
-    }
+    suspend fun getUserBodyProfile(): UserBodyProfile? = getActiveProfileCalibration()
 
-    fun observeProfileStatuses(): Flow<List<UserProfileStatus>> =
-        observeSettings().map { settings ->
-            val normalized = normalizeProfileState(settings)
-            profileStatusesFrom(normalized)
+    fun observeProfiles(): Flow<List<UserProfileStatus>> =
+        profileDao.observeProfiles().map { profiles ->
+            profiles.map { it.toStatus() }
         }
 
-    suspend fun listProfiles(): List<UserProfileStatus> {
-        val settings = normalizeProfileState(userSettingsDao.getSettings() ?: UserSettings())
-        return profileStatusesFrom(settings)
+    fun observeProfileStatuses(): Flow<List<UserProfileStatus>> = observeProfiles()
+
+    fun observeActiveProfile(): Flow<UserProfileStatus?> =
+        profileDao.observeActiveProfile().map { it?.toStatus() }
+
+    suspend fun listProfiles(): List<UserProfileStatus> =
+        profileDao.observeProfiles().map { profiles -> profiles.map { it.toStatus() } }
+            .firstOrNull()
+            .orEmpty()
+
+    suspend fun getActiveProfile(): UserProfileStatus? {
+        val existing = profileDao.getActiveProfile()?.toStatus()
+        if (existing != null) return existing
+
+        val fallback = profileDao.getOldestUnarchivedProfile()
+        if (fallback != null) {
+            profileDao.setActiveProfile(fallback.id, System.currentTimeMillis())
+            return profileDao.getActiveProfile()?.toStatus()
+        }
+
+        ensureDefaultProfileExists()
+        return profileDao.getActiveProfile()?.toStatus()
     }
 
-    suspend fun getActiveProfile(): UserProfileStatus {
-        return listProfiles().firstOrNull { it.isActive } ?: UserProfileStatus(DEFAULT_PROFILE_NAME, true, false)
+    suspend fun setActiveProfile(profileId: Long): Boolean {
+        val updatedAtMs = System.currentTimeMillis()
+        return profileDao.setActiveProfile(profileId = profileId, updatedAtMs = updatedAtMs)
     }
 
-    suspend fun setActiveProfile(profileName: String): Boolean {
-        if (profileName.isBlank()) return false
-        val settings = normalizeProfileState(userSettingsDao.getSettings() ?: UserSettings())
-        val profiles = parseProfileNames(settings.profileNamesCsv)
-        if (!profiles.contains(profileName)) return false
-        userSettingsDao.upsert(settings.copy(activeProfileName = profileName))
-        return true
+    suspend fun createProfile(displayName: String): Long? {
+        val normalizedName = displayName.trim()
+        if (normalizedName.isBlank()) return null
+        val now = System.currentTimeMillis()
+        val shouldActivate = getActiveProfile() == null
+        val insertedId = runCatching {
+            profileDao.insertProfile(
+                com.inversioncoach.app.model.UserProfileEntity(
+                    displayName = normalizedName,
+                    isActive = shouldActivate,
+                    isArchived = false,
+                    createdAtMs = now,
+                    updatedAtMs = now,
+                ),
+            )
+        }.getOrNull() ?: return null
+        return insertedId
     }
 
-    suspend fun createProfile(profileName: String): Boolean {
-        val normalizedName = profileName.trim()
+    suspend fun renameProfile(profileId: Long, displayName: String): Boolean {
+        val normalizedName = displayName.trim()
         if (normalizedName.isBlank()) return false
-        val settings = normalizeProfileState(userSettingsDao.getSettings() ?: UserSettings())
-        val profiles = parseProfileNames(settings.profileNamesCsv)
-        if (profiles.contains(normalizedName)) return false
-        userSettingsDao.upsert(settings.copy(profileNamesCsv = (profiles + normalizedName).joinToString(",")))
-        return true
+        return runCatching {
+            profileDao.renameProfile(profileId, normalizedName, System.currentTimeMillis()) > 0
+        }.getOrDefault(false)
     }
 
-    suspend fun renameProfile(oldName: String, newName: String): Boolean {
-        val targetName = newName.trim()
-        if (oldName.isBlank() || targetName.isBlank()) return false
-        val settings = normalizeProfileState(userSettingsDao.getSettings() ?: UserSettings())
-        val profiles = parseProfileNames(settings.profileNamesCsv)
-        if (!profiles.contains(oldName) || profiles.contains(targetName)) return false
-        val renamedProfiles = profiles.map { if (it == oldName) targetName else it }
-        val calibrations = decodeProfileCalibrations(settings.profileCalibrationsJson).toMutableMap()
-        val oldCalibration = calibrations.remove(oldName)
-        if (!oldCalibration.isNullOrBlank()) calibrations[targetName] = oldCalibration
-        val nextActive = if (settings.activeProfileName == oldName) targetName else settings.activeProfileName
-        userSettingsDao.upsert(
-            settings.copy(
-                profileNamesCsv = renamedProfiles.joinToString(","),
-                activeProfileName = nextActive,
-                profileCalibrationsJson = encodeProfileCalibrations(calibrations),
-            ),
-        )
-        return true
-    }
-
-    suspend fun archiveProfile(profileName: String): Boolean {
-        val settings = normalizeProfileState(userSettingsDao.getSettings() ?: UserSettings())
-        val profiles = parseProfileNames(settings.profileNamesCsv)
-        if (!profiles.contains(profileName)) return false
-        val remaining = profiles.filterNot { it == profileName }
-        val nextProfiles = if (remaining.isEmpty()) listOf(DEFAULT_PROFILE_NAME) else remaining
-        val calibrations = decodeProfileCalibrations(settings.profileCalibrationsJson).toMutableMap().apply { remove(profileName) }
-        val nextActive = when {
-            settings.activeProfileName != profileName -> settings.activeProfileName
-            nextProfiles.contains(DEFAULT_PROFILE_NAME) -> DEFAULT_PROFILE_NAME
-            else -> nextProfiles.first()
+    suspend fun archiveProfile(profileId: Long): Boolean {
+        val profile = profileDao.getProfile(profileId) ?: return false
+        val updatedAtMs = System.currentTimeMillis()
+        val archived = profileDao.archiveProfile(profileId, updatedAtMs) > 0
+        if (!archived) return false
+        if (profile.isActive) {
+            val fallback = profileDao.getOldestUnarchivedProfile()
+            if (fallback != null) {
+                profileDao.setActiveProfile(fallback.id, updatedAtMs)
+            } else {
+                createProfile(DEFAULT_PROFILE_NAME)
+            }
         }
-        userSettingsDao.upsert(
-            settings.copy(
-                activeProfileName = nextActive,
-                profileNamesCsv = nextProfiles.joinToString(","),
-                profileCalibrationsJson = encodeProfileCalibrations(calibrations),
-            ),
-        )
         return true
     }
 
-    suspend fun activeProfileName(): String = getActiveProfile().name
+    fun observeCalibration(profileId: Long): Flow<UserBodyProfile?> =
+        profileDao.observeCalibration(profileId).map { calibration ->
+            UserBodyProfile.decode(calibration?.calibrationPayloadJson)
+        }
 
-    suspend fun saveCalibrationForProfile(profileName: String, profile: UserBodyProfile?) {
-        val settings = normalizeProfileState(userSettingsDao.getSettings() ?: UserSettings())
-        val profiles = parseProfileNames(settings.profileNamesCsv)
-        val safeProfileName = profileName.takeIf { it.isNotBlank() } ?: settings.activeProfileName
-        val map = decodeProfileCalibrations(settings.profileCalibrationsJson).toMutableMap()
-        if (profile == null) map.remove(safeProfileName) else map[safeProfileName] = profile.encode()
-        val normalizedNames = if (profiles.contains(safeProfileName)) profiles else profiles + safeProfileName
-        userSettingsDao.upsert(
-            settings.copy(
-                activeProfileName = safeProfileName,
-                profileNamesCsv = normalizedNames.joinToString(","),
-                profileCalibrationsJson = encodeProfileCalibrations(map),
+    suspend fun getCalibration(profileId: Long): UserBodyProfile? =
+        UserBodyProfile.decode(profileDao.getCalibration(profileId)?.calibrationPayloadJson)
+
+    suspend fun getActiveProfileCalibration(): UserBodyProfile? {
+        val activeProfile = getActiveProfile() ?: return null
+        return getCalibration(activeProfile.id)
+    }
+
+    suspend fun saveCalibration(profileId: Long, profile: UserBodyProfile?) {
+        if (profile == null) {
+            profileDao.deleteCalibration(profileId)
+            return
+        }
+        val updatedAtMs = System.currentTimeMillis()
+        val existingVersion = profileDao.getCalibration(profileId)?.profileVersion ?: 0
+        profileDao.upsertCalibration(
+            ProfileCalibrationEntity(
+                profileId = profileId,
+                profileVersion = existingVersion + 1,
+                updatedAtMs = updatedAtMs,
+                calibrationPayloadJson = profile.encode(),
+                calibrationMethod = "structural_calibration",
             ),
         )
     }
 
-    suspend fun getCalibrationForProfile(profileName: String): UserBodyProfile? {
-        val settings = normalizeProfileState(userSettingsDao.getSettings() ?: UserSettings())
-        val encoded = decodeProfileCalibrations(settings.profileCalibrationsJson)[profileName]
-        return UserBodyProfile.decode(encoded)
+    suspend fun saveCalibrationForActiveProfile(profile: UserBodyProfile?) {
+        val activeProfile = getActiveProfile() ?: return
+        saveCalibration(activeProfile.id, profile)
     }
 
-    suspend fun getCalibrationForActiveProfile(): UserBodyProfile? {
-        val active = activeProfileName()
-        return getCalibrationForProfile(active)
-    }
+    suspend fun hasCalibration(profileId: Long): Boolean = profileDao.hasCalibration(profileId)
 
-    private fun normalizeProfileState(settings: UserSettings): UserSettings {
-        val names = parseProfileNames(settings.profileNamesCsv)
-        val active = settings.activeProfileName.takeIf { names.contains(it) } ?: names.first()
-        var calibrationMap = decodeProfileCalibrations(settings.profileCalibrationsJson)
-        val hasCanonicalCalibration = calibrationMap[active]?.isNotBlank() == true
-
-        // Legacy read fallback: migrate one-time legacy userBodyProfileJson into canonical active profile calibration.
-        if (!hasCanonicalCalibration && !settings.userBodyProfileJson.isNullOrBlank()) {
-            calibrationMap = calibrationMap.toMutableMap().apply { put(active, settings.userBodyProfileJson) }
-        }
-
-        return settings.copy(
-            activeProfileName = active,
-            profileNamesCsv = names.joinToString(","),
-            profileCalibrationsJson = encodeProfileCalibrations(calibrationMap),
+    private suspend fun ensureDefaultProfileExists() {
+        if (profileDao.countActiveProfiles() > 0) return
+        val now = System.currentTimeMillis()
+        profileDao.insertProfile(
+            com.inversioncoach.app.model.UserProfileEntity(
+                displayName = DEFAULT_PROFILE_NAME,
+                isActive = true,
+                isArchived = false,
+                createdAtMs = now,
+                updatedAtMs = now,
+            ),
         )
     }
 
-    private fun profileStatusesFrom(settings: UserSettings): List<UserProfileStatus> {
-        val names = parseProfileNames(settings.profileNamesCsv)
-        val active = settings.activeProfileName.ifBlank { names.firstOrNull().orEmpty() }
-        val calibrations = decodeProfileCalibrations(settings.profileCalibrationsJson)
-        return names.map { name ->
-            UserProfileStatus(name = name, isActive = name == active, isCalibrated = !calibrations[name].isNullOrBlank())
-        }
-    }
-
-    private fun parseProfileNames(raw: String): List<String> {
-        val parsed = raw.split(',').map { it.trim() }.filter { it.isNotBlank() }
-        return if (parsed.isEmpty()) listOf(DEFAULT_PROFILE_NAME) else parsed
-    }
-
-    private fun decodeProfileCalibrations(raw: String?): Map<String, String> = runCatching {
-        if (raw.isNullOrBlank()) return@runCatching emptyMap()
-        val obj = JSONObject(raw)
-        val map = mutableMapOf<String, String>()
-        val keys = obj.keys()
-        while (keys.hasNext()) {
-            val key = keys.next()
-            val encoded = obj.optString(key, "")
-            if (key.isNotBlank() && encoded.isNotBlank()) map[key] = encoded
-        }
-        map
-    }.getOrDefault(emptyMap())
-
-    private fun encodeProfileCalibrations(map: Map<String, String>): String? {
-        if (map.isEmpty()) return null
-        return JSONObject().apply { map.forEach { (profileName, encodedProfile) -> put(profileName, encodedProfile) } }.toString()
-    }
+    private fun com.inversioncoach.app.storage.db.UserProfileWithCalibration.toStatus(): UserProfileStatus =
+        UserProfileStatus(
+            id = id,
+            name = displayName,
+            isActive = isActive,
+            isCalibrated = hasCalibration,
+        )
 
     private suspend fun enforceConfiguredStorageLimit() {
         val settings = userSettingsDao.getSettings() ?: UserSettings()

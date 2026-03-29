@@ -2,6 +2,7 @@ package com.inversioncoach.app.storage.db
 
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import org.json.JSONObject
 
 object DatabaseMigrations {
     const val CREATE_DRILL_MOVEMENT_PROFILES_SQL =
@@ -45,8 +46,6 @@ object DatabaseMigrations {
             db.execSQL(ADD_SESSION_CALIBRATION_UPDATED_AT_SQL)
         }
     }
-
-
 
     val MIGRATION_14_15: Migration = object : Migration(14, 15) {
         override fun migrate(db: SupportSQLiteDatabase) {
@@ -97,8 +96,6 @@ object DatabaseMigrations {
         }
     }
 
-
-
     val MIGRATION_15_16: Migration = object : Migration(15, 16) {
         override fun migrate(db: SupportSQLiteDatabase) {
             db.execSQL("ALTER TABLE user_settings ADD COLUMN activeProfileName TEXT NOT NULL DEFAULT 'Profile 1'")
@@ -107,11 +104,171 @@ object DatabaseMigrations {
         }
     }
 
+    val MIGRATION_16_17: Migration = object : Migration(16, 17) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            val now = System.currentTimeMillis()
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `user_profiles` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `displayName` TEXT NOT NULL,
+                    `isActive` INTEGER NOT NULL,
+                    `isArchived` INTEGER NOT NULL,
+                    `createdAtMs` INTEGER NOT NULL,
+                    `updatedAtMs` INTEGER NOT NULL
+                )
+                """.trimIndent(),
+            )
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_user_profiles_displayName` ON `user_profiles` (`displayName`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_user_profiles_isActive` ON `user_profiles` (`isActive`)")
+
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `profile_calibrations` (
+                    `profileId` INTEGER NOT NULL,
+                    `profileVersion` INTEGER NOT NULL,
+                    `updatedAtMs` INTEGER NOT NULL,
+                    `calibrationPayloadJson` TEXT NOT NULL,
+                    `appVersion` TEXT,
+                    `calibrationMethod` TEXT,
+                    PRIMARY KEY(`profileId`),
+                    FOREIGN KEY(`profileId`) REFERENCES `user_profiles`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """.trimIndent(),
+            )
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_profile_calibrations_profileId` ON `profile_calibrations` (`profileId`)")
+
+            val settings = readLegacyProfileSettings(db)
+            val names = settings.profileNamesCsv
+                .split(',')
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .ifEmpty { listOf("Profile 1") }
+
+            val calibrationByName = decodeCalibrationMap(settings.profileCalibrationsJson)
+            val activeName = settings.activeProfileName.takeIf { names.contains(it) } ?: names.first()
+
+            val profileIds = linkedMapOf<String, Long>()
+            names.forEach { name ->
+                db.execSQL(
+                    "INSERT INTO user_profiles(displayName, isActive, isArchived, createdAtMs, updatedAtMs) VALUES (?, ?, 0, ?, ?)",
+                    arrayOf(name, if (name == activeName) 1 else 0, now, now),
+                )
+                val id = lastInsertedId(db)
+                profileIds[name] = id
+            }
+
+            profileIds.forEach { (name, profileId) ->
+                val payload = calibrationByName[name]
+                if (!payload.isNullOrBlank()) {
+                    db.execSQL(
+                        "INSERT OR REPLACE INTO profile_calibrations(profileId, profileVersion, updatedAtMs, calibrationPayloadJson, appVersion, calibrationMethod) VALUES (?, 1, ?, ?, NULL, 'migrated_settings')",
+                        arrayOf(profileId, now, payload),
+                    )
+                }
+            }
+
+            if (profileIds.isNotEmpty() && calibrationByName[activeName].isNullOrBlank() && !settings.userBodyProfileJson.isNullOrBlank()) {
+                db.execSQL(
+                    "INSERT OR REPLACE INTO profile_calibrations(profileId, profileVersion, updatedAtMs, calibrationPayloadJson, appVersion, calibrationMethod) VALUES (?, 1, ?, ?, NULL, 'migrated_legacy_user_body_profile')",
+                    arrayOf(profileIds.getValue(activeName), now, settings.userBodyProfileJson),
+                )
+            }
+
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `user_settings_new` (
+                    `id` INTEGER NOT NULL,
+                    `cueFrequencySeconds` REAL NOT NULL,
+                    `audioVolume` REAL NOT NULL,
+                    `overlayIntensity` REAL NOT NULL,
+                    `localOnlyPrivacyMode` INTEGER NOT NULL,
+                    `retainDays` INTEGER NOT NULL,
+                    `debugOverlayEnabled` INTEGER NOT NULL,
+                    `maxStorageMb` INTEGER NOT NULL,
+                    `startupCountdownSeconds` INTEGER NOT NULL,
+                    `minSessionDurationSeconds` INTEGER NOT NULL,
+                    `alignmentStrictness` TEXT NOT NULL,
+                    `customLineDeviation` REAL NOT NULL,
+                    `customMinimumGoodFormScore` INTEGER NOT NULL,
+                    `customRepAcceptanceThreshold` INTEGER NOT NULL,
+                    `customHoldAlignedThreshold` INTEGER NOT NULL,
+                    `drillCameraSideSelections` TEXT NOT NULL,
+                    PRIMARY KEY(`id`)
+                )
+                """.trimIndent(),
+            )
+            db.execSQL(
+                """
+                INSERT INTO user_settings_new(
+                    id, cueFrequencySeconds, audioVolume, overlayIntensity, localOnlyPrivacyMode,
+                    retainDays, debugOverlayEnabled, maxStorageMb, startupCountdownSeconds,
+                    minSessionDurationSeconds, alignmentStrictness, customLineDeviation,
+                    customMinimumGoodFormScore, customRepAcceptanceThreshold, customHoldAlignedThreshold,
+                    drillCameraSideSelections
+                )
+                SELECT
+                    id, cueFrequencySeconds, audioVolume, overlayIntensity, localOnlyPrivacyMode,
+                    retainDays, debugOverlayEnabled, maxStorageMb, startupCountdownSeconds,
+                    minSessionDurationSeconds, alignmentStrictness, customLineDeviation,
+                    customMinimumGoodFormScore, customRepAcceptanceThreshold, customHoldAlignedThreshold,
+                    drillCameraSideSelections
+                FROM user_settings
+                """.trimIndent(),
+            )
+            db.execSQL("DROP TABLE user_settings")
+            db.execSQL("ALTER TABLE user_settings_new RENAME TO user_settings")
+        }
+
+        private fun readLegacyProfileSettings(db: SupportSQLiteDatabase): LegacyProfileSettings {
+            db.query(
+                "SELECT activeProfileName, profileNamesCsv, profileCalibrationsJson, userBodyProfileJson FROM user_settings WHERE id = 1 LIMIT 1",
+            ).use { cursor ->
+                if (!cursor.moveToFirst()) return LegacyProfileSettings()
+                return LegacyProfileSettings(
+                    activeProfileName = cursor.getString(0) ?: "Profile 1",
+                    profileNamesCsv = cursor.getString(1) ?: "Profile 1",
+                    profileCalibrationsJson = cursor.getString(2),
+                    userBodyProfileJson = cursor.getString(3),
+                )
+            }
+        }
+
+        private fun decodeCalibrationMap(raw: String?): Map<String, String> = runCatching {
+            if (raw.isNullOrBlank()) return@runCatching emptyMap()
+            val json = JSONObject(raw)
+            buildMap {
+                val keys = json.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    val payload = json.optString(key, "")
+                    if (key.isNotBlank() && payload.isNotBlank()) put(key, payload)
+                }
+            }
+        }.getOrDefault(emptyMap())
+
+        private fun lastInsertedId(db: SupportSQLiteDatabase): Long {
+            db.query("SELECT last_insert_rowid()", emptyArray()).use { cursor ->
+                if (cursor.moveToFirst()) return cursor.getLong(0)
+            }
+            return 0L
+        }
+
+        data class LegacyProfileSettings(
+            val activeProfileName: String = "Profile 1",
+            val profileNamesCsv: String = "Profile 1",
+            val profileCalibrationsJson: String? = null,
+            val userBodyProfileJson: String? = null,
+        )
+    }
+
     val ALL: Array<Migration> = arrayOf(
         MIGRATION_11_12,
         MIGRATION_12_13,
         MIGRATION_13_14,
         MIGRATION_14_15,
         MIGRATION_15_16,
+        MIGRATION_16_17,
     )
 }
