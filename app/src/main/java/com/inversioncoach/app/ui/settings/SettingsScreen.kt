@@ -30,7 +30,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.inversioncoach.app.model.AlignmentStrictness
 import com.inversioncoach.app.model.UserSettings
 import com.inversioncoach.app.storage.ServiceLocator
 import com.inversioncoach.app.ui.components.ScaffoldedScreen
@@ -56,11 +55,6 @@ fun SettingsScreen(
     var localOnlyPrivacyMode by remember { mutableStateOf(true) }
     var maxStorageMb by remember { mutableIntStateOf(1024) }
     var startupCountdownSeconds by remember { mutableIntStateOf(10) }
-    var alignmentStrictness by remember { mutableStateOf(AlignmentStrictness.BEGINNER) }
-    var customLineDeviation by remember { mutableFloatStateOf(0.14f) }
-    var customGoodForm by remember { mutableIntStateOf(72) }
-    var customRepThreshold by remember { mutableIntStateOf(70) }
-    var customHoldThreshold by remember { mutableIntStateOf(72) }
     var activeUserProfileId by remember { mutableStateOf<String?>(null) }
     var userBodyProfileJson by remember { mutableStateOf<String?>(null) }
     var showSaveConfirmation by remember { mutableStateOf(false) }
@@ -91,11 +85,6 @@ fun SettingsScreen(
             localOnlyPrivacyMode = s.localOnlyPrivacyMode
             maxStorageMb = s.maxStorageMb
             startupCountdownSeconds = s.startupCountdownSeconds
-            alignmentStrictness = s.alignmentStrictness
-            customLineDeviation = s.customLineDeviation
-            customGoodForm = s.customMinimumGoodFormScore
-            customRepThreshold = s.customRepAcceptanceThreshold
-            customHoldThreshold = s.customHoldAlignedThreshold
             activeUserProfileId = s.activeUserProfileId
             userBodyProfileJson = s.userBodyProfileJson
         }
@@ -202,11 +191,6 @@ fun SettingsScreen(
                                         maxStorageMb = maxStorageMb,
                                         startupCountdownSeconds = startupCountdownSeconds,
                                         minSessionDurationSeconds = 0,
-                                        alignmentStrictness = alignmentStrictness,
-                                        customLineDeviation = customLineDeviation,
-                                        customMinimumGoodFormScore = customGoodForm,
-                                        customRepAcceptanceThreshold = customRepThreshold,
-                                        customHoldAlignedThreshold = customHoldThreshold,
                                         activeUserProfileId = activeUserProfileId,
                                         userBodyProfileJson = userBodyProfileJson,
                                     ),
