@@ -197,7 +197,7 @@ The app can be understood in five layers:
 
 - JDK 17
 - Android SDK (`compileSdk 34`, `targetSdk 34`, `minSdk 28`)
-- Gradle 8.14.x
+- Gradle 8.14.x (wrapper script is not checked in)
 
 ### Quick start
 
@@ -210,6 +210,8 @@ gradle :app:assembleDebug
 ```
 
 ## Testing
+
+Primary unit test command:
 
 ```bash
 gradle testDebugUnitTest
