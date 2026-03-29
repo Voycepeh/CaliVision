@@ -214,8 +214,7 @@ class CalibrationViewModel(
                 updatedAtMs = updatedAtMs,
             )
             drillMovementProfileRepository.save(newProfile)
-            val activeProfileName = repository.activeProfileName()
-            repository.saveCalibrationForProfile(activeProfileName, builtProfile)
+            repository.saveCalibrationForActiveProfile(builtProfile)
 
             _state.update {
                 it.copy(

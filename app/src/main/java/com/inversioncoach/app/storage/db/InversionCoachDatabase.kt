@@ -7,12 +7,22 @@ import com.inversioncoach.app.calibration.storage.CalibrationDao
 import com.inversioncoach.app.calibration.storage.CalibrationEntity
 import com.inversioncoach.app.model.FrameMetricRecord
 import com.inversioncoach.app.model.IssueEvent
+import com.inversioncoach.app.model.ProfileCalibrationEntity
 import com.inversioncoach.app.model.SessionRecord
+import com.inversioncoach.app.model.UserProfileEntity
 import com.inversioncoach.app.model.UserSettings
 
 @Database(
-    entities = [SessionRecord::class, UserSettings::class, FrameMetricRecord::class, IssueEvent::class, CalibrationEntity::class],
-    version = 16,
+    entities = [
+        SessionRecord::class,
+        UserSettings::class,
+        FrameMetricRecord::class,
+        IssueEvent::class,
+        CalibrationEntity::class,
+        UserProfileEntity::class,
+        ProfileCalibrationEntity::class,
+    ],
+    version = 17,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -21,4 +31,5 @@ abstract class InversionCoachDatabase : RoomDatabase() {
     abstract fun userSettingsDao(): UserSettingsDao
     abstract fun frameMetricDao(): FrameMetricDao
     abstract fun calibrationDao(): CalibrationDao
+    abstract fun profileDao(): ProfileDao
 }

@@ -350,10 +350,6 @@ data class UserSettings(
     val customRepAcceptanceThreshold: Int = 70,
     val customHoldAlignedThreshold: Int = 72,
     val drillCameraSideSelections: String = "",
-    val userBodyProfileJson: String? = null,
-    val activeProfileName: String = "Profile 1",
-    val profileNamesCsv: String = "Profile 1",
-    val profileCalibrationsJson: String? = null,
 )
 
 data class LiveSessionUiState(

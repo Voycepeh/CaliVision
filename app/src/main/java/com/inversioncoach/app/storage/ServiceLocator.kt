@@ -44,6 +44,7 @@ object ServiceLocator {
                     db.sessionDao(),
                     db.userSettingsDao(),
                     db.frameMetricDao(),
+                    db.profileDao(),
                     SessionBlobStorage(context.applicationContext),
                 ).also { sessionRepository = it }
             }
