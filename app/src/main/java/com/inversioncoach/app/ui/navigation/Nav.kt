@@ -1,5 +1,6 @@
 package com.inversioncoach.app.ui.navigation
 
+import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavType
@@ -11,9 +12,8 @@ import com.inversioncoach.app.model.DrillType
 import com.inversioncoach.app.model.LiveSessionOptions
 import com.inversioncoach.app.overlay.DrillCameraSide
 import com.inversioncoach.app.ui.drilldetail.DrillDetailScreen
-import com.inversioncoach.app.ui.drills.EditDrillScreen
-import com.inversioncoach.app.ui.drills.ManageDrillsScreen
-import com.inversioncoach.app.ui.drills.DrillDetailScreen as DrillPackageDetailScreen
+import com.inversioncoach.app.ui.drillstudio.DrillStudioInitRequest
+import com.inversioncoach.app.ui.drillstudio.DrillStudioScreen
 import com.inversioncoach.app.ui.history.HistoryScreen
 import com.inversioncoach.app.ui.home.HomeScreen
 import com.inversioncoach.app.ui.live.LiveCoachingScreen
@@ -50,27 +50,16 @@ sealed class Route(val value: String) {
     }
     data object History : Route("history")
     data object Progress : Route("progress")
+    data object DrillStudio : Route("drill-studio?mode={mode}&drillId={drillId}") {
+        fun createNew(): String = "drill-studio?mode=create&drillId="
+        fun createForDrill(drillId: String): String = "drill-studio?mode=drill&drillId=${Uri.encode(drillId)}"
+    }
     data object Settings : Route("settings")
     data object DevTuning : Route("settings/dev-tuning")
     data object DrillStudio : Route("drill-studio?drillId={drillId}") {
         fun create(drillId: String?): String = if (drillId == null) "drill-studio" else "drill-studio?drillId=$drillId"
     }
     data object UploadVideo : Route("upload-video")
-    data object UploadVideoForDrill : Route("upload-video?drillId={drillId}&referenceTemplateId={referenceTemplateId}&isReference={isReference}") {
-        fun create(drillId: String, referenceTemplateId: String?, isReference: Boolean): String =
-            "upload-video?drillId=$drillId&referenceTemplateId=${referenceTemplateId.orEmpty()}&isReference=$isReference"
-    }
-    data object ManageDrills : Route("manage-drills")
-    data object EditDrill : Route("edit-drill?drillId={drillId}") {
-        fun create(drillId: String?): String = if (drillId == null) "edit-drill" else "edit-drill?drillId=$drillId"
-    }
-    data object DrillPackageDetail : Route("drill-package-detail/{drillId}") {
-        fun create(drillId: String): String = "drill-package-detail/$drillId"
-    }
-    data object ReferenceTraining : Route("reference-training/{drillId}") {
-        fun create(drillId: String): String = "reference-training/$drillId"
-    }
-    data object ReferenceTemplatePicker : Route("reference-template-picker")
     data object Calibration : Route("calibration")
 }
 
@@ -93,15 +82,15 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                 onProgress = { navController.navigate(Route.Progress.value) },
                 onSettings = { navController.navigate(Route.Settings.value) },
                 onUploadVideo = { navController.navigate(Route.UploadVideo.value) },
-                onReferenceTraining = { navController.navigate(Route.ReferenceTemplatePicker.value) },
-                onManageDrills = { navController.navigate(Route.ManageDrills.value) },
+                onCalibration = { navController.navigate(Route.Calibration.value) },
             )
         }
         composable(Route.Start.value) {
             StartDrillScreen(
                 onBack = { navController.popBackStack() },
                 onStart = { drillType, options -> navController.navigate(Route.Live.create(drillType, options)) },
-                onOpenDetail = { drillType -> navController.navigate(Route.DrillDetail.create(drillType)) },
+                onCreateDrill = { navController.navigate(Route.DrillStudio.createNew()) },
+                onEditDrill = { drillType -> navController.navigate(Route.DrillStudio.createForDrill(drillType.name)) },
             )
         }
         composable(Route.DrillDetail.value, arguments = listOf(navArgument("drill") { type = NavType.StringType })) { backStack ->
@@ -109,7 +98,11 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                 rawValue = backStack.arguments?.getString("drill"),
                 fallback = DrillType.STANDING_POSTURE_HOLD,
             )
-            DrillDetailScreen(drillType = drill, onBack = { navController.popBackStack() })
+            DrillDetailScreen(
+                drillType = drill,
+                onBack = { navController.popBackStack() },
+                onEditDrill = { selected -> navController.navigate(Route.DrillStudio.createForDrill(selected.name)) },
+            )
         }
         composable(
             Route.Live.value,
@@ -167,6 +160,29 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                 onOpenSession = { sessionId -> navController.navigate(Route.Results.create(sessionId)) },
             )
         }
+        composable(
+            Route.DrillStudio.value,
+            arguments = listOf(
+                navArgument("mode") {
+                    type = NavType.StringType
+                    defaultValue = "drill"
+                },
+                navArgument("drillId") {
+                    type = NavType.StringType
+                    defaultValue = ""
+                },
+            ),
+        ) { backStack ->
+            val mode = backStack.arguments?.getString("mode") ?: "drill"
+            val drillId = backStack.arguments?.getString("drillId")?.takeIf { it.isNotBlank() }
+            DrillStudioScreen(
+                onBack = { navController.popBackStack() },
+                initRequest = DrillStudioInitRequest(
+                    mode = mode,
+                    drillId = drillId,
+                ),
+            )
+        }
         composable(Route.SessionTooShort.value, arguments = listOf(
             navArgument("elapsedMs") { type = NavType.LongType },
             navArgument("thresholdSeconds") { type = NavType.IntType },
@@ -183,7 +199,6 @@ fun AppNavHost(modifier: Modifier = Modifier) {
             SettingsScreen(
                 onBack = { navController.popBackStack() },
                 onDeveloperTuning = { navController.navigate(Route.DevTuning.value) },
-                onCalibration = { navController.navigate(Route.Calibration.value) },
                 onNavigateHome = { navController.popBackStack(Route.Home.value, false) },
                 onDrillStudio = { navController.navigate(Route.DrillStudio.create(null)) },
             )

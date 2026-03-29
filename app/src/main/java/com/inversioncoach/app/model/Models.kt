@@ -444,7 +444,6 @@ data class SessionSummary(
 @Entity(tableName = "user_settings")
 data class UserSettings(
     @PrimaryKey val id: Int = 1,
-    val cueStyle: CueStyle = CueStyle.CONCISE,
     val cueFrequencySeconds: Float = 2f,
     val audioVolume: Float = 1f,
     val localOnlyPrivacyMode: Boolean = true,
@@ -454,8 +453,6 @@ data class UserSettings(
     val startupCountdownSeconds: Int = 10,
     val minSessionDurationSeconds: Int = 3,
     val drillCameraSideSelections: String = "",
-    val activeUserProfileId: String? = null,
-    val userBodyProfileJson: String? = null,
 )
 
 data class LiveSessionUiState(

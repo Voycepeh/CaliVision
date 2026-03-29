@@ -15,6 +15,7 @@ import com.inversioncoach.app.calibration.hold.HoldTemplateBuilder
 import com.inversioncoach.app.model.DrillType
 import com.inversioncoach.app.model.PoseFrame
 import com.inversioncoach.app.model.SmoothedPoseFrame
+import com.inversioncoach.app.storage.repository.SessionRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,10 +26,10 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 class CalibrationViewModel(
-    private val templateDrillType: DrillType? = null,
+    private val referenceDrillType: DrillType,
     private val calibrationProfileProvider: CalibrationProfileProvider,
     private val drillMovementProfileRepository: DrillMovementProfileRepository,
-    private val userProfileManager: UserProfileManager? = null,
+    private val repository: SessionRepository,
     private val engine: StructuralCalibrationEngine = StructuralCalibrationEngine(),
     private val holdTemplateBuilder: HoldTemplateBuilder = HoldTemplateBuilder(),
     private val holdTemplateBlender: HoldTemplateBlender = HoldTemplateBlender(),
@@ -41,7 +42,7 @@ class CalibrationViewModel(
         CalibrationStep.CONTROLLED_HOLD,
     )
 
-    private val session = CalibrationSession(drillType = templateDrillType ?: DrillType.FREESTYLE)
+    private val session = CalibrationSession(drillType = referenceDrillType)
     private val readinessEvaluator = CalibrationReadinessEvaluator()
     private val _state = MutableStateFlow(CalibrationUiState())
     val state: StateFlow<CalibrationUiState> = _state.asStateFlow()
@@ -187,8 +188,16 @@ class CalibrationViewModel(
                 return@launch
             }
 
-            val savedBodyProfileRecord = userProfileManager?.saveBodyProfileForActiveUser(builtProfile)
-            val updatedAtMs = System.currentTimeMillis()
+            val existing = calibrationProfileProvider.resolve(referenceDrillType)
+            val controlledHoldFrames = session.get(CalibrationStep.CONTROLLED_HOLD)?.acceptedFrames.orEmpty()
+            val nextVersion = existing.profileVersion + 1
+
+            val learnedHoldTemplate = holdTemplateBuilder.build(
+                drillType = referenceDrillType,
+                profileVersion = nextVersion,
+                bodyProfile = builtProfile,
+                frames = controlledHoldFrames,
+            )
 
             templateDrillType?.let { drillType ->
                 val existing = calibrationProfileProvider.resolve(drillType)
@@ -215,6 +224,16 @@ class CalibrationViewModel(
                 )
                 drillMovementProfileRepository.save(newProfile)
             }
+
+            val updatedAtMs = System.currentTimeMillis()
+            val newProfile = existing.copy(
+                profileVersion = nextVersion,
+                userBodyProfile = builtProfile,
+                holdTemplate = finalHoldTemplate,
+                updatedAtMs = updatedAtMs,
+            )
+            drillMovementProfileRepository.save(newProfile)
+            repository.saveCalibrationForActiveProfile(builtProfile)
 
             _state.update {
                 it.copy(

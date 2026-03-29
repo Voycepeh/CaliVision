@@ -9,12 +9,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -30,28 +30,24 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.inversioncoach.app.model.CueStyle
+import com.inversioncoach.app.model.AlignmentStrictness
 import com.inversioncoach.app.model.UserSettings
 import com.inversioncoach.app.storage.ServiceLocator
 import com.inversioncoach.app.ui.components.ScaffoldedScreen
 import kotlinx.coroutines.launch
-import java.text.DateFormat
-import java.util.Date
 
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
     onDeveloperTuning: () -> Unit,
-    onCalibration: () -> Unit,
     onNavigateHome: () -> Unit,
     onDrillStudio: () -> Unit,
 ) {
     val context = LocalContext.current
     val repository = remember { ServiceLocator.repository(context) }
-    val userProfileManager = remember { ServiceLocator.userProfileManager(context) }
-
     val scope = rememberCoroutineScope()
-    var cueStyle by remember { mutableStateOf(CueStyle.CONCISE) }
+
+    var latestSettings by remember { mutableStateOf(UserSettings()) }
     var cueFrequency by remember { mutableFloatStateOf(2f) }
     var debug by remember { mutableStateOf(false) }
     var localOnlyPrivacyMode by remember { mutableStateOf(true) }
@@ -61,38 +57,23 @@ fun SettingsScreen(
     var userBodyProfileJson by remember { mutableStateOf<String?>(null) }
     var showSaveConfirmation by remember { mutableStateOf(false) }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
-    var showClearCalibrationConfirmation by remember { mutableStateOf(false) }
-    var calibrationStatus by remember { mutableStateOf("Not calibrated yet") }
-    var calibrationSummary by remember { mutableStateOf<String?>(null) }
-    var calibrationUpdatedAt by remember { mutableStateOf<Long?>(null) }
-    var activeProfileName by remember { mutableStateOf("Primary User") }
-
-    suspend fun refreshCalibrationStatus() {
-        val active = userProfileManager.resolveActiveProfileContext()
-        activeProfileName = active.userProfile.displayName
-        calibrationUpdatedAt = active.bodyProfileRecord?.updatedAtMs
-        calibrationSummary = active.bodyProfile?.let {
-            "v${active.bodyProfileRecord?.version ?: 1} • symmetry ${(it.leftRightConsistency * 100f).toInt()}%"
-        }
-        calibrationStatus = active.bodyProfile?.let {
-            "Saved"
-        } ?: "Not calibrated yet"
-    }
 
     LaunchedEffect(Unit) {
-        repository.observeSettings().collect { s ->
-            cueStyle = s.cueStyle
-            cueFrequency = s.cueFrequencySeconds
-            debug = s.debugOverlayEnabled
-            localOnlyPrivacyMode = s.localOnlyPrivacyMode
-            maxStorageMb = s.maxStorageMb
-            startupCountdownSeconds = s.startupCountdownSeconds
-            activeUserProfileId = s.activeUserProfileId
-            userBodyProfileJson = s.userBodyProfileJson
+        repository.observeSettings().collect { settings ->
+            latestSettings = settings
+            cueFrequency = settings.cueFrequencySeconds
+            overlay = settings.overlayIntensity
+            debug = settings.debugOverlayEnabled
+            localOnlyPrivacyMode = settings.localOnlyPrivacyMode
+            maxStorageMb = settings.maxStorageMb
+            startupCountdownSeconds = settings.startupCountdownSeconds
+            alignmentStrictness = settings.alignmentStrictness
+            customLineDeviation = settings.customLineDeviation
+            customGoodForm = settings.customMinimumGoodFormScore
+            customRepThreshold = settings.customRepAcceptanceThreshold
+            customHoldThreshold = settings.customHoldAlignedThreshold
         }
     }
-
-    LaunchedEffect(Unit) { refreshCalibrationStatus() }
 
     ScaffoldedScreen(title = "Settings", onBack = onBack) { padding ->
         Column(
@@ -108,18 +89,6 @@ fun SettingsScreen(
             SettingsCard(title = "Voice cues") {
                 Text("Cue frequency: ${"%.1f".format(cueFrequency)}s")
                 Slider(value = cueFrequency, onValueChange = { cueFrequency = it }, valueRange = 1.5f..4f)
-                Text("Voice style")
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CueStyle.entries.forEach { style ->
-                        Button(
-                            onClick = { cueStyle = style },
-                            enabled = cueStyle != style,
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text(style.name.lowercase().replaceFirstChar { it.uppercase() })
-                        }
-                    }
-                }
             }
 
             SettingsCard(title = "Overlay") {
@@ -139,6 +108,32 @@ fun SettingsScreen(
                 Text("Time before recording starts.")
             }
 
+            SettingsCard(title = "Alignment / thresholds") {
+                Text("Alignment strictness: ${alignmentStrictness.name.lowercase().replaceFirstChar { it.uppercase() }}")
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AlignmentStrictness.entries.forEach { level ->
+                        Button(
+                            onClick = { alignmentStrictness = level },
+                            modifier = Modifier.weight(1f),
+                            enabled = alignmentStrictness != level,
+                        ) {
+                            Text(level.name.lowercase().replaceFirstChar { it.uppercase() })
+                        }
+                    }
+                }
+                Text("Beginner is forgiving. Advanced is strict. Custom uses your thresholds from saved settings.")
+                if (alignmentStrictness == AlignmentStrictness.CUSTOM) {
+                    Text("Line deviation: ${"%.2f".format(customLineDeviation)}")
+                    Slider(value = customLineDeviation, onValueChange = { customLineDeviation = it }, valueRange = 0.06f..0.24f)
+                    Text("Minimum good form score: $customGoodForm")
+                    Slider(value = customGoodForm.toFloat(), onValueChange = { customGoodForm = it.toInt().coerceIn(40, 95) }, valueRange = 40f..95f)
+                    Text("Rep acceptance threshold: $customRepThreshold")
+                    Slider(value = customRepThreshold.toFloat(), onValueChange = { customRepThreshold = it.toInt().coerceIn(40, 95) }, valueRange = 40f..95f)
+                    Text("Hold aligned threshold: $customHoldThreshold")
+                    Slider(value = customHoldThreshold.toFloat(), onValueChange = { customHoldThreshold = it.toInt().coerceIn(40, 95) }, valueRange = 40f..95f)
+                }
+            }
+
             SettingsCard(title = "Storage & privacy") {
                 Text("Max video storage: ${maxStorageMb} MB")
                 Slider(
@@ -154,25 +149,8 @@ fun SettingsScreen(
             }
 
             Button(onClick = { showSaveConfirmation = true }, modifier = Modifier.fillMaxWidth()) { Text("Save settings") }
-            SettingsCard(title = "Structural calibration") {
-                Text("Active profile: $activeProfileName")
-                Text("Status: $calibrationStatus")
-                calibrationUpdatedAt?.let {
-                    Text("Last calibrated on ${DateFormat.getDateTimeInstance().format(Date(it))}")
-                }
-                calibrationSummary?.let { Text("Profile: $it") }
-                Text("Capture front, side, overhead, and stable hold poses to build your body profile.")
-                Button(onClick = onCalibration, modifier = Modifier.fillMaxWidth()) { Text("Start calibration") }
-                Button(
-                    onClick = { showClearCalibrationConfirmation = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = calibrationUpdatedAt != null,
-                ) { Text("Clear calibration") }
-            }
-            SettingsCard(title = "Developer tools") {
-                Button(onClick = onDeveloperTuning, modifier = Modifier.fillMaxWidth()) { Text("Developer threshold tuning") }
-                Button(onClick = onDrillStudio, modifier = Modifier.fillMaxWidth()) { Text("Drill Studio") }
-            }
+            Button(onClick = onDeveloperTuning, modifier = Modifier.fillMaxWidth()) { Text("Developer threshold tuning") }
+            Button(onClick = { showDeleteConfirmation = true }, modifier = Modifier.fillMaxWidth()) { Text("Delete all sessions") }
         }
 
         if (showSaveConfirmation) {
@@ -186,16 +164,17 @@ fun SettingsScreen(
                             showSaveConfirmation = false
                             scope.launch {
                                 repository.saveSettings(
-                                    UserSettings(
-                                        cueStyle = cueStyle,
+                                    latestSettings.copy(
                                         cueFrequencySeconds = cueFrequency,
                                         debugOverlayEnabled = debug,
                                         localOnlyPrivacyMode = localOnlyPrivacyMode,
                                         maxStorageMb = maxStorageMb,
                                         startupCountdownSeconds = startupCountdownSeconds,
-                                        minSessionDurationSeconds = 0,
-                                        activeUserProfileId = activeUserProfileId,
-                                        userBodyProfileJson = userBodyProfileJson,
+                                        alignmentStrictness = alignmentStrictness,
+                                        customLineDeviation = customLineDeviation,
+                                        customMinimumGoodFormScore = customGoodForm,
+                                        customRepAcceptanceThreshold = customRepThreshold,
+                                        customHoldAlignedThreshold = customHoldThreshold,
                                     ),
                                 )
                                 onNavigateHome()
@@ -227,28 +206,6 @@ fun SettingsScreen(
                 },
                 dismissButton = {
                     Button(onClick = { showDeleteConfirmation = false }) { Text("Cancel") }
-                },
-            )
-        }
-
-        if (showClearCalibrationConfirmation) {
-            AlertDialog(
-                onDismissRequest = { showClearCalibrationConfirmation = false },
-                title = { Text("Clear calibration?") },
-                text = { Text("This will remove the saved body profile for $activeProfileName.") },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            showClearCalibrationConfirmation = false
-                            scope.launch {
-                                userProfileManager.clearBodyProfileForActiveUser()
-                                refreshCalibrationStatus()
-                            }
-                        },
-                    ) { Text("Clear") }
-                },
-                dismissButton = {
-                    Button(onClick = { showClearCalibrationConfirmation = false }) { Text("Cancel") }
                 },
             )
         }

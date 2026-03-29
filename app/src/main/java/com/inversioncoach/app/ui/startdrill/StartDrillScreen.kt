@@ -55,7 +55,8 @@ private data class DrillGridItem(
 fun StartDrillScreen(
     onBack: () -> Unit,
     onStart: (DrillType, LiveSessionOptions) -> Unit,
-    onOpenDetail: (DrillType) -> Unit,
+    onCreateDrill: () -> Unit,
+    onEditDrill: (DrillType) -> Unit,
 ) {
     val context = LocalContext.current
     val repository = remember { ServiceLocator.repository(context) }
@@ -89,10 +90,23 @@ fun StartDrillScreen(
         ) {
             Text("Choose your flow", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Text(
-                text = "Tap a drill, then start.",
+                text = "Tap a drill to select it, then start or edit.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Card(
+                onClick = onCreateDrill,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Text(
+                    "New Drill",
+                    modifier = Modifier.padding(14.dp),
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
+
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -124,6 +138,21 @@ fun StartDrillScreen(
                 ) {
                     Text(
                         "Start ${selectedDrill?.displayName}",
+                        modifier = Modifier.padding(14.dp),
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+                Card(
+                    onClick = {
+                        val drill = selectedDrill ?: return@Card
+                        onEditDrill(drill)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    Text(
+                        "Edit ${selectedDrill?.displayName}",
                         modifier = Modifier.padding(14.dp),
                         textAlign = TextAlign.Center,
                         style = MaterialTheme.typography.titleMedium,

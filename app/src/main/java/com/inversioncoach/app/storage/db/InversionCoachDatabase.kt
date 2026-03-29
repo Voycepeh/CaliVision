@@ -10,12 +10,9 @@ import com.inversioncoach.app.model.BodyProfileRecord
 import com.inversioncoach.app.model.DrillDefinitionRecord
 import com.inversioncoach.app.model.FrameMetricRecord
 import com.inversioncoach.app.model.IssueEvent
-import com.inversioncoach.app.model.MovementProfileRecord
-import com.inversioncoach.app.model.ReferenceAssetRecord
-import com.inversioncoach.app.model.ReferenceTemplateRecord
+import com.inversioncoach.app.model.ProfileCalibrationEntity
 import com.inversioncoach.app.model.SessionRecord
-import com.inversioncoach.app.model.SessionComparisonRecord
-import com.inversioncoach.app.model.UserProfileRecord
+import com.inversioncoach.app.model.UserProfileEntity
 import com.inversioncoach.app.model.UserSettings
 
 @Database(
@@ -25,14 +22,8 @@ import com.inversioncoach.app.model.UserSettings
         FrameMetricRecord::class,
         IssueEvent::class,
         CalibrationEntity::class,
-        DrillDefinitionRecord::class,
-        ReferenceAssetRecord::class,
-        MovementProfileRecord::class,
-        CalibrationConfigRecord::class,
-        ReferenceTemplateRecord::class,
-        SessionComparisonRecord::class,
-        UserProfileRecord::class,
-        BodyProfileRecord::class,
+        UserProfileEntity::class,
+        ProfileCalibrationEntity::class,
     ],
     version = 17,
     exportSchema = false,
@@ -43,12 +34,5 @@ abstract class InversionCoachDatabase : RoomDatabase() {
     abstract fun userSettingsDao(): UserSettingsDao
     abstract fun frameMetricDao(): FrameMetricDao
     abstract fun calibrationDao(): CalibrationDao
-    abstract fun drillDefinitionDao(): DrillDefinitionDao
-    abstract fun referenceAssetDao(): ReferenceAssetDao
-    abstract fun movementProfileDao(): MovementProfileDao
-    abstract fun calibrationConfigDao(): CalibrationConfigDao
-    abstract fun referenceTemplateDao(): ReferenceTemplateDao
-    abstract fun sessionComparisonDao(): SessionComparisonDao
-    abstract fun userProfileDao(): UserProfileDao
-    abstract fun bodyProfileDao(): BodyProfileDao
+    abstract fun profileDao(): ProfileDao
 }

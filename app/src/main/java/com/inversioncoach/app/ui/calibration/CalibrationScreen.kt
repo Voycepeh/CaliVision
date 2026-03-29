@@ -1,5 +1,7 @@
 package com.inversioncoach.app.ui.calibration
 
+import android.Manifest
+import android.content.pm.PackageManager
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -22,9 +24,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -35,6 +42,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import com.inversioncoach.app.camera.CameraSessionManager
 import com.inversioncoach.app.calibration.CalibrationStep
 import com.inversioncoach.app.model.DrillType
@@ -51,14 +59,18 @@ import com.inversioncoach.app.ui.components.ScaffoldedScreen
 import java.util.concurrent.Executors
 
 @Composable
-fun CalibrationScreen(onBack: () -> Unit, templateDrillType: DrillType? = null) {
+fun CalibrationScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    // Structural calibration is profile-based. This reference drill remains an internal implementation
+    // detail so we can reuse current readiness/overlay/template logic until calibration-specific logic
+    // is fully separated from drill-tied analysis.
+    val referenceDrillType = DrillType.FREE_HANDSTAND
     val vm = remember {
         CalibrationViewModel(
-            templateDrillType = templateDrillType,
+            referenceDrillType = referenceDrillType,
             calibrationProfileProvider = ServiceLocator.calibrationProfileProvider(context),
             drillMovementProfileRepository = ServiceLocator.drillMovementProfileRepository(context),
-            userProfileManager = ServiceLocator.userProfileManager(context),
+            repository = ServiceLocator.repository(context),
         )
     }
     val state by vm.state.collectAsState()
@@ -72,6 +84,18 @@ fun CalibrationScreen(onBack: () -> Unit, templateDrillType: DrillType? = null) 
         )
     }
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        cameraPermissionGranted = granted
+    }
+    var cameraPermissionGranted by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED,
+        )
+    }
+
+    LaunchedEffect(Unit) {
+        cameraPermissionGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+    }
 
     DisposableEffect(Unit) {
         onDispose {
@@ -93,11 +117,13 @@ fun CalibrationScreen(onBack: () -> Unit, templateDrillType: DrillType? = null) 
 
             CalibrationPhase.CAPTURING -> CalibrationCaptureContent(
                 state = state,
-                drillType = templateDrillType ?: DrillType.FREESTYLE,
+                referenceDrillType = referenceDrillType,
                 lifecycleOwner = lifecycleOwner,
                 cameraManager = cameraManager,
                 analyzer = analyzer,
                 vm = vm,
+                cameraPermissionGranted = cameraPermissionGranted,
+                onRequestCameraPermission = { permissionLauncher.launch(Manifest.permission.CAMERA) },
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
@@ -121,11 +147,13 @@ fun CalibrationScreen(onBack: () -> Unit, templateDrillType: DrillType? = null) 
 @Composable
 private fun CalibrationCaptureContent(
     state: CalibrationUiState,
-    drillType: DrillType,
+    referenceDrillType: DrillType,
     lifecycleOwner: androidx.lifecycle.LifecycleOwner,
     cameraManager: CameraSessionManager,
     analyzer: PoseAnalyzer,
     vm: CalibrationViewModel,
+    cameraPermissionGranted: Boolean,
+    onRequestCameraPermission: () -> Unit,
     modifier: Modifier,
     onExit: () -> Unit,
 ) {
@@ -163,25 +191,27 @@ private fun CalibrationCaptureContent(
                 .weight(1f)
                 .graphicsLayer { alpha = if (state.hasCapturedFrame) 0.82f else 1f },
         ) {
-            AndroidView(
-                modifier = Modifier.fillMaxSize(),
-                factory = { ctx ->
-                    PreviewView(ctx).apply {
-                        post {
-                            cameraManager.bind(
-                                lifecycleOwner = lifecycleOwner,
-                                previewView = this,
-                                analyzer = analyzer,
-                                zoomOutCamera = true,
-                            ) { _, _ -> }
+            if (cameraPermissionGranted) {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { ctx ->
+                        PreviewView(ctx).apply {
+                            scaleType = PreviewView.ScaleType.FILL_CENTER
+                            post {
+                                cameraManager.bind(
+                                    lifecycleOwner = lifecycleOwner,
+                                    previewView = this,
+                                    analyzer = analyzer,
+                                    zoomOutCamera = true,
+                                ) { _, _ -> }
+                            }
                         }
-                    }
-                },
-            )
+                    },
+                )
 
             OverlayRenderer(
                 frame = state.reviewFrame,
-                drillType = drillType,
+                drillType = referenceDrillType,
                 sessionMode = SessionMode.DRILL,
                 modifier = Modifier.fillMaxSize(),
                 scaleMode = PoseScaleMode.FILL,
@@ -191,21 +221,43 @@ private fun CalibrationCaptureContent(
                 freestyleViewMode = FreestyleViewMode.UNKNOWN,
             )
 
-            CalibrationGuideOverlay(
-                modifier = Modifier.fillMaxSize(),
-                state = state,
-            )
-
-            if (state.hasCapturedFrame) {
-                Text(
-                    text = "Captured frame",
-                    color = Color.White,
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(8.dp)
-                        .background(Color(0xCC1B5E20), RoundedCornerShape(10.dp))
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                CalibrationGuideOverlay(
+                    modifier = Modifier.fillMaxSize(),
+                    state = state,
                 )
+
+                if (state.hasCapturedFrame) {
+                    Text(
+                        text = "Captured frame",
+                        color = Color.White,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(8.dp)
+                            .background(Color(0xCC1B5E20), RoundedCornerShape(10.dp))
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.padding(20.dp),
+                    ) {
+                        Text(
+                            text = "Camera access is required for calibration",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Button(onClick = onRequestCameraPermission) {
+                            Text("Grant camera access")
+                        }
+                    }
+                }
             }
         }
 
@@ -213,13 +265,25 @@ private fun CalibrationCaptureContent(
         state.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            Button(onClick = vm::captureStep, modifier = Modifier.weight(1f), enabled = state.isReady && !state.hasCapturedFrame) {
+            Button(
+                onClick = vm::captureStep,
+                modifier = Modifier.weight(1f),
+                enabled = cameraPermissionGranted && state.isReady && !state.hasCapturedFrame,
+            ) {
                 Text("Capture")
             }
-            Button(onClick = vm::retakeStep, modifier = Modifier.weight(1f), enabled = state.hasCapturedFrame) {
+            Button(
+                onClick = vm::retakeStep,
+                modifier = Modifier.weight(1f),
+                enabled = cameraPermissionGranted && state.hasCapturedFrame,
+            ) {
                 Text("Retake")
             }
-            Button(onClick = vm::continueToNextStep, modifier = Modifier.weight(1f), enabled = state.hasCapturedFrame) {
+            Button(
+                onClick = vm::continueToNextStep,
+                modifier = Modifier.weight(1f),
+                enabled = cameraPermissionGranted && state.hasCapturedFrame,
+            ) {
                 Text("Continue")
             }
         }
@@ -263,26 +327,36 @@ private fun CalibrationGuideOverlay(modifier: Modifier, state: CalibrationUiStat
     val mapper = remember { PoseCoordinateMapper() }
     Box(modifier = modifier) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val margin = size.minDimension * 0.08f
-            drawRect(
-                color = if (state.isReady) Color(0xFF4CAF50) else Color(0xFFFFA000),
-                topLeft = Offset(margin, margin),
-                size = androidx.compose.ui.geometry.Size(size.width - margin * 2, size.height - margin * 2),
-                style = Stroke(width = 4f),
-            )
-
-            val jointsByName = state.reviewFrame?.joints?.associateBy { it.name }.orEmpty()
-            val missing = state.missingRequiredJoints.toSet()
             val frame = state.reviewFrame
             val projectionInput = PoseProjectionInput(
                 sourceWidth = frame?.analysisWidth?.takeIf { it > 0 } ?: size.width.toInt().coerceAtLeast(1),
                 sourceHeight = frame?.analysisHeight?.takeIf { it > 0 } ?: size.height.toInt().coerceAtLeast(1),
                 previewWidth = size.width,
                 previewHeight = size.height,
-                rotationDegrees = 0,
+                rotationDegrees = frame?.analysisRotationDegrees ?: 0,
                 mirrored = frame?.mirrored ?: false,
                 scaleMode = PoseScaleMode.FILL,
             )
+            val projectedPreviewRect = mapper.diagnostics(projectionInput).contentRect
+            val visiblePreviewRect = projectedPreviewRect.intersectWithin(size.width, size.height)
+            val horizontalMargin = (visiblePreviewRect.width * 0.03f).coerceAtLeast(10f)
+            val verticalMargin = (visiblePreviewRect.height * 0.03f).coerceAtLeast(10f)
+            val guideRect = androidx.compose.ui.geometry.Rect(
+                left = visiblePreviewRect.left + horizontalMargin,
+                top = visiblePreviewRect.top + verticalMargin,
+                right = visiblePreviewRect.right - horizontalMargin,
+                bottom = visiblePreviewRect.bottom - verticalMargin,
+            )
+
+            drawRect(
+                color = if (state.isReady) Color(0xFF4CAF50) else Color(0xFFFFA000),
+                topLeft = guideRect.topLeft,
+                size = guideRect.size,
+                style = Stroke(width = 4f),
+            )
+
+            val jointsByName = frame?.joints?.associateBy { it.name }.orEmpty()
+            val missing = state.missingRequiredJoints.toSet()
             state.requiredJointNames.forEach { name ->
                 val p = jointsByName[name] ?: return@forEach
                 val mapped = mapper.map(p.x, p.y, projectionInput)
@@ -310,3 +384,16 @@ private fun String.toDisplayLabel(): String =
     replace('_', ' ')
         .split(' ')
         .joinToString(" ") { token -> token.replaceFirstChar { c -> c.titlecase() } }
+
+private fun androidx.compose.ui.geometry.Rect.intersectWithin(width: Float, height: Float): androidx.compose.ui.geometry.Rect {
+    val bounded = androidx.compose.ui.geometry.Rect(
+        left = left.coerceIn(0f, width),
+        top = top.coerceIn(0f, height),
+        right = right.coerceIn(0f, width),
+        bottom = bottom.coerceIn(0f, height),
+    )
+    if (bounded.width <= 0f || bounded.height <= 0f) {
+        return androidx.compose.ui.geometry.Rect(0f, 0f, width, height)
+    }
+    return bounded
+}

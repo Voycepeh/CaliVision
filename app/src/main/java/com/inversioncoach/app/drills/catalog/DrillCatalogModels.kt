@@ -1,19 +1,30 @@
 package com.inversioncoach.app.drills.catalog
 
-import com.inversioncoach.app.motion.SkeletonAnimationSpec
+enum class CatalogMovementType {
+    HOLD,
+    REP,
+}
 
-enum class CatalogMovementType { HOLD, REP }
-enum class CatalogCameraView { SIDE, FRONT }
-enum class CatalogAnalysisPlane { SAGITTAL, FRONTAL }
-enum class CatalogComparisonMode { OFF, OVERLAY }
+enum class CameraView {
+    LEFT_PROFILE,
+    RIGHT_PROFILE,
+    FRONT,
+}
 
-data class PhaseWindow(val start: Float, val end: Float)
+enum class AnalysisPlane {
+    SAGITTAL,
+    FRONTAL,
+}
 
-data class DrillPhaseTemplate(
-    val id: String,
-    val label: String,
-    val order: Int,
-    val progressWindow: PhaseWindow,
+enum class ComparisonMode {
+    POSE_TIMELINE,
+    PHASE_CHECKPOINTS,
+}
+
+data class DrillCatalog(
+    val schemaVersion: Int,
+    val catalogId: String,
+    val drills: List<DrillTemplate>,
 )
 
 data class DrillTemplate(
@@ -21,11 +32,56 @@ data class DrillTemplate(
     val title: String,
     val family: String,
     val movementType: CatalogMovementType,
-    val cameraView: CatalogCameraView,
-    val supportedViews: List<CatalogCameraView>,
-    val analysisPlane: CatalogAnalysisPlane,
-    val comparisonMode: CatalogComparisonMode,
+    val tags: List<String>,
+    val cameraView: CameraView,
+    val supportedViews: List<CameraView>,
+    val analysisPlane: AnalysisPlane,
+    val comparisonMode: ComparisonMode,
     val phases: List<DrillPhaseTemplate>,
+    val skeletonTemplate: SkeletonTemplate,
+    val calibration: CalibrationTemplate,
+)
+
+data class DrillPhaseTemplate(
+    val id: String,
+    val label: String,
+    val order: Int,
+    val progressWindow: PhaseWindow? = null,
+)
+
+data class SkeletonTemplate(
+    val id: String,
+    val loop: Boolean,
+    val mirroredSupported: Boolean = false,
+    val framesPerSecond: Int,
+    val phasePoses: List<PhasePoseTemplate> = emptyList(),
+    val keyframes: List<SkeletonKeyframeTemplate>,
+)
+
+data class PhasePoseTemplate(
+    val phaseId: String,
+    val name: String,
+    val joints: Map<String, JointPoint>,
+    val holdDurationMs: Int? = null,
+    val transitionDurationMs: Int = 700,
+)
+
+data class SkeletonKeyframeTemplate(
+    val progress: Float,
+    val joints: Map<String, JointPoint>,
+)
+
+data class JointPoint(
+    val x: Float,
+    val y: Float,
+)
+
+data class CalibrationTemplate(
     val metricThresholds: Map<String, Float>,
-    val animationSpec: SkeletonAnimationSpec,
+    val phaseWindows: Map<String, PhaseWindow>,
+)
+
+data class PhaseWindow(
+    val start: Float,
+    val end: Float,
 )

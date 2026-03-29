@@ -19,10 +19,10 @@ import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Timeline
-import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -37,20 +37,18 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.inversioncoach.app.storage.ServiceLocator
-import kotlinx.coroutines.launch
+import com.inversioncoach.app.storage.repository.UserProfileStatus
 import com.inversioncoach.app.ui.common.computeSessionDurationMs
 import com.inversioncoach.app.ui.common.formatSessionDateTime
 import com.inversioncoach.app.ui.common.formatSessionDuration
@@ -65,21 +63,14 @@ fun HomeScreen(
     onProgress: () -> Unit,
     onSettings: () -> Unit,
     onUploadVideo: () -> Unit,
-    onReferenceTraining: () -> Unit,
-    onManageDrills: () -> Unit,
+    onCalibration: () -> Unit,
 ) {
     val context = LocalContext.current
     val repository = remember { ServiceLocator.repository(context) }
     val userProfileManager = remember { ServiceLocator.userProfileManager(context) }
     val sessions by repository.observeSessions().collectAsState(initial = emptyList())
-    val settings by repository.observeSettings().collectAsState(initial = com.inversioncoach.app.model.UserSettings())
-    val profiles by userProfileManager.observeAvailableProfiles().collectAsState(initial = emptyList())
-    val scope = rememberCoroutineScope()
-    val activeProfile = profiles.firstOrNull { it.id == settings.activeUserProfileId } ?: profiles.firstOrNull()
-    val activeProfileContext by produceState<com.inversioncoach.app.calibration.ActiveProfileContext?>(initialValue = null, activeProfile?.id) {
-        value = if (activeProfile == null) null else userProfileManager.resolveActiveProfileContext()
-    }
-    val activeHasCalibration = activeProfileContext?.bodyProfile != null
+    val activeProfile by repository.observeActiveProfile().collectAsState(initial = null)
+    val profileStatuses by repository.observeProfileStatuses().collectAsState(initial = emptyList())
     val latestSession = sessions.maxByOrNull { it.startedAtMs }
 
     ScaffoldedScreen(title = "Inversion Coach") { padding ->
@@ -91,8 +82,9 @@ fun HomeScreen(
             onProgress = onProgress,
             onSettings = onSettings,
             onUploadVideo = onUploadVideo,
-            onReferenceTraining = onReferenceTraining,
-            onManageDrills = onManageDrills,
+            onCalibration = onCalibration,
+            activeProfile = activeProfile,
+            profileStatuses = profileStatuses,
             latestSessionStartMs = latestSession?.startedAtMs ?: 0L,
             latestSessionDurationMs = computeSessionDurationMs(latestSession?.startedAtMs ?: 0L, latestSession?.completedAtMs ?: 0L),
             profiles = profiles.map { it.id to it.displayName },
@@ -131,8 +123,9 @@ private fun Content(
     onProgress: () -> Unit,
     onSettings: () -> Unit,
     onUploadVideo: () -> Unit,
-    onReferenceTraining: () -> Unit,
-    onManageDrills: () -> Unit,
+    onCalibration: () -> Unit,
+    activeProfile: UserProfileStatus?,
+    profileStatuses: List<UserProfileStatus>,
     latestSessionStartMs: Long,
     latestSessionDurationMs: Long,
     profiles: List<Pair<String, String>>,
@@ -145,11 +138,16 @@ private fun Content(
     onRenameProfile: (String, String) -> Unit,
     onArchiveProfile: (String) -> Unit,
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    var showCreateDialog by remember { mutableStateOf(false) }
-    var newProfileName by remember { mutableStateOf("") }
-    var renameTargetProfileId by remember { mutableStateOf<String?>(null) }
-    var renameTargetName by remember { mutableStateOf("") }
+    val activeProfileName = activeProfile?.name ?: "No active profile"
+    val activeProfileCalibrated = activeProfile?.isCalibrated ?: false
+    val orderedProfiles = remember(profileStatuses) {
+        profileStatuses.sortedWith(
+            compareByDescending<UserProfileStatus> { it.isActive }
+                .thenBy { it.name.lowercase() },
+        )
+    }
+    var showOverwriteDialog by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -232,7 +230,6 @@ private fun Content(
             onClick = onStart,
         )
 
-
         ActionTile(
             label = "Upload Video",
             subtitle = "Analyze a recorded video with pose overlay",
@@ -279,6 +276,21 @@ private fun Content(
                 modifier = Modifier.weight(1f),
             )
         }
+
+        ProfileCalibrationCard(
+            activeProfileName = activeProfileName,
+            isCalibrated = activeProfileCalibrated,
+            profileStatuses = orderedProfiles,
+            hasActiveProfile = activeProfile != null,
+            onCalibrateClick = {
+                if (activeProfile == null) return@ProfileCalibrationCard
+                if (activeProfileCalibrated) {
+                    showOverwriteDialog = true
+                } else {
+                    onCalibration()
+                }
+            },
+        )
 
         ActionTile(
             label = "Settings",
@@ -340,6 +352,62 @@ private fun Content(
                     Button(onClick = { renameTargetProfileId = null }) { Text("Cancel") }
                 },
             )
+        }
+    }
+
+    if (showOverwriteDialog) {
+        AlertDialog(
+            onDismissRequest = { showOverwriteDialog = false },
+            title = { Text("Overwrite calibration?") },
+            text = { Text("This will replace the saved body calibration for $activeProfileName.") },
+            confirmButton = {
+                Button(onClick = {
+                    showOverwriteDialog = false
+                    onCalibration()
+                }) { Text("Overwrite") }
+            },
+            dismissButton = {
+                Button(onClick = { showOverwriteDialog = false }) { Text("Cancel") }
+            },
+        )
+    }
+}
+
+@Composable
+private fun ProfileCalibrationCard(
+    activeProfileName: String,
+    isCalibrated: Boolean,
+    profileStatuses: List<UserProfileStatus>,
+    hasActiveProfile: Boolean,
+    onCalibrateClick: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("Profiles", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("Active: $activeProfileName · ${if (isCalibrated) "Calibrated" else "Not calibrated"}")
+            Button(
+                onClick = onCalibrateClick,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = hasActiveProfile,
+            ) {
+                Text(if (isCalibrated) "Recalibrate" else "Start calibration")
+            }
+            if (!hasActiveProfile) {
+                Text("Create or activate a profile to calibrate.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            profileStatuses.forEach { profile ->
+                val suffix = if (profile.isActive) " (Active)" else ""
+                Text("${profile.name}$suffix · ${if (profile.isCalibrated) "Calibrated" else "Not calibrated"}")
+            }
         }
     }
 }

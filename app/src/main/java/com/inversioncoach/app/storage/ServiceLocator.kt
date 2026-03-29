@@ -50,12 +50,7 @@ object ServiceLocator {
                     db.sessionDao(),
                     db.userSettingsDao(),
                     db.frameMetricDao(),
-                    db.drillDefinitionDao(),
-                    db.referenceAssetDao(),
-                    db.movementProfileDao(),
-                    db.calibrationConfigDao(),
-                    db.referenceTemplateDao(),
-                    db.sessionComparisonDao(),
+                    db.profileDao(),
                     SessionBlobStorage(context.applicationContext),
                 ).also { sessionRepository = it }
             }
