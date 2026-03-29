@@ -1,6 +1,14 @@
 package com.inversioncoach.app.ui.navigation
 
 import android.net.Uri
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavType
@@ -64,6 +72,7 @@ sealed class Route(val value: String) {
     data object ReferenceTemplatePicker : Route("reference-template-picker")
     data object ReferenceTraining : Route("reference-training/{drillId}") { fun create(drillId: String) = "reference-training/${Uri.encode(drillId)}" }
     data object ManageDrills : Route("manage-drills")
+    data object DrillPackageDetail : Route("drill-package-detail/{drillId}") { fun create(drillId: String) = "drill-package-detail/${Uri.encode(drillId)}" }
     data object EditDrill : Route("edit-drill?drillId={drillId}") { fun create(drillId: String?) = if (drillId == null) "edit-drill" else "edit-drill?drillId=${Uri.encode(drillId)}" }
 }
 
@@ -175,12 +184,45 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                 onBack = { navController.popBackStack() },
                 onCreateDrill = { navController.navigate(Route.EditDrill.create(null)) },
                 onEditDrill = { drillId -> navController.navigate(Route.EditDrill.create(drillId)) },
-                onOpenDrill = { /* no package-detail screen on main; route to reference flow */ navController.navigate(Route.ReferenceTraining.create(it)) },
+                onOpenDrill = { drillId -> navController.navigate(Route.DrillPackageDetail.create(drillId)) },
                 onOpenInStudio = { drillId -> navController.navigate(if (drillId == null) Route.DrillStudio.createNew() else Route.DrillStudio.createForDrill(drillId)) },
+            )
+        }
+        composable(Route.DrillPackageDetail.value, arguments = listOf(navArgument("drillId") { type = NavType.StringType })) {
+            val drillId = it.arguments?.getString("drillId").orEmpty()
+            DrillPackageDetailUnavailableScreen(
+                drillId = drillId,
+                onBack = { navController.popBackStack() },
+                onOpenReferenceTraining = { navController.navigate(Route.ReferenceTraining.create(drillId)) },
+                onUploadReference = { navController.navigate(Route.UploadVideoForDrill.create(drillId, null, true)) },
             )
         }
         composable(Route.EditDrill.value, arguments = listOf(navArgument("drillId") { type = NavType.StringType; defaultValue = "" })) {
             EditDrillScreen(drillId = it.arguments?.getString("drillId").orEmpty().ifBlank { null }, onBack = { navController.popBackStack() })
+        }
+    }
+}
+
+
+@Composable
+private fun DrillPackageDetailUnavailableScreen(
+    drillId: String,
+    onBack: () -> Unit,
+    onOpenReferenceTraining: () -> Unit,
+    onUploadReference: () -> Unit,
+) {
+    com.inversioncoach.app.ui.components.ScaffoldedScreen(title = "Drill Package Detail", onBack = onBack) { padding ->
+        androidx.compose.foundation.layout.Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Drill package detail is temporarily unavailable for drill: $drillId")
+            Text("TODO: Restore dedicated DrillPackageDetail screen behavior without rerouting product flow.")
+            Button(onClick = onUploadReference, modifier = Modifier.fillMaxWidth()) { Text("Upload Reference") }
+            Button(onClick = onOpenReferenceTraining, modifier = Modifier.fillMaxWidth()) { Text("Open Reference Training") }
         }
     }
 }
