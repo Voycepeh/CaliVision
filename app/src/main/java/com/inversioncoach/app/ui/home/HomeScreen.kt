@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -27,6 +28,7 @@ import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -46,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.menuAnchor
 import com.inversioncoach.app.storage.ServiceLocator
@@ -353,29 +356,72 @@ private fun ProfileCalibrationCard(
                     colors = CardDefaults.cardColors(containerColor = rowHighlight),
                     onClick = { onSelectProfile(profile.id) },
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            .padding(horizontal = 10.dp, vertical = 9.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text(if (profile.isActive) "●" else "○", fontWeight = FontWeight.Bold)
-                        Text(profile.name, modifier = Modifier.weight(1f))
-                        Spacer(
-                            modifier = Modifier
-                                .size(10.dp)
-                                .background(
-                                    if (profile.isCalibrated) androidx.compose.ui.graphics.Color(0xFF2E7D32) else androidx.compose.ui.graphics.Color.Gray,
-                                    CircleShape,
-                                ),
-                        )
-                        OutlinedButton(onClick = { onCalibrateProfile(profile) }) { Text("Calibrate") }
-                        OutlinedButton(onClick = { onRenameProfile(profile) }) { Text("Rename") }
-                        OutlinedButton(
-                            onClick = { onArchiveProfile(profile) },
-                            enabled = activeCount > 1 && !profile.isActive,
-                        ) { Text("Archive") }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                profile.name,
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Text(
+                                    if (profile.isActive) "●" else "○",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Spacer(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .background(
+                                            if (profile.isCalibrated) androidx.compose.ui.graphics.Color(0xFF2E7D32) else androidx.compose.ui.graphics.Color.Gray,
+                                            CircleShape,
+                                        ),
+                                )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            OutlinedButton(
+                                onClick = { onCalibrateProfile(profile) },
+                                modifier = Modifier.weight(1f).heightIn(min = 34.dp),
+                                contentPadding = ButtonDefaults.ContentPadding.copy(horizontal = 8.dp, vertical = 6.dp),
+                            ) {
+                                Text("Calibrate", maxLines = 1, overflow = TextOverflow.Clip)
+                            }
+                            OutlinedButton(
+                                onClick = { onRenameProfile(profile) },
+                                modifier = Modifier.weight(1f).heightIn(min = 34.dp),
+                                contentPadding = ButtonDefaults.ContentPadding.copy(horizontal = 8.dp, vertical = 6.dp),
+                            ) {
+                                Text("Rename", maxLines = 1, overflow = TextOverflow.Clip)
+                            }
+                            OutlinedButton(
+                                onClick = { onArchiveProfile(profile) },
+                                enabled = activeCount > 1 && !profile.isActive,
+                                modifier = Modifier.weight(1f).heightIn(min = 34.dp),
+                                contentPadding = ButtonDefaults.ContentPadding.copy(horizontal = 8.dp, vertical = 6.dp),
+                            ) {
+                                Text("Archive", maxLines = 1, overflow = TextOverflow.Clip)
+                            }
+                        }
                     }
                 }
             }
