@@ -21,6 +21,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -151,6 +152,7 @@ data class UploadVideoUiState(
     val selectedDrillId: String? = null,
     val isReferenceUpload: Boolean = false,
     val createDrillFromReferenceUpload: Boolean = false,
+    val pendingDrillName: String = "",
 )
 
 data class UploadFlowResult(
@@ -172,6 +174,7 @@ interface UploadVideoAnalysisRunner {
         selectedReferenceTemplateId: String? = null,
         isReferenceUpload: Boolean = false,
         createDrillFromReferenceUpload: Boolean = false,
+        pendingDrillName: String? = null,
         onSessionCreated: (Long) -> Unit,
         onProgress: (UploadProgress) -> Unit,
         onLog: (String) -> Unit,
@@ -211,6 +214,7 @@ class DefaultUploadVideoAnalysisRunner(
         selectedReferenceTemplateId: String?,
         isReferenceUpload: Boolean,
         createDrillFromReferenceUpload: Boolean,
+        pendingDrillName: String?,
         onSessionCreated: (Long) -> Unit,
         onProgress: (UploadProgress) -> Unit,
         onLog: (String) -> Unit,
@@ -610,7 +614,17 @@ class DefaultUploadVideoAnalysisRunner(
 
             if (isReferenceUpload) {
                 val template = if (createDrillFromReferenceUpload) {
-                    val drillName = "Custom Drill ${System.currentTimeMillis()}"
+                    val fileNameSeed = uri.lastPathSegment
+                        ?.substringAfterLast('/')
+                        ?.substringBeforeLast('.')
+                        ?.replace(Regex("[_-]+"), " ")
+                        ?.trim()
+                        ?.takeIf { it.isNotBlank() }
+                    val drillName = pendingDrillName
+                        ?.trim()
+                        ?.takeIf { it.isNotBlank() }
+                        ?: fileNameSeed
+                        ?: "Custom Drill"
                     val (createdDrill, createdTemplate) = repository.createDrillFromReferenceUpload(
                         drillName = drillName,
                         description = "Created from uploaded reference video.",
@@ -1191,6 +1205,7 @@ class UploadVideoViewModel(
     private val selectedReferenceTemplateId: String?,
     private val isReferenceUpload: Boolean,
     private val createDrillFromReferenceUpload: Boolean,
+    private val pendingDrillName: String? = null,
 ) : ViewModel() {
     private val _state = MutableStateFlow(
         UploadVideoUiState(
@@ -1198,6 +1213,7 @@ class UploadVideoViewModel(
             selectedDrillId = selectedDrillId,
             isReferenceUpload = isReferenceUpload,
             createDrillFromReferenceUpload = createDrillFromReferenceUpload,
+            pendingDrillName = pendingDrillName.orEmpty(),
         ),
     )
     val state: StateFlow<UploadVideoUiState> = _state.asStateFlow()
@@ -1207,7 +1223,7 @@ class UploadVideoViewModel(
         private var activeSessionId: Long? = null
     }
 
-    constructor(runner: UploadVideoAnalysisRunner) : this(runner, null, null, null, false, false)
+    constructor(runner: UploadVideoAnalysisRunner) : this(runner, null, null, null, false, false, null)
 
     init {
         val repo = repository
@@ -1261,6 +1277,11 @@ class UploadVideoViewModel(
         }
     }
 
+
+    fun onPendingDrillNameChanged(name: String) {
+        _state.update { it.copy(pendingDrillName = name, errorMessage = null) }
+    }
+
     fun analyze(uri: Uri) {
         if (activeJob?.isActive == true) return
         val trackingMode = _state.value.selectedTrackingMode
@@ -1271,6 +1292,18 @@ class UploadVideoViewModel(
                     currentProcessingStage = UploadStage.FAILED,
                     stageText = "Select movement type",
                     errorMessage = "Choose Hold-based or Rep-based before processing an upload.",
+                    canCancel = false,
+                )
+            }
+            return
+        }
+        if (createDrillFromReferenceUpload && _state.value.pendingDrillName.isBlank()) {
+            _state.update {
+                it.copy(
+                    stage = UploadStage.FAILED,
+                    currentProcessingStage = UploadStage.FAILED,
+                    stageText = "Name required",
+                    errorMessage = "Enter a drill name before uploading a new reference drill.",
                     canCancel = false,
                 )
             }
@@ -1304,6 +1337,7 @@ class UploadVideoViewModel(
                     selectedReferenceTemplateId = selectedReferenceTemplateId,
                     isReferenceUpload = isReferenceUpload,
                     createDrillFromReferenceUpload = createDrillFromReferenceUpload,
+                    pendingDrillName = _state.value.pendingDrillName,
                     onSessionCreated = { sessionId ->
                         activeSessionId = sessionId
                         _state.update { current -> current.copy(sessionId = sessionId) }
@@ -1469,7 +1503,7 @@ private fun rawReplayPlayableForStage(session: SessionRecord): Boolean {
 fun UploadVideoScreen(
     onBack: () -> Unit,
     onOpenResults: (Long) -> Unit,
-    onOpenDrillStudio: ((String) -> Unit)? = null,
+    onOpenDrillStudio: ((String, String?) -> Unit)? = null,
     selectedDrillId: String? = null,
     selectedReferenceTemplateId: String? = null,
     isReferenceUpload: Boolean = false,
@@ -1477,6 +1511,12 @@ fun UploadVideoScreen(
 ) {
     val context = LocalContext.current
     val repository = remember { ServiceLocator.repository(context) }
+    val defaultDraftName = remember(selectedDrillId) {
+        selectedDrillId?.substringAfterLast("_")
+            ?.replace(Regex("[_-]+"), " ")
+            ?.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+            ?: ""
+    }
     val viewModel = remember(selectedDrillId, selectedReferenceTemplateId, isReferenceUpload, createDrillFromReferenceUpload) {
         UploadVideoViewModel(
             DefaultUploadVideoAnalysisRunner(
@@ -1489,6 +1529,7 @@ fun UploadVideoScreen(
             selectedReferenceTemplateId,
             isReferenceUpload,
             createDrillFromReferenceUpload,
+            pendingDrillName = defaultDraftName,
         )
     }
     val state by viewModel.state.collectAsState()
@@ -1547,6 +1588,13 @@ fun UploadVideoScreen(
             Text("Upload role: ${if (state.isReferenceUpload) "Reference" else "Attempt"}", style = MaterialTheme.typography.bodySmall)
             if (state.createDrillFromReferenceUpload) {
                 Text("New drill will be created from this reference upload.", style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(
+                    value = state.pendingDrillName,
+                    onValueChange = viewModel::onPendingDrillNameChanged,
+                    label = { Text("New drill name") },
+                    supportingText = { Text("You can rename it later in Drill Studio.") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
             Text("Raw video status: ${state.rawVideoStatus.name}", style = MaterialTheme.typography.bodySmall)
             Text("Annotated video status: ${state.annotatedVideoStatus.name}", style = MaterialTheme.typography.bodySmall)
@@ -1637,7 +1685,7 @@ fun UploadVideoScreen(
                     Text("View session")
                 }
                 if (state.isReferenceUpload && onOpenDrillStudio != null && !state.selectedDrillId.isNullOrBlank()) {
-                    OutlinedButton(onClick = { onOpenDrillStudio(state.selectedDrillId!!) }, modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = { onOpenDrillStudio(state.selectedDrillId!!, state.selectedReferenceTemplateId) }, modifier = Modifier.fillMaxWidth()) {
                         Text("Open Drill Studio")
                     }
                 }

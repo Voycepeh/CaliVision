@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -79,6 +80,7 @@ fun ResultsScreen(sessionId: Long, onDone: () -> Unit) {
     var notes by remember { mutableStateOf("") }
     var diagnosticsExpanded by remember { mutableStateOf(false) }
     var persistedDiagnostics by remember { mutableStateOf<String?>(null) }
+    var setPromotedAsBaseline by remember { mutableStateOf(false) }
     var lastRefreshSignature by remember(sessionId) { mutableStateOf<String?>(null) }
     val clipboardManager = LocalClipboardManager.current
 
@@ -282,6 +284,9 @@ fun ResultsScreen(sessionId: Long, onDone: () -> Unit) {
                     if (!contextTemplateId.isNullOrBlank()) {
                         Text("Template context: $contextTemplateId")
                     }
+                    session?.referenceTemplateId?.let { linkedTemplateId ->
+                        Text("Linked template: $linkedTemplateId", style = MaterialTheme.typography.bodySmall)
+                    }
                     Text("Started: ${formatSessionDateTime(session?.startedAtMs ?: 0L)}")
                     Text("Duration: ${formatSessionDuration(displayDurationMs)}")
                     session?.let {
@@ -461,12 +466,18 @@ fun ResultsScreen(sessionId: Long, onDone: () -> Unit) {
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Save note") }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Checkbox(checked = setPromotedAsBaseline, onCheckedChange = { setPromotedAsBaseline = it })
+                Text("Set as baseline template", style = MaterialTheme.typography.bodyMedium)
+            }
             Button(
                 onClick = {
                     scope.launch {
                         val activeSession = session ?: return@launch
                         val drillContextId = activeSession.drillId ?: parseInlineMetrics(activeSession.metricsJson)["drillId"]
-                        val profileId = "profile-${activeSession.id}"
                         if (drillContextId.isNullOrBlank()) {
                             Toast.makeText(context, "No drill context found for this session.", Toast.LENGTH_SHORT).show()
                             return@launch
@@ -475,7 +486,7 @@ fun ResultsScreen(sessionId: Long, onDone: () -> Unit) {
                             sessionId = activeSession.id,
                             drillId = drillContextId,
                             title = "${activeSession.title} Reference",
-                            profileId = profileId,
+                            setAsBaseline = setPromotedAsBaseline,
                         )
                         if (template == null) {
                             Toast.makeText(context, "No extracted motion profile found for this session.", Toast.LENGTH_SHORT).show()
@@ -486,7 +497,7 @@ fun ResultsScreen(sessionId: Long, onDone: () -> Unit) {
                 },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = session != null,
-            ) { Text("Use as reference template") }
+            ) { Text("Use as Reference Template") }
             Button(
                 onClick = {
                     shareVideoOnly(

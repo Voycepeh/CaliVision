@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import com.inversioncoach.app.model.ReferenceTemplateRecord
 import kotlinx.coroutines.flow.Flow
 
@@ -23,4 +24,10 @@ interface ReferenceTemplateDao {
 
     @Query("UPDATE reference_template_records SET isBaseline = 0 WHERE drillId = :drillId")
     suspend fun clearBaselineForDrill(drillId: String)
+
+    @Transaction
+    suspend fun setBaselineForDrill(drillId: String, record: ReferenceTemplateRecord) {
+        clearBaselineForDrill(drillId)
+        upsert(record)
+    }
 }

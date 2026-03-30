@@ -67,11 +67,16 @@ fun DrillStudioScreen(
     initRequest: DrillStudioInitRequest,
 ) {
     val context = LocalContext.current
-    val vm = remember { DrillStudioViewModel(repository = DrillCatalogRepository(context)) }
+    val vm = remember {
+        DrillStudioViewModel(
+            repository = DrillCatalogRepository(context),
+            sessionRepository = ServiceLocator.repository(context),
+        )
+    }
     var bodyProfile by remember { mutableStateOf<UserBodyProfile?>(null) }
     val uiState by vm.uiState.collectAsState()
 
-    LaunchedEffect(initRequest.mode, initRequest.drillId) {
+    LaunchedEffect(initRequest.mode, initRequest.drillId, initRequest.templateId) {
         vm.initialize(initRequest)
     }
     LaunchedEffect(Unit) {
