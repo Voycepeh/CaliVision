@@ -2,7 +2,6 @@ package com.inversioncoach.app.ui.drillstudio
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -14,15 +13,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -43,22 +42,23 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.inversioncoach.app.calibration.UserBodyProfile
 import com.inversioncoach.app.drills.catalog.CameraView
 import com.inversioncoach.app.drills.catalog.CatalogMovementType
+import com.inversioncoach.app.drills.catalog.CatalogNormalizationBasis
 import com.inversioncoach.app.drills.catalog.ComparisonMode
 import com.inversioncoach.app.drills.catalog.DrillCatalogRepository
 import com.inversioncoach.app.drills.catalog.DrillTemplate
 import com.inversioncoach.app.drills.catalog.JointPoint
 import com.inversioncoach.app.drills.catalog.PhasePoseTemplate
 import com.inversioncoach.app.drills.catalog.StickFigureAnimator
+import com.inversioncoach.app.overlay.OverlaySkeletonSpec
+import com.inversioncoach.app.overlay.jointStyle
+import com.inversioncoach.app.storage.ServiceLocator
 import com.inversioncoach.app.ui.components.DropdownOption
 import com.inversioncoach.app.ui.components.MultiSelectChipsField
 import com.inversioncoach.app.ui.components.ReliableDropdownField
 import com.inversioncoach.app.ui.components.ScaffoldedScreen
-import com.inversioncoach.app.calibration.UserBodyProfile
-import com.inversioncoach.app.overlay.OverlaySkeletonSpec
-import com.inversioncoach.app.overlay.jointStyle
-import com.inversioncoach.app.storage.ServiceLocator
 import kotlinx.coroutines.isActive
 
 @Composable
@@ -91,16 +91,22 @@ fun DrillStudioScreen(
                 padding = padding,
                 draft = state.draft,
                 sourceSeedId = state.sourceSeedId,
+                validationErrors = state.validationErrors,
+                statusMessage = state.statusMessage,
                 onUpdateDraft = vm::updateDraft,
                 onAddPhase = vm::addPhase,
                 onDuplicatePhase = vm::duplicatePhase,
                 onDeletePhase = vm::deletePhase,
                 onRenamePhase = vm::renamePhase,
+                onMovePhase = vm::movePhase,
+                onUpdatePhaseDurations = vm::updatePhaseDurations,
                 onCopyPreviousPose = vm::copyPreviousPose,
                 onMirrorPose = vm::mirrorPose,
                 onResetPose = vm::resetPose,
                 onApplyPreset = vm::applyPosePreset,
                 onUpdatePhasePoseJoint = vm::updatePhasePoseJoint,
+                onSaveDraft = vm::saveDraft,
+                onSaveAndMarkReady = vm::saveAndMarkReady,
                 bodyProfile = bodyProfile,
             )
         }
@@ -143,16 +149,22 @@ private fun DrillStudioEditor(
     padding: PaddingValues,
     draft: DrillTemplate,
     sourceSeedId: String?,
+    validationErrors: List<String>,
+    statusMessage: String?,
     onUpdateDraft: ((DrillTemplate) -> DrillTemplate) -> Unit,
     onAddPhase: () -> Unit,
     onDuplicatePhase: (String) -> Unit,
     onDeletePhase: (String) -> Unit,
     onRenamePhase: (String, String) -> Unit,
+    onMovePhase: (String, Int) -> Unit,
+    onUpdatePhaseDurations: (String, Int?, Int) -> Unit,
     onCopyPreviousPose: (String) -> Unit,
     onMirrorPose: (String) -> Unit,
     onResetPose: (String) -> Unit,
     onApplyPreset: (String, String) -> Unit,
     onUpdatePhasePoseJoint: (String, String, JointPoint) -> Unit,
+    onSaveDraft: () -> Unit,
+    onSaveAndMarkReady: () -> Unit,
     bodyProfile: UserBodyProfile?,
 ) {
     val phasePoses = draft.skeletonTemplate.phasePoses
@@ -166,9 +178,8 @@ private fun DrillStudioEditor(
         mutableStateOf(phasePoses.firstOrNull { it.phaseId == selectedPhaseId }?.joints?.keys?.firstOrNull())
     }
     val orderedPhases = draft.phases.sortedBy { it.order }
-    val phaseNameDrafts = remember(orderedPhases.map { it.id to it.label }) {
-        orderedPhases.associate { it.id to it.label }.toMutableMap()
-    }
+    val selectedPhaseTemplate = orderedPhases.firstOrNull { it.id == selectedPhaseId }
+
     LaunchedEffect(orderedPhases.map { it.id }, selectedPhaseId) {
         selectedPhaseId = DrillStudioPhaseEditor.recoverSelectionAfterDelete(
             remainingPhaseIds = orderedPhases.map { it.id },
@@ -190,90 +201,147 @@ private fun DrillStudioEditor(
     val currentPose = phasePoses.firstOrNull { it.phaseId == selectedPhaseId } ?: phasePoses.first()
     val cameraOptions = remember { CameraView.entries.map { DropdownOption(it, it.name.pretty()) } }
     val movementOptions = remember { CatalogMovementType.entries.map { DropdownOption(it, it.name.pretty()) } }
-    val comparisonOptions = remember { ComparisonMode.entries.map { DropdownOption(it, it.name.pretty()) } }
+    val comparisonModeOptions = remember { ComparisonMode.entries.map { DropdownOption(it, it.name.pretty()) } }
+    val normalizationOptions = remember { CatalogNormalizationBasis.entries.map { DropdownOption(it, it.name.pretty()) } }
+    val keyJointOptions = remember {
+        listOf(
+            "head", "shoulder_left", "shoulder_right", "elbow_left", "elbow_right",
+            "wrist_left", "wrist_right", "hip_left", "hip_right", "knee_left",
+            "knee_right", "ankle_left", "ankle_right",
+        ).map { DropdownOption(it, it.pretty()) }
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            SectionCard(title = "Drill info") {
-                Text("Editing: ${draft.title}")
-                Text(if (sourceSeedId == null) "Custom draft" else "Seeded source: $sourceSeedId")
+            SectionCard(title = "Drill details") {
+                Text(if (sourceSeedId == null) "New drill" else "Editing seeded source: $sourceSeedId")
+                OutlinedTextField(
+                    value = draft.title,
+                    onValueChange = { value -> onUpdateDraft { it.copy(title = value) } },
+                    label = { Text("Name") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = draft.description,
+                    onValueChange = { value -> onUpdateDraft { it.copy(description = value) } },
+                    label = { Text("Description") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
                 ReliableDropdownField(
-                    label = "Movement type",
+                    label = "Movement mode",
                     selected = movementOptions.firstOrNull { it.value == draft.movementType } ?: movementOptions.first(),
                     options = movementOptions,
                     onOptionSelected = { option -> onUpdateDraft { it.copy(movementType = option.value) } },
                 )
+                Text("Choose whether the drill is evaluated as a hold or a rep sequence.", style = MaterialTheme.typography.bodySmall)
+                ReliableDropdownField(
+                    label = "Camera view",
+                    selected = cameraOptions.firstOrNull { it.value == draft.cameraView } ?: cameraOptions.first(),
+                    options = cameraOptions,
+                    onOptionSelected = { option ->
+                        onUpdateDraft {
+                            it.copy(
+                                cameraView = option.value,
+                                supportedViews = (it.supportedViews + option.value).distinct(),
+                                analysisPlane = analysisPlaneForPrimaryView(option.value),
+                            )
+                        }
+                    },
+                )
+                Text("Defines which viewing angle the drill expects for analysis.", style = MaterialTheme.typography.bodySmall)
                 ReliableDropdownField(
                     label = "Comparison mode",
-                    selected = comparisonOptions.firstOrNull { it.value == draft.comparisonMode } ?: comparisonOptions.first(),
-                    options = comparisonOptions,
+                    selected = comparisonModeOptions.firstOrNull { it.value == draft.comparisonMode } ?: comparisonModeOptions.first(),
+                    options = comparisonModeOptions,
                     onOptionSelected = { option -> onUpdateDraft { it.copy(comparisonMode = option.value) } },
                 )
+                Text("Controls how poses are compared during drill analysis.", style = MaterialTheme.typography.bodySmall)
             }
         }
 
         item {
-            SectionCard(title = "Phase strip") {
+            SectionCard(title = "Phases") {
+                Text("Key stages of the drill used for sequencing, timing, and pose comparison.", style = MaterialTheme.typography.bodySmall)
                 Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     orderedPhases.forEach { phase ->
-                        val selected = phase.id == selectedPhaseId
-                        val phasePose = phasePoses.firstOrNull { it.phaseId == phase.id }
-                        Card(
-                            modifier = Modifier.width(190.dp).border(
-                                width = if (selected) 2.dp else 0.dp,
-                                color = MaterialTheme.colorScheme.primary,
-                                shape = RoundedCornerShape(12.dp),
-                            ),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        ) {
-                            Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                val text = phaseNameDrafts[phase.id] ?: phase.label
-                                BasicTextField(
-                                    value = text,
-                                    onValueChange = {
-                                        phaseNameDrafts[phase.id] = it
-                                    },
-                                )
-                                Text("hold: ${phasePose?.holdDurationMs ?: 0} ms")
-                                Text("transition: ${phasePose?.transitionDurationMs ?: 700} ms")
-                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Button(onClick = { onRenamePhase(phase.id, phaseNameDrafts[phase.id] ?: phase.label) }) { Text("Save") }
-                                    Button(onClick = { selectedPhaseId = phase.id }) { Text("Edit") }
-                                    Button(onClick = { onDuplicatePhase(phase.id) }) { Text("Dup") }
-                                    Button(onClick = { onDeletePhase(phase.id) }, enabled = draft.phases.size > 1) { Text("Del") }
-                                }
-                            }
-                        }
+                        FilterChip(
+                            selected = phase.id == selectedPhaseId,
+                            onClick = { selectedPhaseId = phase.id },
+                            label = { Text(phase.label) },
+                        )
                     }
-                    Button(onClick = onAddPhase) { Text("+ Phase") }
+                    Button(onClick = onAddPhase) { Text("+ Add phase") }
+                }
+                selectedPhaseTemplate?.let { phase ->
+                    OutlinedTextField(
+                        value = phase.label,
+                        onValueChange = { value -> onRenamePhase(phase.id, value) },
+                        label = { Text("Phase name") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    val phasePose = phasePoses.firstOrNull { it.phaseId == phase.id }
+                    AxisEditor(
+                        label = "Hold duration (ms)",
+                        value = (phasePose?.holdDurationMs ?: 0).toFloat(),
+                        valueRange = 0f..5000f,
+                    ) { next -> onUpdatePhaseDurations(phase.id, next.toInt(), phasePose?.transitionDurationMs ?: 700) }
+                    AxisEditor(
+                        label = "Transition duration (ms)",
+                        value = (phasePose?.transitionDurationMs ?: 700).toFloat(),
+                        valueRange = 100f..5000f,
+                    ) { next -> onUpdatePhaseDurations(phase.id, phasePose?.holdDurationMs, next.toInt()) }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { onMovePhase(phase.id, -1) }) { Text("Move up") }
+                        Button(onClick = { onMovePhase(phase.id, 1) }) { Text("Move down") }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { onDuplicatePhase(phase.id) }) { Text("Duplicate") }
+                        Button(onClick = { onDeletePhase(phase.id) }, enabled = draft.phases.size > 1) { Text("Delete") }
+                    }
                 }
             }
         }
 
         item {
-            SectionCard(title = "Pose canvas") {
+            SectionCard(title = "Pose authoring") {
+                Text("Editing pose for: ${selectedPhaseTemplate?.label ?: currentPose.name}")
                 PoseCanvas(
                     phasePose = currentPose,
                     bodyProfile = bodyProfile,
                     onJointMoved = { joint, point -> onUpdatePhasePoseJoint(currentPose.phaseId, joint, point) },
                 )
-                Text("Seed presets")
-                Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    DrillStudioPosePresets.all.forEach { preset ->
-                        Button(onClick = { onApplyPreset(currentPose.phaseId, preset.id) }) { Text(preset.label) }
-                    }
-                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = { onCopyPreviousPose(currentPose.phaseId) }) { Text("Copy previous") }
                     Button(onClick = { onMirrorPose(currentPose.phaseId) }) { Text("Mirror") }
                     Button(onClick = { onResetPose(currentPose.phaseId) }) { Text("Reset") }
                 }
+            }
+        }
+
+        item {
+            SectionCard(title = "Drill analysis settings") {
+                MultiSelectChipsField(
+                    label = "Key joints",
+                    options = keyJointOptions,
+                    selectedValues = draft.keyJoints.toSet(),
+                    onToggle = { joint ->
+                        onUpdateDraft { current ->
+                            val next = if (joint in current.keyJoints) current.keyJoints - joint else current.keyJoints + joint
+                            current.copy(keyJoints = next.distinct())
+                        }
+                    },
+                )
+                Text("The body joints most important for evaluating this drill.", style = MaterialTheme.typography.bodySmall)
+                ReliableDropdownField(
+                    label = "Normalization basis",
+                    selected = normalizationOptions.firstOrNull { it.value == draft.normalizationBasis } ?: normalizationOptions.first(),
+                    options = normalizationOptions,
+                    onOptionSelected = { option -> onUpdateDraft { it.copy(normalizationBasis = option.value) } },
+                )
+                Text("Reference used to scale pose comparisons consistently.", style = MaterialTheme.typography.bodySmall)
             }
         }
 
@@ -303,70 +371,37 @@ private fun DrillStudioEditor(
                         onOptionSelected = { selectedJoint = it.value },
                     )
                     val current = currentPose.joints[selectedJoint] ?: JointPoint(0.5f, 0.5f)
-                    AxisEditor(
-                        label = "X",
-                        value = current.x,
-                        onUpdate = { x -> onUpdatePhasePoseJoint(currentPose.phaseId, selected.value, current.copy(x = x)) },
-                    )
-                    AxisEditor(
-                        label = "Y",
-                        value = current.y,
-                        onUpdate = { y -> onUpdatePhasePoseJoint(currentPose.phaseId, selected.value, current.copy(y = y)) },
-                    )
+                    AxisEditor(label = "X", value = current.x, valueRange = 0f..1f) { x ->
+                        onUpdatePhasePoseJoint(currentPose.phaseId, selected.value, current.copy(x = x))
+                    }
+                    AxisEditor(label = "Y", value = current.y, valueRange = 0f..1f) { y ->
+                        onUpdatePhasePoseJoint(currentPose.phaseId, selected.value, current.copy(y = y))
+                    }
                 }
             }
         }
 
         item {
-            SectionCard(title = "View config") {
-                MultiSelectChipsField(
-                    label = "Supported views",
-                    options = cameraOptions,
-                    selectedValues = draft.supportedViews.toSet(),
-                    onToggle = { view ->
-                        onUpdateDraft { current ->
-                            val next = if (view in current.supportedViews) current.supportedViews - view else current.supportedViews + view
-                            val resolvedSupportedViews = next.ifEmpty { listOf(current.cameraView) }.distinct()
-                            val resolvedPrimaryView = if (current.cameraView in resolvedSupportedViews) {
-                                current.cameraView
-                            } else {
-                                resolvedSupportedViews.first()
-                            }
-                            current.copy(
-                                supportedViews = resolvedSupportedViews,
-                                cameraView = resolvedPrimaryView,
-                                analysisPlane = analysisPlaneForPrimaryView(resolvedPrimaryView),
-                            )
-                        }
-                    },
-                )
-                ReliableDropdownField(
-                    label = "Primary/default view",
-                    selected = cameraOptions.firstOrNull { it.value == draft.cameraView } ?: cameraOptions.first(),
-                    options = cameraOptions.filter { it.value in draft.supportedViews },
-                    onOptionSelected = { option ->
-                        onUpdateDraft {
-                            it.copy(
-                                cameraView = option.value,
-                                analysisPlane = analysisPlaneForPrimaryView(option.value),
-                            )
-                        }
-                    },
-                )
+            statusMessage?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+            validationErrors.forEach { Text(it, color = MaterialTheme.colorScheme.error) }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = onSaveDraft) { Text("Save Draft") }
+                Button(onClick = onSaveAndMarkReady) { Text("Validate and Save") }
             }
         }
     }
 }
 
 @Composable
-private fun AxisEditor(label: String, value: Float, onUpdate: (Float) -> Unit) {
+private fun AxisEditor(
+    label: String,
+    value: Float,
+    valueRange: ClosedFloatingPointRange<Float>,
+    onUpdate: (Float) -> Unit,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("$label: ${"%.2f".format(value)}")
-        Slider(value = value, onValueChange = onUpdate, valueRange = 0f..1f)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { onUpdate((value - 0.01f).coerceIn(0f, 1f)) }) { Text("- nudge") }
-            Button(onClick = { onUpdate((value + 0.01f).coerceIn(0f, 1f)) }) { Text("+ nudge") }
-        }
+        Text("$label: ${"%.0f".format(value)}")
+        Slider(value = value.coerceIn(valueRange.start, valueRange.endInclusive), onValueChange = onUpdate, valueRange = valueRange)
     }
 }
 

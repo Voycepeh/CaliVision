@@ -4,6 +4,7 @@ import com.inversioncoach.app.drills.catalog.CatalogAnalysisPlane
 import com.inversioncoach.app.drills.catalog.CatalogCameraView
 import com.inversioncoach.app.drills.catalog.CatalogComparisonMode
 import com.inversioncoach.app.drills.catalog.CatalogMovementType
+import com.inversioncoach.app.drills.catalog.CatalogNormalizationBasis
 import com.inversioncoach.app.drills.catalog.DrillPhaseTemplate
 import com.inversioncoach.app.drills.catalog.DrillTemplate
 import com.inversioncoach.app.drills.catalog.PhaseWindow
@@ -16,12 +17,15 @@ class DrillStudioMapperTest {
     private val template = DrillTemplate(
         id = "drill-1",
         title = "Drill One",
+        description = "Desc",
         family = "family",
         movementType = CatalogMovementType.REP,
         cameraView = CatalogCameraView.SIDE,
         supportedViews = listOf(CatalogCameraView.SIDE, CatalogCameraView.FRONT),
         analysisPlane = CatalogAnalysisPlane.SAGITTAL,
         comparisonMode = CatalogComparisonMode.OVERLAY,
+        keyJoints = listOf("shoulder_left", "hip_left"),
+        normalizationBasis = CatalogNormalizationBasis.SHOULDERS,
         phases = listOf(
             DrillPhaseTemplate("p1", "Phase 1", 0, PhaseWindow(0f, 0.4f)),
             DrillPhaseTemplate("p2", "Phase 2", 1, PhaseWindow(0.4f, 1f)),
@@ -35,6 +39,7 @@ class DrillStudioMapperTest {
         val studio = DrillStudioMapper.fromCatalog(template)
 
         assertEquals("drill-1", studio.id)
+        assertEquals("Desc", studio.description)
         assertEquals(2, studio.phases.size)
         assertEquals(0.4f, studio.phases.first().progressWindow.end)
         assertEquals("start", studio.phases.first().anchorKeyframeName)
@@ -47,6 +52,9 @@ class DrillStudioMapperTest {
 
         assertEquals(template.cameraView, catalog.cameraView)
         assertEquals(template.comparisonMode, catalog.comparisonMode)
+        assertEquals(template.description, catalog.description)
+        assertEquals(template.keyJoints, catalog.keyJoints)
+        assertEquals(template.normalizationBasis, catalog.normalizationBasis)
         assertEquals(template.phases.map { it.progressWindow.end }, catalog.phases.map { it.progressWindow.end })
     }
 }

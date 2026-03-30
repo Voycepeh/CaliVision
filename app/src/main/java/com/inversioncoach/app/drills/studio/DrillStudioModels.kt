@@ -5,6 +5,7 @@ import com.inversioncoach.app.drills.catalog.CatalogAnalysisPlane
 import com.inversioncoach.app.drills.catalog.CatalogCameraView
 import com.inversioncoach.app.drills.catalog.CatalogComparisonMode
 import com.inversioncoach.app.drills.catalog.CatalogMovementType
+import com.inversioncoach.app.drills.catalog.CatalogNormalizationBasis
 import com.inversioncoach.app.motion.SkeletonAnimationSpec
 import org.json.JSONArray
 import org.json.JSONObject
@@ -24,12 +25,15 @@ data class DrillStudioDocument(
     val id: String,
     val seededCatalogDrillId: String?,
     val displayName: String,
+    val description: String = "",
     val family: String,
     val movementType: CatalogMovementType,
     val cameraView: CatalogCameraView,
     val supportedViews: List<CatalogCameraView>,
     val analysisPlane: CatalogAnalysisPlane,
     val comparisonMode: CatalogComparisonMode,
+    val keyJoints: List<String> = emptyList(),
+    val normalizationBasis: CatalogNormalizationBasis = CatalogNormalizationBasis.HIPS,
     val phases: List<DrillStudioPhase>,
     val metricThresholds: Map<String, Float>,
     val animationSpec: SkeletonAnimationSpec,
@@ -41,12 +45,15 @@ object DrillStudioCodec {
         put("id", document.id)
         put("seededCatalogDrillId", document.seededCatalogDrillId)
         put("displayName", document.displayName)
+        put("description", document.description)
         put("family", document.family)
         put("movementType", document.movementType.name)
         put("cameraView", document.cameraView.name)
         put("supportedViews", JSONArray().apply { document.supportedViews.forEach { put(it.name) } })
         put("analysisPlane", document.analysisPlane.name)
         put("comparisonMode", document.comparisonMode.name)
+        put("keyJoints", JSONArray(document.keyJoints))
+        put("normalizationBasis", document.normalizationBasis.name)
         put("phases", JSONArray().apply {
             document.phases.forEach { phase ->
                 put(JSONObject().apply {
@@ -106,12 +113,19 @@ object DrillStudioCodec {
             id = json.optString("id"),
             seededCatalogDrillId = json.optString("seededCatalogDrillId").ifBlank { null },
             displayName = json.optString("displayName"),
+            description = json.optString("description", ""),
             family = json.optString("family", "general"),
             movementType = CatalogMovementType.valueOf(json.optString("movementType", CatalogMovementType.HOLD.name)),
             cameraView = cameraView,
             supportedViews = supportedViews,
             analysisPlane = CatalogAnalysisPlane.valueOf(json.optString("analysisPlane", CatalogAnalysisPlane.SAGITTAL.name)),
             comparisonMode = CatalogComparisonMode.valueOf(json.optString("comparisonMode", CatalogComparisonMode.OVERLAY.name)),
+            keyJoints = json.optJSONArray("keyJoints")?.let { arr ->
+                (0 until arr.length()).map { index -> arr.getString(index) }
+            }.orEmpty(),
+            normalizationBasis = CatalogNormalizationBasis.valueOf(
+                json.optString("normalizationBasis", CatalogNormalizationBasis.HIPS.name),
+            ),
             phases = phases,
             metricThresholds = thresholds,
             animationSpec = AnimationSpecJson.fromJson(json.getJSONObject("animationSpec")),

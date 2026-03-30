@@ -13,12 +13,15 @@ object DrillStudioMapper {
         id = drill.id,
         seededCatalogDrillId = drill.id,
         displayName = drill.title,
+        description = drill.description,
         family = drill.family,
         movementType = drill.movementType,
         cameraView = drill.cameraView,
         supportedViews = drill.supportedViews,
         analysisPlane = drill.analysisPlane,
         comparisonMode = drill.comparisonMode,
+        keyJoints = drill.keyJoints,
+        normalizationBasis = drill.normalizationBasis,
         phases = drill.phases.map { phase ->
             DrillStudioPhase(
                 id = phase.id,
@@ -38,6 +41,7 @@ object DrillStudioMapper {
     fun toCatalog(document: DrillStudioDocument): DrillTemplate = DrillTemplate(
         id = document.id,
         title = document.displayName,
+        description = document.description,
         family = document.family,
         movementType = document.movementType,
         tags = emptyList(),
@@ -45,6 +49,8 @@ object DrillStudioMapper {
         supportedViews = document.supportedViews,
         analysisPlane = document.analysisPlane,
         comparisonMode = document.comparisonMode,
+        keyJoints = document.keyJoints,
+        normalizationBasis = document.normalizationBasis,
         phases = document.phases.map { phase ->
             DrillPhaseTemplate(
                 id = phase.id,
