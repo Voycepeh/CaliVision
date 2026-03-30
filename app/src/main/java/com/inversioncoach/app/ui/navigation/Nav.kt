@@ -66,9 +66,9 @@ sealed class Route(val value: String) {
     data object Settings : Route("settings")
     data object DevTuning : Route("settings/dev-tuning")
     data object UploadVideo : Route("upload-video")
-    data object UploadVideoForDrill : Route("upload-video?drillId={drillId}&referenceTemplateId={referenceTemplateId}&isReference={isReference}") {
-        fun create(drillId: String?, templateId: String?, isReference: Boolean): String =
-            "upload-video?drillId=${Uri.encode(drillId ?: "")}&referenceTemplateId=${Uri.encode(templateId ?: "")}&isReference=$isReference"
+    data object UploadVideoForDrill : Route("upload-video?drillId={drillId}&referenceTemplateId={referenceTemplateId}&isReference={isReference}&createNewDrillFromReference={createNewDrillFromReference}") {
+        fun create(drillId: String?, templateId: String?, isReference: Boolean, createNewDrillFromReference: Boolean = false): String =
+            "upload-video?drillId=${Uri.encode(drillId ?: "")}&referenceTemplateId=${Uri.encode(templateId ?: "")}&isReference=$isReference&createNewDrillFromReference=$createNewDrillFromReference"
     }
     data object Calibration : Route("calibration")
     data object ReferenceTemplatePicker : Route("reference-template-picker")
@@ -163,16 +163,20 @@ fun AppNavHost(modifier: Modifier = Modifier) {
             navArgument("drillId") { type = NavType.StringType; defaultValue = "" },
             navArgument("referenceTemplateId") { type = NavType.StringType; defaultValue = "" },
             navArgument("isReference") { type = NavType.BoolType; defaultValue = false },
+            navArgument("createNewDrillFromReference") { type = NavType.BoolType; defaultValue = false },
         )) {
             val drillId = it.arguments?.getString("drillId").orEmpty().ifBlank { null }
             val templateId = it.arguments?.getString("referenceTemplateId").orEmpty().ifBlank { null }
             val isReference = it.arguments?.getBoolean("isReference") ?: false
+            val createNewDrillFromReference = it.arguments?.getBoolean("createNewDrillFromReference") ?: false
             UploadVideoScreen(
                 onBack = { navController.popBackStack() },
                 onOpenResults = { sessionId -> navController.navigate(Route.Results.create(sessionId)) },
+                onOpenDrillStudio = { id -> navController.navigate(Route.DrillStudio.createForDrill(id)) },
                 selectedDrillId = drillId,
                 selectedReferenceTemplateId = templateId,
                 isReferenceUpload = isReference,
+                createDrillFromReferenceUpload = createNewDrillFromReference,
             )
         }
         composable(Route.ReferenceTemplatePicker.value) {
@@ -187,7 +191,7 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                 onUploadAttempt = { id, templateId -> navController.navigate(Route.UploadVideoForDrill.create(id, templateId, false)) },
                 onComparePastSessions = { navController.navigate(Route.History.value) },
                 onOpenDrillStudio = { id -> navController.navigate(Route.DrillStudio.createForDrill(id)) },
-                onCreateNewDrillFromReference = { id -> navController.navigate(Route.UploadVideoForDrill.create(id, null, true)) },
+                onCreateNewDrillFromReference = { id -> navController.navigate(Route.UploadVideoForDrill.create(id, null, true, createNewDrillFromReference = true)) },
             )
         }
         composable(Route.ManageDrills.value) {
