@@ -16,6 +16,7 @@ import com.inversioncoach.app.drills.catalog.PhasePoseTemplate
 import com.inversioncoach.app.drills.catalog.PhaseWindow
 import com.inversioncoach.app.drills.catalog.SkeletonKeyframeTemplate
 import com.inversioncoach.app.drills.catalog.SkeletonTemplate
+import com.inversioncoach.app.storage.repository.SessionRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,6 +25,7 @@ import kotlinx.coroutines.launch
 data class DrillStudioInitRequest(
     val mode: String = "drill",
     val drillId: String? = null,
+    val templateId: String? = null,
 )
 
 sealed interface DrillStudioUiState {
@@ -39,6 +41,7 @@ sealed interface DrillStudioUiState {
 
 class DrillStudioViewModel(
     private val repository: DrillCatalogRepository,
+    private val sessionRepository: SessionRepository? = null,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow<DrillStudioUiState>(DrillStudioUiState.Loading)
     val uiState: StateFlow<DrillStudioUiState> = _uiState.asStateFlow()
@@ -48,9 +51,11 @@ class DrillStudioViewModel(
             _uiState.value = DrillStudioUiState.Loading
             val result = runCatching {
                 val catalog = repository.loadCatalog()
+                val templateRecord = request.templateId?.let { templateId -> sessionRepository?.getReferenceTemplate(templateId) }
+                val seedDrillId = templateRecord?.drillId ?: request.drillId
                 val seed = when {
                     request.mode == "create" -> null
-                    request.drillId != null -> resolveSeedById(catalog.drills, request.drillId)
+                    seedDrillId != null -> resolveSeedById(catalog.drills, seedDrillId)
                     else -> catalog.drills.firstOrNull()
                 }
                 val draft = when {
@@ -62,6 +67,7 @@ class DrillStudioViewModel(
                 DrillStudioUiState.Ready(
                     draft = normalized,
                     sourceSeedId = draft.sourceSeedId,
+                    statusMessage = templateRecord?.let { "Loaded from template: ${it.displayName}" },
                 )
             }
 

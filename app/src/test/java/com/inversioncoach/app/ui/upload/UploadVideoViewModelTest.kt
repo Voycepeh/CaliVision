@@ -27,6 +27,7 @@ class UploadVideoViewModelTest {
                 selectedReferenceTemplateId: String?,
                 isReferenceUpload: Boolean,
                 createDrillFromReferenceUpload: Boolean,
+                pendingDrillName: String?,
                 onSessionCreated: (Long) -> Unit,
                 onProgress: (UploadProgress) -> Unit,
                 onLog: (String) -> Unit,
@@ -71,6 +72,7 @@ class UploadVideoViewModelTest {
                 selectedReferenceTemplateId: String?,
                 isReferenceUpload: Boolean,
                 createDrillFromReferenceUpload: Boolean,
+                pendingDrillName: String?,
                 onSessionCreated: (Long) -> Unit,
                 onProgress: (UploadProgress) -> Unit,
                 onLog: (String) -> Unit,
@@ -112,6 +114,7 @@ class UploadVideoViewModelTest {
                 selectedReferenceTemplateId: String?,
                 isReferenceUpload: Boolean,
                 createDrillFromReferenceUpload: Boolean,
+                pendingDrillName: String?,
                 onSessionCreated: (Long) -> Unit,
                 onProgress: (UploadProgress) -> Unit,
                 onLog: (String) -> Unit,
@@ -154,6 +157,7 @@ class UploadVideoViewModelTest {
                 selectedReferenceTemplateId: String?,
                 isReferenceUpload: Boolean,
                 createDrillFromReferenceUpload: Boolean,
+                pendingDrillName: String?,
                 onSessionCreated: (Long) -> Unit,
                 onProgress: (UploadProgress) -> Unit,
                 onLog: (String) -> Unit,
@@ -195,6 +199,7 @@ class UploadVideoViewModelTest {
                 selectedReferenceTemplateId: String?,
                 isReferenceUpload: Boolean,
                 createDrillFromReferenceUpload: Boolean,
+                pendingDrillName: String?,
                 onSessionCreated: (Long) -> Unit,
                 onProgress: (UploadProgress) -> Unit,
                 onLog: (String) -> Unit,
@@ -221,6 +226,7 @@ class UploadVideoViewModelTest {
                 selectedReferenceTemplateId: String?,
                 isReferenceUpload: Boolean,
                 createDrillFromReferenceUpload: Boolean,
+                pendingDrillName: String?,
                 onSessionCreated: (Long) -> Unit,
                 onProgress: (UploadProgress) -> Unit,
                 onLog: (String) -> Unit,
@@ -246,6 +252,7 @@ class UploadVideoViewModelTest {
                 selectedReferenceTemplateId: String?,
                 isReferenceUpload: Boolean,
                 createDrillFromReferenceUpload: Boolean,
+                pendingDrillName: String?,
                 onSessionCreated: (Long) -> Unit,
                 onProgress: (UploadProgress) -> Unit,
                 onLog: (String) -> Unit,
@@ -275,6 +282,7 @@ class UploadVideoViewModelTest {
                 selectedReferenceTemplateId: String?,
                 isReferenceUpload: Boolean,
                 createDrillFromReferenceUpload: Boolean,
+                pendingDrillName: String?,
                 onSessionCreated: (Long) -> Unit,
                 onProgress: (UploadProgress) -> Unit,
                 onLog: (String) -> Unit,
@@ -292,4 +300,45 @@ class UploadVideoViewModelTest {
         assertEquals(UploadTrackingMode.REP_BASED, capturedMode)
         kotlinx.coroutines.Dispatchers.resetMain()
     }
+
+    @Test
+    fun createDrillFromReferenceRequiresNameBeforeProcessing() = runTest(dispatcher) {
+        kotlinx.coroutines.Dispatchers.setMain(dispatcher)
+        var runnerCalled = false
+        val viewModel = UploadVideoViewModel(
+            runner = object : UploadVideoAnalysisRunner {
+                override suspend fun run(
+                    uri: Uri,
+                    trackingMode: UploadTrackingMode,
+                    selectedDrillId: String?,
+                    selectedReferenceTemplateId: String?,
+                    isReferenceUpload: Boolean,
+                    createDrillFromReferenceUpload: Boolean,
+                    pendingDrillName: String?,
+                    onSessionCreated: (Long) -> Unit,
+                    onProgress: (UploadProgress) -> Unit,
+                    onLog: (String) -> Unit,
+                ): UploadFlowResult {
+                    runnerCalled = true
+                    return UploadFlowResult(1L, null, rawReady = false, annotatedReady = false, finalStage = UploadStage.FAILED)
+                }
+            },
+            repository = null,
+            selectedDrillId = "wall_handstand",
+            selectedReferenceTemplateId = null,
+            isReferenceUpload = true,
+            createDrillFromReferenceUpload = true,
+            pendingDrillName = "",
+        )
+        viewModel.onTrackingModeSelected(UploadTrackingMode.HOLD_BASED)
+
+        viewModel.analyze(Uri.parse("content://video"))
+        advanceUntilIdle()
+
+        assertEquals(UploadStage.FAILED, viewModel.state.value.stage)
+        assertTrue(viewModel.state.value.errorMessage?.contains("Enter a drill name") == true)
+        assertTrue(!runnerCalled)
+        kotlinx.coroutines.Dispatchers.resetMain()
+    }
+
 }

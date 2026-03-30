@@ -25,7 +25,6 @@ class SessionRepositoryPortableDrillContractTest {
             "promoteSessionToTemplate",
             "setBaselineTemplateForDrill",
             "listTemplatesForDrill",
-            "listSessionsForDrill",
             "getSessionsForDrill",
             "saveSessionComparison",
             "getTemplatesForDrill",

@@ -16,4 +16,7 @@ interface MovementProfileDao {
 
     @Query("SELECT * FROM movement_profile_records WHERE drillId = :drillId ORDER BY createdAtMs DESC")
     suspend fun getByDrill(drillId: String): List<MovementProfileRecord>
+
+    @Query("SELECT * FROM movement_profile_records WHERE assetId = :assetId ORDER BY createdAtMs DESC LIMIT 1")
+    suspend fun getByAssetId(assetId: String): MovementProfileRecord?
 }

@@ -73,7 +73,6 @@ class SessionRepository(
 
     suspend fun saveReferenceTemplate(record: ReferenceTemplateRecord) = referenceTemplateDao.upsert(record)
     fun listTemplatesForDrill(drillId: String): Flow<List<ReferenceTemplateRecord>> = referenceTemplateDao.observeByDrillId(drillId)
-    fun listSessionsForDrill(drillId: String): Flow<List<SessionRecord>> = sessionDao.observeByDrillId(drillId)
     fun getSessionsForDrill(drillId: String): Flow<List<SessionRecord>> = sessionDao.observeByDrillId(drillId)
 
     suspend fun createTemplateFromReferenceUpload(
@@ -145,15 +144,15 @@ class SessionRepository(
         sessionId: Long,
         drillId: String,
         title: String,
-        profileId: String,
+        setAsBaseline: Boolean = false,
     ): ReferenceTemplateRecord? {
-        val profile = movementProfileDao.getById(profileId) ?: return null
+        val profile = movementProfileDao.getByAssetId("asset-$sessionId") ?: movementProfileDao.getById("profile-$sessionId") ?: return null
         val template = createTemplateFromReferenceUpload(
             drillId = drillId,
             sourceProfile = profile,
             title = title,
             sourceSessionId = sessionId,
-            isBaseline = false,
+            isBaseline = setAsBaseline,
         ).copy(sourceType = "SESSION_PROMOTION", sourceSessionId = sessionId)
         referenceTemplateDao.upsert(template)
         val session = sessionDao.getById(sessionId)
@@ -168,9 +167,8 @@ class SessionRepository(
     ): ReferenceTemplateRecord? {
         val resolved = template ?: templateId?.let { referenceTemplateDao.getById(it) } ?: return null
         if (resolved.drillId != drillId) return null
-        referenceTemplateDao.clearBaselineForDrill(drillId)
         val updated = resolved.copy(isBaseline = true, updatedAtMs = System.currentTimeMillis())
-        referenceTemplateDao.upsert(updated)
+        referenceTemplateDao.setBaselineForDrill(drillId, updated)
         return updated
     }
 

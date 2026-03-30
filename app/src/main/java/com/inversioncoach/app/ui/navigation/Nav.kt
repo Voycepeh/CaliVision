@@ -58,9 +58,11 @@ sealed class Route(val value: String) {
     data object History : Route("history")
     data object Progress : Route("progress")
     data object DrillHub : Route("drill-hub")
-    data object DrillStudio : Route("drill-studio?mode={mode}&drillId={drillId}") {
-        fun createNew(): String = "drill-studio?mode=create&drillId="
-        fun createForDrill(drillId: String): String = "drill-studio?mode=drill&drillId=${Uri.encode(drillId)}"
+    data object DrillStudio : Route("drill-studio?mode={mode}&drillId={drillId}&templateId={templateId}") {
+        fun createNew(): String = "drill-studio?mode=create&drillId=&templateId="
+        fun createForDrill(drillId: String): String = "drill-studio?mode=drill&drillId=${Uri.encode(drillId)}&templateId="
+        fun createForTemplate(drillId: String, templateId: String): String =
+            "drill-studio?mode=drill&drillId=${Uri.encode(drillId)}&templateId=${Uri.encode(templateId)}"
     }
     data object Settings : Route("settings")
     data object DevTuning : Route("settings/dev-tuning")
@@ -140,8 +142,19 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                 onReferenceTraining = { navController.navigate(Route.ReferenceTemplatePicker.value) },
             )
         }
-        composable(Route.DrillStudio.value, arguments = listOf(navArgument("mode") { type = NavType.StringType; defaultValue = "drill" }, navArgument("drillId") { type = NavType.StringType; defaultValue = "" })) {
-            DrillStudioScreen(onBack = { navController.popBackStack() }, initRequest = DrillStudioInitRequest(mode = it.arguments?.getString("mode") ?: "drill", drillId = it.arguments?.getString("drillId")?.takeIf { id -> id.isNotBlank() }))
+        composable(Route.DrillStudio.value, arguments = listOf(
+            navArgument("mode") { type = NavType.StringType; defaultValue = "drill" },
+            navArgument("drillId") { type = NavType.StringType; defaultValue = "" },
+            navArgument("templateId") { type = NavType.StringType; defaultValue = "" },
+        )) {
+            DrillStudioScreen(
+                onBack = { navController.popBackStack() },
+                initRequest = DrillStudioInitRequest(
+                    mode = it.arguments?.getString("mode") ?: "drill",
+                    drillId = it.arguments?.getString("drillId")?.takeIf { id -> id.isNotBlank() },
+                    templateId = it.arguments?.getString("templateId")?.takeIf { id -> id.isNotBlank() },
+                ),
+            )
         }
         composable(Route.SessionTooShort.value, arguments = listOf(navArgument("elapsedMs") { type = NavType.LongType }, navArgument("thresholdSeconds") { type = NavType.IntType })) {
             SessionTooShortScreen(elapsedSessionMs = it.arguments?.getLong("elapsedMs") ?: 0L, validationThresholdSeconds = it.arguments?.getInt("thresholdSeconds") ?: 0, onBackToHome = { navController.popBackStack(Route.Home.value, false) })
@@ -170,7 +183,12 @@ fun AppNavHost(modifier: Modifier = Modifier) {
             UploadVideoScreen(
                 onBack = { navController.popBackStack() },
                 onOpenResults = { sessionId -> navController.navigate(Route.Results.create(sessionId)) },
-                onOpenDrillStudio = { id -> navController.navigate(Route.DrillStudio.createForDrill(id)) },
+                onOpenDrillStudio = { drillId, templateId ->
+                    navController.navigate(
+                        if (templateId.isNullOrBlank()) Route.DrillStudio.createForDrill(drillId)
+                        else Route.DrillStudio.createForTemplate(drillId, templateId),
+                    )
+                },
                 selectedDrillId = drillId,
                 selectedReferenceTemplateId = templateId,
                 isReferenceUpload = isReference,
@@ -188,7 +206,12 @@ fun AppNavHost(modifier: Modifier = Modifier) {
                 onUploadReference = { id -> navController.navigate(Route.UploadVideoForDrill.create(id, null, true)) },
                 onUploadAttempt = { id, templateId -> navController.navigate(Route.UploadVideoForDrill.create(id, templateId, false)) },
                 onComparePastSessions = { navController.navigate(Route.History.value) },
-                onOpenDrillStudio = { id -> navController.navigate(Route.DrillStudio.createForDrill(id)) },
+                onOpenDrillStudio = { drillId, templateId ->
+                    navController.navigate(
+                        if (templateId.isNullOrBlank()) Route.DrillStudio.createForDrill(drillId)
+                        else Route.DrillStudio.createForTemplate(drillId, templateId),
+                    )
+                },
                 onCreateNewDrillFromReference = { id -> navController.navigate(Route.UploadVideoForDrill.create(id, null, true, createNewDrillFromReference = true)) },
             )
         }

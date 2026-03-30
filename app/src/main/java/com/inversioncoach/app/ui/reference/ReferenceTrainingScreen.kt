@@ -31,16 +31,18 @@ fun ReferenceTrainingScreen(
     onUploadReference: (String) -> Unit,
     onUploadAttempt: (String, String?) -> Unit,
     onComparePastSessions: (String) -> Unit,
-    onOpenDrillStudio: (String) -> Unit,
+    onOpenDrillStudio: (String, String?) -> Unit,
     onCreateNewDrillFromReference: (String) -> Unit,
 ) {
     val context = LocalContext.current
     val repo = remember { ServiceLocator.repository(context) }
     val drills by repo.getAllDrills().collectAsState(initial = emptyList())
     val templates by repo.getTemplatesForDrill(drillId).collectAsState(initial = emptyList())
+    val sessions by repo.getSessionsForDrill(drillId).collectAsState(initial = emptyList())
     var selectedTemplateId by remember { mutableStateOf<String?>(null) }
     val selectedDrill = drills.firstOrNull { it.id == drillId }
     val isReady = selectedDrill?.status == DrillStatus.READY
+    val baselineTemplate = templates.firstOrNull { it.isBaseline }
 
     ScaffoldedScreen(title = "Reference Training", onBack = onBack) { padding ->
         Column(
@@ -48,6 +50,14 @@ fun ReferenceTrainingScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(selectedDrill?.name ?: "Drill")
+            Text(
+                "Baseline: ${baselineTemplate?.displayName ?: "Not set"}",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                "Recent sessions: ${sessions.take(5).joinToString { "#${it.id}" }.ifBlank { "None" }}",
+                style = MaterialTheme.typography.bodySmall,
+            )
             if (!isReady) {
                 Text("Only READY drills can be used for reference upload or comparison.")
             }
@@ -60,7 +70,7 @@ fun ReferenceTrainingScreen(
             Button(onClick = { onComparePastSessions(drillId) }, enabled = isReady, modifier = Modifier.fillMaxWidth()) {
                 Text("Compare Past Sessions")
             }
-            Button(onClick = { onOpenDrillStudio(drillId) }, modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = { onOpenDrillStudio(drillId, selectedTemplateId) }, modifier = Modifier.fillMaxWidth()) {
                 Text(if (selectedTemplateId == null) "Open Drill Studio" else "Open Drill Studio (Selected Template)")
             }
             Button(onClick = { onCreateNewDrillFromReference(drillId) }, enabled = isReady, modifier = Modifier.fillMaxWidth()) {
@@ -72,7 +82,13 @@ fun ReferenceTrainingScreen(
                     Card(onClick = { selectedTemplateId = template.id }) {
                         Column(Modifier.padding(10.dp)) {
                             Text(template.displayName)
-                            Text(if (selectedTemplateId == template.id) "Selected" else "Tap to select")
+                            Text(
+                                buildString {
+                                    if (template.isBaseline) append("Baseline • ")
+                                    append(if (selectedTemplateId == template.id) "Selected" else "Tap to select")
+                                    template.sourceSessionId?.let { append(" • Session #$it") }
+                                },
+                            )
                         }
                     }
                 }
