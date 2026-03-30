@@ -32,10 +32,11 @@ class RuntimeBodyProfileResolver(
         if (repository != null) {
             val activeProfile = repository.getActiveProfile()
             val activeCalibration = repository.getActiveProfileCalibration()
+            val activeCalibrationVersion = repository.getActiveProfileCalibrationVersion()
             return RuntimeBodyProfileResolution(
                 userProfileId = activeProfile?.id?.toString(),
-                bodyProfileId = activeProfile?.id?.let { "profile_$it" },
-                bodyProfileVersion = null,
+                bodyProfileId = null,
+                bodyProfileVersion = activeCalibrationVersion,
                 bodyProfile = activeCalibration,
                 usedDefaultBodyModel = activeCalibration == null,
             )

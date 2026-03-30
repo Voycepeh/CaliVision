@@ -137,6 +137,7 @@ private fun Content(
     var renameTargetName by remember { mutableStateOf("") }
 
     var archiveTarget by remember { mutableStateOf<UserProfileStatus?>(null) }
+    var switchThenCalibrateTarget by remember { mutableStateOf<UserProfileStatus?>(null) }
     var showOverwriteDialog by remember { mutableStateOf(false) }
 
     Column(
@@ -153,7 +154,10 @@ private fun Content(
             profiles = orderedProfiles,
             onSelectProfile = onSelectProfile,
             onCalibrateProfile = { profile ->
-                if (!profile.isActive) onSelectProfile(profile.id)
+                if (!profile.isActive) {
+                    switchThenCalibrateTarget = profile
+                    return@ProfileCalibrationCard
+                }
                 if (profile.isCalibrated) showOverwriteDialog = true else onCalibration()
             },
             onCreateProfile = { showCreateDialog = true },
@@ -286,6 +290,24 @@ private fun Content(
             },
             dismissButton = {
                 OutlinedButton(onClick = { archiveTarget = null }) { Text("Cancel") }
+            },
+        )
+    }
+
+    switchThenCalibrateTarget?.let { profile ->
+        AlertDialog(
+            onDismissRequest = { switchThenCalibrateTarget = null },
+            title = { Text("Switch profile and calibrate?") },
+            text = { Text("Set ${profile.name} as active profile, then start calibration.") },
+            confirmButton = {
+                Button(onClick = {
+                    onSelectProfile(profile.id)
+                    switchThenCalibrateTarget = null
+                    if (profile.isCalibrated) showOverwriteDialog = true else onCalibration()
+                }) { Text("Continue") }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { switchThenCalibrateTarget = null }) { Text("Cancel") }
             },
         )
     }
