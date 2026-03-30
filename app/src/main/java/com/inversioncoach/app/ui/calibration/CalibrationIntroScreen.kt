@@ -15,13 +15,13 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun CalibrationIntroScreen(modifier: Modifier = Modifier, onStart: () -> Unit) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Structural Calibration", style = MaterialTheme.typography.headlineSmall)
+        Text("Body Profile Capture", style = MaterialTheme.typography.headlineSmall)
         IntroCard("Use the back camera and keep the phone steady.")
         IntroCard("Place phone 2.5–4 m away so your full body stays visible.")
-        IntroCard("Follow the on-screen poses in order: front, side, overhead, then controlled hold.")
+        IntroCard("Follow the on-screen poses in order: front neutral, side neutral, and front arms overhead.")
         IntroCard("If a step says not ready, adjust position until all highlighted joints are visible.")
         Button(onClick = onStart, modifier = Modifier.fillMaxWidth()) {
-            Text("Start calibration")
+            Text("Capture Body Profile")
         }
     }
 }
