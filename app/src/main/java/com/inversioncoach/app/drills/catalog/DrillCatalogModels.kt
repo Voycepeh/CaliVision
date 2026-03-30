@@ -25,9 +25,17 @@ enum class CatalogComparisonMode {
     PHASE_CHECKPOINTS,
 }
 
+enum class CatalogNormalizationBasis {
+    HIPS,
+    SHOULDERS,
+    TORSO,
+    ANKLES,
+}
+
 typealias CameraView = CatalogCameraView
 typealias AnalysisPlane = CatalogAnalysisPlane
 typealias ComparisonMode = CatalogComparisonMode
+typealias NormalizationBasis = CatalogNormalizationBasis
 
 data class DrillCatalog(
     val schemaVersion: Int,
@@ -38,6 +46,7 @@ data class DrillCatalog(
 data class DrillTemplate(
     val id: String,
     val title: String,
+    val description: String = "",
     val family: String,
     val movementType: CatalogMovementType,
     val tags: List<String>,
@@ -45,6 +54,8 @@ data class DrillTemplate(
     val supportedViews: List<CatalogCameraView>,
     val analysisPlane: CatalogAnalysisPlane,
     val comparisonMode: CatalogComparisonMode,
+    val keyJoints: List<String> = emptyList(),
+    val normalizationBasis: CatalogNormalizationBasis = CatalogNormalizationBasis.HIPS,
     val phases: List<DrillPhaseTemplate>,
     val skeletonTemplate: SkeletonTemplate,
     val calibration: CalibrationTemplate,

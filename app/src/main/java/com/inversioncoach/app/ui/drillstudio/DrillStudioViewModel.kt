@@ -6,6 +6,7 @@ import com.inversioncoach.app.drills.catalog.AnalysisPlane
 import com.inversioncoach.app.drills.catalog.CalibrationTemplate
 import com.inversioncoach.app.drills.catalog.CameraView
 import com.inversioncoach.app.drills.catalog.CatalogMovementType
+import com.inversioncoach.app.drills.catalog.CatalogNormalizationBasis
 import com.inversioncoach.app.drills.catalog.ComparisonMode
 import com.inversioncoach.app.drills.catalog.DrillCatalogRepository
 import com.inversioncoach.app.drills.catalog.DrillPhaseTemplate
@@ -31,6 +32,8 @@ sealed interface DrillStudioUiState {
     data class Ready(
         val draft: DrillTemplate,
         val sourceSeedId: String?,
+        val validationErrors: List<String> = emptyList(),
+        val statusMessage: String? = null,
     ) : DrillStudioUiState
 }
 
@@ -77,7 +80,7 @@ class DrillStudioViewModel(
             template = updated,
             sourceSeedId = current.sourceSeedId,
         )
-        _uiState.value = current.copy(draft = updated)
+        _uiState.value = current.copy(draft = updated, validationErrors = emptyList(), statusMessage = null)
     }
 
     fun addPhase() = mutateReadyDraft { current ->
@@ -178,6 +181,51 @@ class DrillStudioViewModel(
                     if (pose.phaseId == phaseId) pose.copy(joints = DrillStudioPoseUtils.normalizeJointNames(preset.joints)) else pose
                 },
             ),
+        )
+    }
+
+    fun updatePhaseDurations(phaseId: String, holdDurationMs: Int?, transitionDurationMs: Int) = mutateReadyDraft { current ->
+        current.copy(
+            skeletonTemplate = current.skeletonTemplate.copy(
+                phasePoses = current.skeletonTemplate.phasePoses.map { pose ->
+                    if (pose.phaseId == phaseId) {
+                        pose.copy(
+                            holdDurationMs = holdDurationMs?.coerceAtLeast(0),
+                            transitionDurationMs = transitionDurationMs.coerceAtLeast(100),
+                        )
+                    } else {
+                        pose
+                    }
+                },
+            ),
+        )
+    }
+
+    fun movePhase(phaseId: String, direction: Int) = mutateReadyDraft { current ->
+        val phases = current.phases.sortedBy { it.order }.toMutableList()
+        val index = phases.indexOfFirst { it.id == phaseId }
+        if (index == -1) return@mutateReadyDraft current
+        val target = (index + direction).coerceIn(0, phases.lastIndex)
+        if (target == index) return@mutateReadyDraft current
+        val moving = phases.removeAt(index)
+        phases.add(target, moving)
+        current.copy(phases = phases.mapIndexed { idx, phase -> phase.copy(order = idx + 1) })
+    }
+
+    fun saveDraft() {
+        val current = _uiState.value as? DrillStudioUiState.Ready ?: return
+        _uiState.value = current.copy(
+            validationErrors = emptyList(),
+            statusMessage = "Draft saved",
+        )
+    }
+
+    fun saveAndMarkReady() {
+        val current = _uiState.value as? DrillStudioUiState.Ready ?: return
+        val errors = validateReady(current.draft)
+        _uiState.value = current.copy(
+            validationErrors = errors,
+            statusMessage = if (errors.isEmpty()) "Draft validated and saved" else null,
         )
     }
 
@@ -317,6 +365,22 @@ class DrillStudioViewModel(
         keyframes += SkeletonKeyframeTemplate(1f, DrillStudioPoseUtils.normalizeJointNames(phasePoses.last().joints))
         return keyframes
     }
+
+    private fun validateReady(draft: DrillTemplate): List<String> {
+        val errors = mutableListOf<String>()
+        if (draft.title.trim().isEmpty()) errors += "Name is required."
+        if (draft.phases.isEmpty()) errors += "At least one phase is required."
+        if (draft.phases.any { it.label.isBlank() }) errors += "Phase names cannot be blank."
+        if (draft.phases.map { it.order }.distinct().size != draft.phases.size) errors += "Phase ordering must be unique."
+        val phasePoseIds = draft.skeletonTemplate.phasePoses.map { it.phaseId }.toSet()
+        if (!draft.phases.all { phase -> phase.id in phasePoseIds }) errors += "Each phase must have a pose."
+        if (draft.keyJoints.isEmpty()) errors += "Select at least one key joint."
+        if (draft.normalizationBasis !in CatalogNormalizationBasis.entries) errors += "Normalization basis is invalid."
+        if (draft.supportedViews.isEmpty() || draft.cameraView !in draft.supportedViews) {
+            errors += "Camera view must be included in supported views."
+        }
+        return errors
+    }
 }
 
 internal fun analysisPlaneForPrimaryView(primaryView: CameraView): AnalysisPlane = when (primaryView) {
@@ -352,7 +416,7 @@ private object DrillStudioDraftRepository {
         val id = "draft_new_${System.currentTimeMillis()}"
         val draft = DrillTemplate(
             id = id,
-            title = "New Drill",
+            title = "",
             family = "Custom",
             movementType = CatalogMovementType.HOLD,
             tags = listOf("custom"),
@@ -360,6 +424,8 @@ private object DrillStudioDraftRepository {
             supportedViews = listOf(CameraView.LEFT_PROFILE),
             analysisPlane = AnalysisPlane.SAGITTAL,
             comparisonMode = ComparisonMode.POSE_TIMELINE,
+            keyJoints = listOf("shoulder_left", "shoulder_right", "hip_left", "hip_right"),
+            normalizationBasis = CatalogNormalizationBasis.HIPS,
             phases = listOf(
                 DrillPhaseTemplate(
                     id = "phase_1",

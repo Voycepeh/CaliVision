@@ -30,6 +30,7 @@ object DrillCatalogJson {
     private fun JSONObject.toDrillTemplate(): DrillTemplate = DrillTemplate(
         id = getString("id"),
         title = getString("title"),
+        description = optString("description", ""),
         family = getString("family"),
         movementType = CatalogMovementType.valueOf(getString("movementType").uppercase()),
         tags = getJSONArray("tags").toStringList(),
@@ -37,6 +38,8 @@ object DrillCatalogJson {
         supportedViews = getJSONArray("supportedViews").toCameraViews(),
         analysisPlane = AnalysisPlane.valueOf(getString("analysisPlane").uppercase()),
         comparisonMode = ComparisonMode.valueOf(getString("comparisonMode").uppercase()),
+        keyJoints = optJSONArray("keyJoints")?.toStringList().orEmpty(),
+        normalizationBasis = optString("normalizationBasis", "hips").let { NormalizationBasis.valueOf(it.uppercase()) },
         phases = getJSONArray("phases").toPhases(),
         skeletonTemplate = getJSONObject("skeletonTemplate").toSkeletonTemplate(),
         calibration = getJSONObject("calibration").toCalibrationTemplate(),
@@ -157,6 +160,9 @@ object DrillCatalogJson {
     private fun DrillTemplate.toJson(): JSONObject = JSONObject().apply {
         put("id", id)
         put("title", title)
+        if (description.isNotBlank()) {
+            put("description", description)
+        }
         put("family", family)
         put("movementType", movementType.name.lowercase())
         put("tags", JSONArray(tags))
@@ -164,6 +170,8 @@ object DrillCatalogJson {
         put("supportedViews", JSONArray(supportedViews.map { it.name.lowercase() }))
         put("analysisPlane", analysisPlane.name.lowercase())
         put("comparisonMode", comparisonMode.name.lowercase())
+        put("keyJoints", JSONArray(keyJoints))
+        put("normalizationBasis", normalizationBasis.name.lowercase())
         put("phases", JSONArray().apply { phases.forEach { put(it.toJson()) } })
         put("skeletonTemplate", skeletonTemplate.toJson())
         put("calibration", calibration.toJson())
