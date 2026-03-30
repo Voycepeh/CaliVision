@@ -61,7 +61,7 @@ fun ReferenceTrainingScreen(
                 Text("Compare Past Sessions")
             }
             Button(onClick = { onOpenDrillStudio(drillId) }, modifier = Modifier.fillMaxWidth()) {
-                Text("Open Drill Studio")
+                Text(if (selectedTemplateId == null) "Open Drill Studio" else "Open Drill Studio (Selected Template)")
             }
             Button(onClick = { onCreateNewDrillFromReference(drillId) }, enabled = isReady, modifier = Modifier.fillMaxWidth()) {
                 Text("Create New Drill from Reference")

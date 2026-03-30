@@ -150,6 +150,7 @@ data class UploadVideoUiState(
     val selectedReferenceTemplateId: String? = null,
     val selectedDrillId: String? = null,
     val isReferenceUpload: Boolean = false,
+    val createDrillFromReferenceUpload: Boolean = false,
 )
 
 data class UploadFlowResult(
@@ -159,6 +160,8 @@ data class UploadFlowResult(
     val annotatedReady: Boolean,
     val exportFailureReason: String? = null,
     val finalStage: UploadStage,
+    val drillId: String? = null,
+    val referenceTemplateId: String? = null,
 )
 
 interface UploadVideoAnalysisRunner {
@@ -168,6 +171,7 @@ interface UploadVideoAnalysisRunner {
         selectedDrillId: String? = null,
         selectedReferenceTemplateId: String? = null,
         isReferenceUpload: Boolean = false,
+        createDrillFromReferenceUpload: Boolean = false,
         onSessionCreated: (Long) -> Unit,
         onProgress: (UploadProgress) -> Unit,
         onLog: (String) -> Unit,
@@ -206,6 +210,7 @@ class DefaultUploadVideoAnalysisRunner(
         selectedDrillId: String?,
         selectedReferenceTemplateId: String?,
         isReferenceUpload: Boolean,
+        createDrillFromReferenceUpload: Boolean,
         onSessionCreated: (Long) -> Unit,
         onProgress: (UploadProgress) -> Unit,
         onLog: (String) -> Unit,
@@ -573,7 +578,8 @@ class DefaultUploadVideoAnalysisRunner(
                 ),
             )
             val extractor = MovementProfileExtractor()
-            val drillId = selectedDrillId ?: "legacy_${drillType.name}"
+            var drillId = selectedDrillId ?: "legacy_${drillType.name}"
+            var templateId = selectedReferenceTemplateId
             val assetId = "asset-$sessionId"
             val profileId = "profile-$sessionId"
             repository.saveReferenceAsset(
@@ -603,20 +609,37 @@ class DefaultUploadVideoAnalysisRunner(
             repository.saveMovementProfile(subjectProfile)
 
             if (isReferenceUpload) {
-                val template = repository.createTemplateFromReferenceUpload(
-                    drillId = drillId,
-                    sourceProfile = subjectProfile,
-                    title = "${drillDefinition?.name ?: drillType.displayName} Reference",
-                    sourceSessionId = sessionId,
-                    isBaseline = templatesAreEmptyForDrill(repository, drillId),
-                )
+                val template = if (createDrillFromReferenceUpload) {
+                    val drillName = "Custom Drill ${System.currentTimeMillis()}"
+                    val (createdDrill, createdTemplate) = repository.createDrillFromReferenceUpload(
+                        drillName = drillName,
+                        description = "Created from uploaded reference video.",
+                        sourceProfile = subjectProfile,
+                        sourceSessionId = sessionId,
+                    )
+                    drillId = createdDrill.id
+                    createdTemplate
+                } else {
+                    repository.createTemplateFromReferenceUpload(
+                        drillId = drillId,
+                        sourceProfile = subjectProfile,
+                        title = "${drillDefinition?.name ?: drillType.displayName} Reference",
+                        sourceSessionId = sessionId,
+                        isBaseline = templatesAreEmptyForDrill(repository, drillId),
+                    )
+                }
+                templateId = template.id
                 repository.updateMediaPipelineState(sessionId) { session ->
                     session.copy(
                         drillId = drillId,
                         referenceTemplateId = template.id,
                         metricsJson = mergeMetricsJson(
                             session.metricsJson,
-                            mapOf("referenceTemplateId" to template.id, "referenceTemplateName" to template.displayName),
+                            mapOf(
+                                "drillId" to drillId,
+                                "referenceTemplateId" to template.id,
+                                "referenceTemplateName" to template.displayName,
+                            ),
                         ),
                     )
                 }
@@ -652,6 +675,7 @@ class DefaultUploadVideoAnalysisRunner(
                                 metricsJson = mergeMetricsJson(
                                     session.metricsJson,
                                     mapOf(
+                                        "drillId" to drillId,
                                         "referenceTemplateId" to selectedTemplateRecord.id,
                                         "referenceTemplateName" to selectedTemplateRecord.displayName,
                                         "comparisonOverall" to comparison.overallSimilarityScore.toString(),
@@ -915,6 +939,8 @@ class DefaultUploadVideoAnalysisRunner(
                     rawReady = true,
                     annotatedReady = true,
                     finalStage = UploadStage.COMPLETED_ANNOTATED,
+                    drillId = drillId,
+                    referenceTemplateId = templateId,
                 )
             }
 
@@ -949,6 +975,8 @@ class DefaultUploadVideoAnalysisRunner(
                 annotatedReady = false,
                 exportFailureReason = failureReason,
                 finalStage = UploadStage.COMPLETED_RAW_ONLY,
+                drillId = drillId,
+                referenceTemplateId = templateId,
             )
         } catch (error: Throwable) {
             SessionDiagnostics.record(
@@ -1162,12 +1190,14 @@ class UploadVideoViewModel(
     private val selectedDrillId: String?,
     private val selectedReferenceTemplateId: String?,
     private val isReferenceUpload: Boolean,
+    private val createDrillFromReferenceUpload: Boolean,
 ) : ViewModel() {
     private val _state = MutableStateFlow(
         UploadVideoUiState(
             selectedReferenceTemplateId = selectedReferenceTemplateId,
             selectedDrillId = selectedDrillId,
             isReferenceUpload = isReferenceUpload,
+            createDrillFromReferenceUpload = createDrillFromReferenceUpload,
         ),
     )
     val state: StateFlow<UploadVideoUiState> = _state.asStateFlow()
@@ -1177,7 +1207,7 @@ class UploadVideoViewModel(
         private var activeSessionId: Long? = null
     }
 
-    constructor(runner: UploadVideoAnalysisRunner) : this(runner, null, null, null, false)
+    constructor(runner: UploadVideoAnalysisRunner) : this(runner, null, null, null, false, false)
 
     init {
         val repo = repository
@@ -1273,6 +1303,7 @@ class UploadVideoViewModel(
                     selectedDrillId = selectedDrillId,
                     selectedReferenceTemplateId = selectedReferenceTemplateId,
                     isReferenceUpload = isReferenceUpload,
+                    createDrillFromReferenceUpload = createDrillFromReferenceUpload,
                     onSessionCreated = { sessionId ->
                         activeSessionId = sessionId
                         _state.update { current -> current.copy(sessionId = sessionId) }
@@ -1338,6 +1369,8 @@ class UploadVideoViewModel(
                         stageText = completionMessage,
                         sessionId = result.sessionId,
                         replayUri = result.replayUri,
+                        selectedDrillId = result.drillId ?: it.selectedDrillId,
+                        selectedReferenceTemplateId = result.referenceTemplateId ?: it.selectedReferenceTemplateId,
                         errorMessage = result.exportFailureReason?.let { reason -> "Annotated stage failed: $reason" },
                         progressPercent = 1f,
                         canCancel = false,
@@ -1436,13 +1469,15 @@ private fun rawReplayPlayableForStage(session: SessionRecord): Boolean {
 fun UploadVideoScreen(
     onBack: () -> Unit,
     onOpenResults: (Long) -> Unit,
+    onOpenDrillStudio: ((String) -> Unit)? = null,
     selectedDrillId: String? = null,
     selectedReferenceTemplateId: String? = null,
     isReferenceUpload: Boolean = false,
+    createDrillFromReferenceUpload: Boolean = false,
 ) {
     val context = LocalContext.current
     val repository = remember { ServiceLocator.repository(context) }
-    val viewModel = remember(selectedDrillId, selectedReferenceTemplateId, isReferenceUpload) {
+    val viewModel = remember(selectedDrillId, selectedReferenceTemplateId, isReferenceUpload, createDrillFromReferenceUpload) {
         UploadVideoViewModel(
             DefaultUploadVideoAnalysisRunner(
                 context = context.applicationContext,
@@ -1453,6 +1488,7 @@ fun UploadVideoScreen(
             selectedDrillId,
             selectedReferenceTemplateId,
             isReferenceUpload,
+            createDrillFromReferenceUpload,
         )
     }
     val state by viewModel.state.collectAsState()
@@ -1509,6 +1545,9 @@ fun UploadVideoScreen(
                 style = MaterialTheme.typography.bodySmall,
             )
             Text("Upload role: ${if (state.isReferenceUpload) "Reference" else "Attempt"}", style = MaterialTheme.typography.bodySmall)
+            if (state.createDrillFromReferenceUpload) {
+                Text("New drill will be created from this reference upload.", style = MaterialTheme.typography.bodySmall)
+            }
             Text("Raw video status: ${state.rawVideoStatus.name}", style = MaterialTheme.typography.bodySmall)
             Text("Annotated video status: ${state.annotatedVideoStatus.name}", style = MaterialTheme.typography.bodySmall)
             state.selectedVideoUri?.let { Text("Selected: $it", style = MaterialTheme.typography.bodySmall) }
@@ -1596,6 +1635,11 @@ fun UploadVideoScreen(
             if (state.stage in setOf(UploadStage.COMPLETED_ANNOTATED, UploadStage.COMPLETED_RAW_ONLY) && resultSessionId != null) {
                 Button(onClick = { onOpenResults(resultSessionId) }, modifier = Modifier.fillMaxWidth()) {
                     Text("View session")
+                }
+                if (state.isReferenceUpload && onOpenDrillStudio != null && !state.selectedDrillId.isNullOrBlank()) {
+                    OutlinedButton(onClick = { onOpenDrillStudio(state.selectedDrillId!!) }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Open Drill Studio")
+                    }
                 }
             } else if (resultSessionId != null) {
                 OutlinedButton(onClick = { onOpenResults(resultSessionId) }, modifier = Modifier.fillMaxWidth()) {

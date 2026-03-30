@@ -20,4 +20,7 @@ interface ReferenceTemplateDao {
 
     @Query("SELECT * FROM reference_template_records WHERE id = :templateId LIMIT 1")
     suspend fun getById(templateId: String): ReferenceTemplateRecord?
+
+    @Query("UPDATE reference_template_records SET isBaseline = 0 WHERE drillId = :drillId")
+    suspend fun clearBaselineForDrill(drillId: String)
 }
