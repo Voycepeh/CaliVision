@@ -105,7 +105,7 @@ fun CalibrationScreen(onBack: () -> Unit) {
         }
     }
 
-    ScaffoldedScreen(title = "Structural Calibration", onBack = onBack) { padding ->
+    ScaffoldedScreen(title = "Body Profile", onBack = onBack) { padding ->
         when (state.phase) {
             CalibrationPhase.INTRO -> CalibrationIntroScreen(
                 modifier = Modifier
@@ -138,6 +138,7 @@ fun CalibrationScreen(onBack: () -> Unit) {
                     .padding(16.dp),
                 profileSummary = state.savedProfileSummary,
                 savedAtMs = state.savedAtMs,
+                profile = state.savedProfile,
                 onDone = onBack,
             )
         }
@@ -161,6 +162,7 @@ private fun CalibrationCaptureContent(
         Text("Step ${state.stepIndex}/${state.totalSteps}: ${state.title}", style = MaterialTheme.typography.titleMedium)
         Text(state.instruction)
         Text("Camera setup: ${state.cameraPlacement}")
+        Text("Capture quality: ${state.readinessMessage}")
         CalibrationStepProgressRow(state = state)
         Icon(Icons.Default.Accessibility, contentDescription = null)
 
@@ -250,7 +252,7 @@ private fun CalibrationCaptureContent(
                         modifier = Modifier.padding(20.dp),
                     ) {
                         Text(
-                            text = "Camera access is required for calibration",
+                            text = "Camera access is required for Body Profile capture",
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Button(onClick = onRequestCameraPermission) {
@@ -288,7 +290,7 @@ private fun CalibrationCaptureContent(
             }
         }
         Button(onClick = onExit, modifier = Modifier.fillMaxWidth()) {
-            Text("Exit calibration")
+            Text("Exit Body Profile")
         }
     }
 }
@@ -299,8 +301,7 @@ private fun CalibrationStepProgressRow(state: CalibrationUiState) {
         CalibrationStep.FRONT_NEUTRAL,
         CalibrationStep.SIDE_NEUTRAL,
         CalibrationStep.ARMS_OVERHEAD,
-        CalibrationStep.CONTROLLED_HOLD,
-    )
+            )
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,

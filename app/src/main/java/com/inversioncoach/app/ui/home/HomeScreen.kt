@@ -160,7 +160,7 @@ private fun Content(
         ProfileCalibrationCard(
             profiles = orderedProfiles,
             onSelectProfile = onSelectProfile,
-            onCalibrateProfile = { profile ->
+            onCaptureProfile = { profile ->
                 if (!profile.isActive) {
                     switchThenCalibrateTarget = profile
                     return@ProfileCalibrationCard
@@ -287,7 +287,7 @@ private fun Content(
             onDismissRequest = { archiveTarget = null },
             title = { Text("Archive profile?") },
             text = {
-                Text("This will hide the profile from active use. Sessions and calibration data remain saved.")
+                Text("This will hide the profile from active use. Sessions and Body Profile data remain saved.")
             },
             confirmButton = {
                 Button(onClick = {
@@ -304,8 +304,8 @@ private fun Content(
     switchThenCalibrateTarget?.let { profile ->
         AlertDialog(
             onDismissRequest = { switchThenCalibrateTarget = null },
-            title = { Text("Switch profile and calibrate?") },
-            text = { Text("Set ${profile.name} as active profile, then start calibration.") },
+            title = { Text("Switch profile and capture body profile?") },
+            text = { Text("Set ${profile.name} as active profile, then open Body Profile capture.") },
             confirmButton = {
                 Button(onClick = {
                     onSelectProfile(profile.id)
@@ -322,8 +322,8 @@ private fun Content(
     if (showOverwriteDialog) {
         AlertDialog(
             onDismissRequest = { showOverwriteDialog = false },
-            title = { Text("Overwrite calibration?") },
-            text = { Text("This will replace the saved body calibration for the active profile.") },
+            title = { Text("Replace Body Profile?") },
+            text = { Text("This will replace the saved Body Profile for the active profile.") },
             confirmButton = {
                 Button(onClick = {
                     showOverwriteDialog = false
@@ -341,7 +341,7 @@ private fun Content(
 private fun ProfileCalibrationCard(
     profiles: List<UserProfileStatus>,
     onSelectProfile: (Long) -> Unit,
-    onCalibrateProfile: (UserProfileStatus) -> Unit,
+    onCaptureProfile: (UserProfileStatus) -> Unit,
     onCreateProfile: () -> Unit,
     onRenameProfile: (UserProfileStatus) -> Unit,
     onArchiveProfile: (UserProfileStatus) -> Unit,
@@ -359,7 +359,7 @@ private fun ProfileCalibrationCard(
             modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Profiles", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("Body Profiles", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
 
             profiles.forEach { profile ->
                 val rowHighlight = if (profile.isActive) {
@@ -416,11 +416,11 @@ private fun ProfileCalibrationCard(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
                             OutlinedButton(
-                                onClick = { onCalibrateProfile(profile) },
+                                onClick = { onCaptureProfile(profile) },
                                 modifier = Modifier.weight(1f).heightIn(min = 34.dp),
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                             ) {
-                                Text("Calibrate", maxLines = 1, overflow = TextOverflow.Clip)
+                                Text(if (profile.isCalibrated) "Update" else "Capture", maxLines = 1, overflow = TextOverflow.Clip)
                             }
                             OutlinedButton(
                                 onClick = { onRenameProfile(profile) },
