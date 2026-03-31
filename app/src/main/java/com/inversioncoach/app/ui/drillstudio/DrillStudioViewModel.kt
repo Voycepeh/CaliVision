@@ -493,7 +493,7 @@ internal fun analysisPlaneForPrimaryView(primaryView: CameraView): AnalysisPlane
     -> AnalysisPlane.SAGITTAL
 }
 
-private data class EditableDraft(
+internal data class EditableDraft(
     val template: DrillTemplate,
     val sourceSeedId: String?,
 )

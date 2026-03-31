@@ -253,12 +253,12 @@ data class ReferenceTemplateRecord(
     val keyframesJson: String = "",
     val fpsHint: Int? = null,
     val durationMs: Long? = null,
+    val createdAtMs: Long,
     val updatedAtMs: Long = createdAtMs,
     val isBaseline: Boolean = false,
     val sourceProfileIdsJson: String,
     val checkpointJson: String,
     val toleranceJson: String,
-    val createdAtMs: Long,
 )
 
 @Entity(tableName = "session_comparison_records")
