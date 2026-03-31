@@ -38,7 +38,7 @@ class DrillMovementProfileJson {
     }
 
     private fun bodyProfileJson(body: UserBodyProfile): JSONObject = JSONObject().apply {
-        put("version", body.version)
+        put("version", body.captureVersion)
         put("shoulderWidthNormalized", body.shoulderWidthNormalized)
         put("hipWidthNormalized", body.hipWidthNormalized)
         put("torsoLengthNormalized", body.torsoLengthNormalized)

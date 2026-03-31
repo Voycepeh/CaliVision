@@ -90,6 +90,9 @@ fun ResultsScreen(sessionId: Long, onDone: () -> Unit) {
     }
     val sessionSummaryDisplay = remember(session) { buildSessionSummaryDisplay(session) }
     val sessionMode = session?.sessionMode()
+    val contextTemplateId = session?.let { activeSession ->
+        activeSession.referenceTemplateId ?: parseInlineMetrics(activeSession.metricsJson)["referenceTemplateId"]
+    }
 
     val displayDurationMs = session?.let { activeSession ->
         resolveDisplayDurationMs(
@@ -177,7 +180,6 @@ fun ResultsScreen(sessionId: Long, onDone: () -> Unit) {
             }
 
             session?.let { activeSession ->
-                val contextTemplateId = activeSession.referenceTemplateId ?: parseInlineMetrics(activeSession.metricsJson)["referenceTemplateId"]
                 val isProcessing = activeSession.annotatedExportStatus in setOf(
                     AnnotatedExportStatus.VALIDATING_INPUT,
                     AnnotatedExportStatus.PROCESSING,

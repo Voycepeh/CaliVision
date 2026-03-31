@@ -39,7 +39,7 @@ internal object ReferenceTemplateDraftSerializer {
                     id = pose.phaseId,
                     label = pose.name,
                     order = index + 1,
-                    progressWindow = null,
+                    progressWindow = PhaseWindow(0f, 1f),
                 )
             }
         } else {
