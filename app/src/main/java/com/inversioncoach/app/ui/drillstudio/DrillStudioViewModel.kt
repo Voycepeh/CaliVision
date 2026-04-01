@@ -673,7 +673,9 @@ internal fun decodeStudioPayload(cueConfigJson: String): PersistedStudioPayload?
                 order = item.getInt("order"),
                 progressWindow = if (item.has("windowStart") && item.has("windowEnd")) {
                     PhaseWindow(item.getDouble("windowStart").toFloat(), item.getDouble("windowEnd").toFloat())
-                } else null,
+                } else {
+                    PhaseWindow(0f, 1f)
+                },
             )
         }
     } ?: emptyList()
