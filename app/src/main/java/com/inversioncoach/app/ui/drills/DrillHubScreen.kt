@@ -21,7 +21,7 @@ fun DrillHubScreen(
     onBack: () -> Unit,
     onChooseDrill: () -> Unit,
     onManageDrills: () -> Unit,
-    onReferenceTraining: () -> Unit,
+    onOpenDrillWorkspace: () -> Unit,
 ) {
     ScaffoldedScreen(title = "Drills", onBack = onBack) { padding ->
         Column(
@@ -32,7 +32,7 @@ fun DrillHubScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                text = "Choose a drill to train, manage custom drills, or work on reference templates.",
+                text = "Choose a drill to train live, upload attempts, compare sessions, or manage your drill catalog.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -48,9 +48,9 @@ fun DrillHubScreen(
                 onClick = onManageDrills,
             )
             DrillHubActionCard(
-                title = "Reference Training",
-                description = "Upload reference videos, compare attempts, promote sessions, and refine in Drill Studio.",
-                onClick = onReferenceTraining,
+                title = "Drill Workspace",
+                description = "Choose a drill and open its action hub for coaching, uploads, comparison, and history.",
+                onClick = onOpenDrillWorkspace,
             )
         }
     }

@@ -24,7 +24,7 @@ import com.inversioncoach.app.storage.ServiceLocator
 import com.inversioncoach.app.ui.components.ScaffoldedScreen
 
 @Composable
-fun ReferenceTemplatePickerScreen(
+fun DrillPickerScreen(
     onBack: () -> Unit,
     onSelectDrill: (String) -> Unit,
 ) {
@@ -32,7 +32,7 @@ fun ReferenceTemplatePickerScreen(
     val repository = remember { ServiceLocator.repository(context) }
     val drills by repository.observeReferenceEligibleDrills().collectAsState(initial = emptyList())
 
-    ScaffoldedScreen(title = "Reference Templates", onBack = onBack) { padding ->
+    ScaffoldedScreen(title = "Choose Drill", onBack = onBack) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -40,8 +40,8 @@ fun ReferenceTemplatePickerScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text("Choose a drill for reference training", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            Text("Then upload a reference or attempt against stored templates.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Choose a drill", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text("Open the drill workspace to coach live, upload attempts, compare sessions, and review history.", color = MaterialTheme.colorScheme.onSurfaceVariant)
 
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(drills) { drill ->
