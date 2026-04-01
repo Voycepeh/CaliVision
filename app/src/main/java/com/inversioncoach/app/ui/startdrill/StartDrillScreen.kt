@@ -1,8 +1,15 @@
 package com.inversioncoach.app.ui.startdrill
 
-import androidx.annotation.DrawableRes
-import androidx.compose.foundation.Image
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -22,25 +29,26 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.inversioncoach.app.R
-import com.inversioncoach.app.biomechanics.DrillConfigs
+import com.inversioncoach.app.drills.SelectableDrill
+import com.inversioncoach.app.drills.catalog.JointPoint
+import com.inversioncoach.app.drills.catalog.StickFigureAnimator
 import com.inversioncoach.app.model.DrillType
 import com.inversioncoach.app.model.LiveSessionOptions
+import com.inversioncoach.app.overlay.EffectiveView
 import com.inversioncoach.app.storage.ServiceLocator
 import com.inversioncoach.app.ui.components.ScaffoldedScreen
-import com.inversioncoach.app.overlay.EffectiveView
 
 private val defaultSessionOptions = LiveSessionOptions(
     voiceEnabled = true,
@@ -51,11 +59,6 @@ private val defaultSessionOptions = LiveSessionOptions(
     effectiveView = EffectiveView.SIDE,
 )
 
-private data class DrillGridItem(
-    val type: DrillType,
-    @DrawableRes val imageRes: Int,
-)
-
 @Composable
 fun StartDrillScreen(
     onBack: () -> Unit,
@@ -63,27 +66,23 @@ fun StartDrillScreen(
 ) {
     val context = LocalContext.current
     val repository = remember { ServiceLocator.repository(context) }
-    val drillByType = remember { DrillConfigs.all.associateBy { it.type } }
-    val gridItems = remember(drillByType) {
-        listOf(
-            DrillGridItem(DrillType.FREE_HANDSTAND, R.drawable.handstand_free_preview),
-            DrillGridItem(DrillType.WALL_HANDSTAND, R.drawable.handstand_wall_preview),
-            DrillGridItem(DrillType.PIKE_PUSH_UP, R.drawable.pike_pushup_preview),
-            DrillGridItem(DrillType.ELEVATED_PIKE_PUSH_UP, R.drawable.pike_pushup_elevated_preview),
-            DrillGridItem(DrillType.HANDSTAND_PUSH_UP, R.drawable.handstand_pushup_free_preview),
-            DrillGridItem(DrillType.WALL_HANDSTAND_PUSH_UP, R.drawable.handstand_pushup_wall_preview),
-        ).filter { drillByType.containsKey(it.type) }
-    }
+    val drills by repository.observeSelectableTrainingDrills().collectAsState(initial = emptyList())
 
-    var selectedDrill by remember { mutableStateOf<DrillType?>(null) }
+    var selectedDrillId by remember { mutableStateOf<String?>(null) }
     var preferredSide by remember { mutableStateOf(defaultSessionOptions.drillCameraSide) }
     var selectedView by remember { mutableStateOf(EffectiveView.SIDE) }
     var showCenterOfGravity by remember { mutableStateOf(true) }
 
-    LaunchedEffect(selectedDrill) {
+    val selectedDrill = remember(selectedDrillId, drills) { drills.firstOrNull { it.id == selectedDrillId } }
+
+    LaunchedEffect(drills) {
+        if (selectedDrillId != null && drills.none { it.id == selectedDrillId }) selectedDrillId = null
+    }
+
+    LaunchedEffect(selectedDrill?.id) {
         val drill = selectedDrill ?: return@LaunchedEffect
-        preferredSide = repository.getDrillCameraSide(drill) ?: defaultSessionOptions.drillCameraSide
-        selectedView = if (drill == DrillType.FREESTYLE) EffectiveView.FREESTYLE else EffectiveView.SIDE
+        preferredSide = repository.getDrillCameraSide(drill.legacyDrillType) ?: defaultSessionOptions.drillCameraSide
+        selectedView = if (drill.legacyDrillType == DrillType.FREESTYLE) EffectiveView.FREESTYLE else EffectiveView.SIDE
     }
 
     ScaffoldedScreen(title = "Choose Drill", onBack = onBack) { padding ->
@@ -108,12 +107,11 @@ fun StartDrillScreen(
                 contentPadding = PaddingValues(bottom = 12.dp),
                 modifier = Modifier.weight(1f),
             ) {
-                items(gridItems, key = { it.type.name }) { drill ->
+                items(drills, key = { it.id }) { drill ->
                     DrillGridCard(
-                        label = drill.type.displayName,
-                        imageRes = drill.imageRes,
-                        selected = selectedDrill == drill.type,
-                        onClick = { selectedDrill = drill.type },
+                        drill = drill,
+                        selected = selectedDrillId == drill.id,
+                        onClick = { selectedDrillId = drill.id },
                     )
                 }
             }
@@ -140,11 +138,12 @@ fun StartDrillScreen(
                     onClick = {
                         val drill = selectedDrill ?: return@Card
                         onStart(
-                            drill,
+                            drill.legacyDrillType,
                             defaultSessionOptions.copy(
                                 drillCameraSide = preferredSide,
                                 showCenterOfGravity = showCenterOfGravity,
                                 effectiveView = selectedView,
+                                selectedDrillId = drill.id,
                             ),
                         )
                     },
@@ -152,7 +151,7 @@ fun StartDrillScreen(
                     shape = RoundedCornerShape(16.dp),
                 ) {
                     Text(
-                        "Start ${selectedDrill?.displayName}",
+                        "Start ${selectedDrill.name}",
                         modifier = Modifier.padding(14.dp),
                         textAlign = TextAlign.Center,
                         style = MaterialTheme.typography.titleMedium,
@@ -165,8 +164,7 @@ fun StartDrillScreen(
 
 @Composable
 private fun DrillGridCard(
-    label: String,
-    @DrawableRes imageRes: Int,
+    drill: SelectableDrill,
     selected: Boolean,
     onClick: () -> Unit,
 ) {
@@ -184,17 +182,9 @@ private fun DrillGridCard(
                 .padding(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Image(
-                painter = painterResource(id = imageRes),
-                contentDescription = label,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(1f)
-                    .clip(RoundedCornerShape(14.dp)),
-                contentScale = ContentScale.Crop,
-            )
+            DrillSkeletonPreview(drill = drill)
             Text(
-                text = label,
+                text = drill.name,
                 style = MaterialTheme.typography.titleSmall,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(),
@@ -204,3 +194,60 @@ private fun DrillGridCard(
         }
     }
 }
+
+@Composable
+private fun DrillSkeletonPreview(drill: SelectableDrill) {
+    val skeleton = drill.previewSkeleton
+    if (skeleton == null) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(14.dp)),
+        ) {
+            Text(
+                text = "Preview unavailable",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(12.dp),
+            )
+        }
+        return
+    }
+
+    val transition = rememberInfiniteTransition(label = "choose_drill_preview")
+    val previewLineColor = MaterialTheme.colorScheme.primary
+    val progress = transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = (1000f * 16f / skeleton.framesPerSecond.coerceAtLeast(1)).toInt(), easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "choose_drill_preview_progress",
+    ).value
+    val pose = remember(skeleton, progress) { StickFigureAnimator.poseAt(skeleton, progress) }
+
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(1f)
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(14.dp)),
+    ) {
+        StickFigureAnimator.canonicalBones.forEach { (start, end) ->
+            val a = pose[start]
+            val b = pose[end]
+            if (a != null && b != null) {
+                drawLine(
+                    color = previewLineColor,
+                    start = a.toOffset(size.width, size.height),
+                    end = b.toOffset(size.width, size.height),
+                    strokeWidth = 5f,
+                    cap = StrokeCap.Round,
+                )
+            }
+        }
+    }
+}
+
+private fun JointPoint.toOffset(width: Float, height: Float): Offset = Offset(x * width, y * height)
