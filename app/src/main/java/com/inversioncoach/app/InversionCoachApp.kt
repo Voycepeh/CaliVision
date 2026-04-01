@@ -3,6 +3,7 @@ package com.inversioncoach.app
 import android.app.Application
 import androidx.work.Configuration
 import com.inversioncoach.app.drills.DrillSeeder
+import com.inversioncoach.app.drills.DrillSeedSynchronizer
 import com.inversioncoach.app.movementprofile.ReferenceTemplateLoader
 import com.inversioncoach.app.movementprofile.toRecord
 import com.inversioncoach.app.history.RetentionCleanupWorker
@@ -21,11 +22,12 @@ class InversionCoachApp : Application(), Configuration.Provider {
         appScope.launch {
             val repo = ServiceLocator.repository(this@InversionCoachApp)
             val now = System.currentTimeMillis()
-            DrillSeeder.seedDrills(now).forEach { drill ->
-                if (repo.getDrill(drill.id) == null) {
-                    repo.createDrill(drill)
-                }
-            }
+            val drillUpdates = DrillSeedSynchronizer.reconcile(
+                existing = repo.getAllDrillsSnapshot(),
+                seededCatalog = DrillSeeder.seedDrills(now),
+                nowMs = now,
+            )
+            if (drillUpdates.isNotEmpty()) repo.seedDrills(drillUpdates)
             DrillSeeder.seedCalibration(now).forEach { calibration ->
                 repo.saveCalibrationConfig(calibration)
             }

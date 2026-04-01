@@ -18,6 +18,9 @@ interface DrillDefinitionDao {
     @Query("SELECT * FROM drill_definition_records ORDER BY updatedAtMs DESC")
     fun observeAll(): Flow<List<DrillDefinitionRecord>>
 
+    @Query("SELECT * FROM drill_definition_records")
+    suspend fun getAll(): List<DrillDefinitionRecord>
+
     @Query("SELECT * FROM drill_definition_records WHERE status = 'READY' ORDER BY updatedAtMs DESC")
     fun observeActive(): Flow<List<DrillDefinitionRecord>>
 

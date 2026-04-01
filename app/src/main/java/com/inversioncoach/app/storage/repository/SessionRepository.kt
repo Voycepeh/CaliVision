@@ -280,6 +280,7 @@ class SessionRepository(
             drills.filter { drill -> drill.isReferenceEligible && !drill.isArchived }
         }
     suspend fun getDrill(drillId: String): DrillDefinitionRecord? = drillDefinitionDao.getById(drillId)
+    suspend fun getAllDrillsSnapshot(): List<DrillDefinitionRecord> = drillDefinitionDao.getAll()
     suspend fun resolveDrillIdForLegacyType(drillType: DrillType): String? {
         val drills = drillDefinitionDao.observeAll().firstOrNull().orEmpty()
         return drills.firstOrNull { DrillDefinitionResolver.resolveLegacyDrillType(it) == drillType }?.id
