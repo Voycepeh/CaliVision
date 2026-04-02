@@ -42,6 +42,7 @@ import com.inversioncoach.app.model.AnnotatedExportFailureReason
 import com.inversioncoach.app.model.AnnotatedExportQuality
 import com.inversioncoach.app.drills.DrillStatus
 import com.inversioncoach.app.drills.DrillCameraView
+import com.inversioncoach.app.drills.DrillMovementMode
 import com.inversioncoach.app.model.DrillType
 import com.inversioncoach.app.model.FrameMetricRecord
 import com.inversioncoach.app.model.ReferenceAssetRecord
@@ -147,6 +148,7 @@ data class UploadVideoUiState(
     val currentProcessingStage: UploadStage = UploadStage.IDLE,
     val technicalLog: String = "",
     val selectedTrackingMode: UploadTrackingMode? = null,
+    val isMovementTypeLocked: Boolean = false,
     val analysisPhaseLabel: String = "",
     val analysisProcessedFrames: Int = 0,
     val analysisTotalFrames: Int = 0,
@@ -156,7 +158,10 @@ data class UploadVideoUiState(
     val isReferenceUpload: Boolean = false,
     val createDrillFromReferenceUpload: Boolean = false,
     val pendingDrillName: String = "",
-)
+) {
+    val isDrillScopedUpload: Boolean get() = !selectedDrillId.isNullOrBlank()
+    val effectiveMovementType: UploadTrackingMode? get() = selectedTrackingMode
+}
 
 data class UploadFlowResult(
     val sessionId: Long,
@@ -1219,6 +1224,9 @@ class UploadVideoViewModel(
     private val isReferenceUpload: Boolean,
     private val createDrillFromReferenceUpload: Boolean,
     private val pendingDrillName: String? = null,
+    private val resolveDrillTrackingMode: suspend (String) -> UploadTrackingMode? = { drillId ->
+        repository?.getDrill(drillId)?.movementMode?.toUploadTrackingMode()
+    },
 ) : ViewModel() {
     private val _state = MutableStateFlow(
         UploadVideoUiState(
@@ -1239,6 +1247,30 @@ class UploadVideoViewModel(
     constructor(runner: UploadVideoAnalysisRunner) : this(runner, null, null, null, false, false, null)
 
     init {
+        if (selectedDrillId != null) {
+            viewModelScope.launch {
+                val inheritedTrackingMode = resolveDrillTrackingMode(selectedDrillId)
+                if (inheritedTrackingMode == null) {
+                    _state.update {
+                        it.copy(
+                            stage = UploadStage.FAILED,
+                            currentProcessingStage = UploadStage.FAILED,
+                            stageText = "Movement type unavailable",
+                            errorMessage = "The selected drill has no valid movement type. Please update the drill before uploading.",
+                            canCancel = false,
+                        )
+                    }
+                } else {
+                    _state.update {
+                        it.copy(
+                            selectedTrackingMode = inheritedTrackingMode,
+                            isMovementTypeLocked = true,
+                            errorMessage = null,
+                        )
+                    }
+                }
+            }
+        }
         val repo = repository
         if (repo != null) {
             viewModelScope.launch {
@@ -1282,6 +1314,7 @@ class UploadVideoViewModel(
     }
 
     fun onTrackingModeSelected(mode: UploadTrackingMode) {
+        if (_state.value.isMovementTypeLocked) return
         _state.update {
             it.copy(
                 selectedTrackingMode = mode,
@@ -1297,7 +1330,7 @@ class UploadVideoViewModel(
 
     fun analyze(uri: Uri) {
         if (activeJob?.isActive == true) return
-        val trackingMode = _state.value.selectedTrackingMode
+        val trackingMode = _state.value.effectiveMovementType
         if (trackingMode == null) {
             _state.update {
                 it.copy(
@@ -1479,6 +1512,12 @@ class UploadVideoViewModel(
     }
 }
 
+private fun String.toUploadTrackingMode(): UploadTrackingMode? = when (this) {
+    DrillMovementMode.HOLD -> UploadTrackingMode.HOLD_BASED
+    DrillMovementMode.REP -> UploadTrackingMode.REP_BASED
+    else -> null
+}
+
 internal fun deriveUploadStage(session: SessionRecord): UploadStage = when {
     session.rawPersistStatus == RawPersistStatus.PROCESSING -> UploadStage.IMPORTING_RAW_VIDEO
     session.rawPersistStatus == RawPersistStatus.FAILED -> UploadStage.FAILED
@@ -1510,6 +1549,11 @@ private fun rawReplayPlayableForStage(session: SessionRecord): Boolean {
     if (rawUri.isNullOrBlank()) return false
     val bestPlayableUri = session.bestPlayableUri
     return bestPlayableUri.isNullOrBlank() || bestPlayableUri == rawUri
+}
+
+private fun UploadTrackingMode.displayLabel(): String = when (this) {
+    UploadTrackingMode.HOLD_BASED -> "Hold-based"
+    UploadTrackingMode.REP_BASED -> "Rep-based"
 }
 
 @Composable
@@ -1592,7 +1636,10 @@ fun UploadVideoScreen(
             Text("Analyze a recorded video with pose overlay", style = MaterialTheme.typography.titleMedium)
             Text(state.stageText, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text("Current stage: ${state.currentProcessingStage.label}", style = MaterialTheme.typography.bodySmall)
-            Text("Movement type: ${state.selectedTrackingMode?.name ?: "Not selected"}", style = MaterialTheme.typography.bodySmall)
+            Text(
+                "Movement type: ${state.effectiveMovementType?.displayLabel() ?: "Not selected"}",
+                style = MaterialTheme.typography.bodySmall,
+            )
             Text("Drill: ${state.selectedDrillId ?: "Legacy freestyle"}", style = MaterialTheme.typography.bodySmall)
             Text(
                 "Reference template: ${state.selectedReferenceTemplateId ?: "None"}",
@@ -1613,18 +1660,20 @@ fun UploadVideoScreen(
             Text("Annotated video status: ${state.annotatedVideoStatus.name}", style = MaterialTheme.typography.bodySmall)
             state.selectedVideoUri?.let { Text("Selected: $it", style = MaterialTheme.typography.bodySmall) }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(
-                    onClick = { viewModel.onTrackingModeSelected(UploadTrackingMode.HOLD_BASED) },
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(if (state.selectedTrackingMode == UploadTrackingMode.HOLD_BASED) "✓ Hold-based" else "Hold-based")
-                }
-                OutlinedButton(
-                    onClick = { viewModel.onTrackingModeSelected(UploadTrackingMode.REP_BASED) },
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(if (state.selectedTrackingMode == UploadTrackingMode.REP_BASED) "✓ Rep-based" else "Rep-based")
+            if (!state.isMovementTypeLocked) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(
+                        onClick = { viewModel.onTrackingModeSelected(UploadTrackingMode.HOLD_BASED) },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(if (state.selectedTrackingMode == UploadTrackingMode.HOLD_BASED) "✓ Hold-based" else "Hold-based")
+                    }
+                    OutlinedButton(
+                        onClick = { viewModel.onTrackingModeSelected(UploadTrackingMode.REP_BASED) },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(if (state.selectedTrackingMode == UploadTrackingMode.REP_BASED) "✓ Rep-based" else "Rep-based")
+                    }
                 }
             }
 
@@ -1660,11 +1709,13 @@ fun UploadVideoScreen(
                     picker.launch(arrayOf("video/*"))
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = state.stage !in inFlightStages && state.selectedTrackingMode != null,
+                enabled = state.stage !in inFlightStages && state.effectiveMovementType != null,
             ) {
                 Text("Choose Video")
             }
-            if (state.selectedTrackingMode == null) {
+            if (state.isMovementTypeLocked && state.effectiveMovementType != null) {
+                Text("Movement type inherited from this drill.", style = MaterialTheme.typography.bodySmall)
+            } else if (state.effectiveMovementType == null) {
                 Text("Select movement type before choosing a video.", style = MaterialTheme.typography.bodySmall)
             }
 
