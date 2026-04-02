@@ -285,6 +285,19 @@ object DatabaseMigrations {
         }
     }
 
+    val MIGRATION_18_19: Migration = object : Migration(18, 19) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE session_records ADD COLUMN uploadJobPipelineType TEXT")
+            db.execSQL("ALTER TABLE session_records ADD COLUMN uploadJobStatus TEXT NOT NULL DEFAULT 'IDLE'")
+            db.execSQL("ALTER TABLE session_records ADD COLUMN uploadJobOwnerToken TEXT")
+            db.execSQL("ALTER TABLE session_records ADD COLUMN uploadJobStartedAtMs INTEGER")
+            db.execSQL("ALTER TABLE session_records ADD COLUMN uploadJobUpdatedAtMs INTEGER")
+            db.execSQL("ALTER TABLE session_records ADD COLUMN uploadJobHeartbeatAtMs INTEGER")
+            db.execSQL("ALTER TABLE session_records ADD COLUMN uploadJobTerminalOutcome TEXT")
+            db.execSQL("ALTER TABLE session_records ADD COLUMN uploadJobFailureReason TEXT")
+        }
+    }
+
     val ALL: Array<Migration> = arrayOf(
         MIGRATION_11_12,
         MIGRATION_12_13,
@@ -293,5 +306,6 @@ object DatabaseMigrations {
         MIGRATION_15_16,
         MIGRATION_16_17,
         MIGRATION_17_18,
+        MIGRATION_18_19,
     )
 }
