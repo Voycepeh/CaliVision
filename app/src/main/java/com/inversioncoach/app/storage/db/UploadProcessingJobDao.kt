@@ -25,10 +25,10 @@ interface UploadProcessingJobDao {
     @Query("SELECT * FROM upload_processing_jobs WHERE status = 'QUEUED' ORDER BY enqueueOrder ASC LIMIT 1")
     suspend fun getNextQueuedJob(): UploadProcessingJob?
 
-    @Query("SELECT * FROM upload_processing_jobs WHERE status IN ('QUEUED', 'RUNNING', 'RETRYING') ORDER BY enqueueOrder ASC")
+    @Query("SELECT * FROM upload_processing_jobs WHERE status IN ('QUEUED', 'RETRYING') ORDER BY enqueueOrder ASC")
     suspend fun getPendingJobs(): List<UploadProcessingJob>
 
-    @Query("SELECT COUNT(*) FROM upload_processing_jobs WHERE status IN ('QUEUED', 'RUNNING', 'RETRYING')")
+    @Query("SELECT COUNT(*) FROM upload_processing_jobs WHERE status IN ('QUEUED', 'RETRYING')")
     suspend fun getActiveQueueCount(): Int
 
     @Query("UPDATE upload_processing_jobs SET status = :status, updatedAt = :updatedAt WHERE jobId = :jobId")

@@ -78,28 +78,29 @@ class UploadProcessingWorker(
                 lastHeartbeatAt = System.currentTimeMillis(),
             )
             if (completed != null) queueRepo.save(completed)
-            notifications.completed(jobId)
+            notifications.completed(jobId, completed?.sessionId)
             coordinator.reconcileAndKickoff("completed")
             Result.success()
         } else {
             val current = queueRepo.getJob(jobId) ?: job
             val retryable = current.isRecoverable && current.retryCount < current.maxRetries && !isPermanentFailure(result.exceptionOrNull())
-            val failedStatus = if (retryable) UploadJobStatus.QUEUED else UploadJobStatus.FAILED
+            val failedStatus = if (retryable) UploadJobStatus.RETRYING else UploadJobStatus.FAILED
             queueRepo.save(
                 current.copy(
                     status = failedStatus,
                     retryCount = if (retryable) current.retryCount + 1 else current.retryCount,
                     failureReason = result.exceptionOrNull()?.message ?: "Upload processing failed",
-                    timeoutReason = if (retryable) "retrying" else current.timeoutReason,
+                    timeoutReason = if (retryable) "retry_backoff" else current.timeoutReason,
                     currentStage = if (retryable) current.currentStage else UploadJobStage.FAILED,
                     updatedAt = System.currentTimeMillis(),
                     completedAt = if (retryable) null else System.currentTimeMillis(),
+                    workerToken = null,
                     lastHeartbeatAt = System.currentTimeMillis(),
                 ),
             )
-            if (!retryable) notifications.failed(jobId, pendingNext)
+            if (!retryable) notifications.failed(jobId, pendingNext, current.sessionId)
             coordinator.reconcileAndKickoff(if (retryable) "retry" else "failed")
-            if (retryable) Result.retry() else Result.failure()
+            Result.success()
         }
     }
 
@@ -120,7 +121,7 @@ class UploadProcessingWorker(
                 lastProgressAt = now,
                 processedFrames = progress.processedFrames ?: job.processedFrames,
                 totalFrames = progress.totalFrames ?: job.totalFrames,
-                lastTimestampMs = progress.etaMs,
+                lastTimestampMs = job.lastTimestampMs,
             ),
         )
         setForeground(foregroundInfo(jobId, stage.name.replace('_', ' '), (progress.percent * 100).toInt()))

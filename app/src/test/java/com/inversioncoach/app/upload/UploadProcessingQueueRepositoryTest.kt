@@ -29,6 +29,31 @@ class UploadProcessingQueueRepositoryTest {
         assertEquals(2, dao.observeAll().first().size)
     }
 
+
+    @Test
+    fun runningJobDoesNotConsumePendingCapacity() = runTest {
+        val dao = FakeDao()
+        val repo = UploadProcessingQueueRepository(dao, maxPendingJobs = 1)
+        val running = repo.enqueue("uri://running", "HOLD_BASED", null, null, false, false, null)!!
+        repo.save(running.copy(status = UploadJobStatus.RUNNING))
+
+        val queued = repo.enqueue("uri://queued", "HOLD_BASED", null, null, false, false, null)
+
+        assertNotNull(queued)
+    }
+
+    @Test
+    fun retryingJobConsumesPendingCapacity() = runTest {
+        val dao = FakeDao()
+        val repo = UploadProcessingQueueRepository(dao, maxPendingJobs = 1)
+        val retrying = repo.enqueue("uri://retry", "HOLD_BASED", null, null, false, false, null)!!
+        repo.save(retrying.copy(status = UploadJobStatus.RETRYING))
+
+        val queued = repo.enqueue("uri://queued", "HOLD_BASED", null, null, false, false, null)
+
+        assertNull(queued)
+    }
+
     @Test
     fun getNextQueuedSkipsCompleted() = runTest {
         val dao = FakeDao()

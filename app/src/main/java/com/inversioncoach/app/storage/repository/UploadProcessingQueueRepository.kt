@@ -5,12 +5,15 @@ import com.inversioncoach.app.model.UploadJobStatus
 import com.inversioncoach.app.model.UploadProcessingJob
 import com.inversioncoach.app.storage.db.UploadProcessingJobDao
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.UUID
 
 class UploadProcessingQueueRepository(
     private val dao: UploadProcessingJobDao,
     private val maxPendingJobs: Int = 3,
 ) {
+    private val enqueueMutex = Mutex()
     fun observeJobs(): Flow<List<UploadProcessingJob>> = dao.observeAll()
 
     suspend fun enqueue(
@@ -22,10 +25,11 @@ class UploadProcessingQueueRepository(
         createDrillFromReferenceUpload: Boolean,
         pendingDrillName: String?,
     ): UploadProcessingJob? {
-        val now = System.currentTimeMillis()
-        val queueCount = dao.getActiveQueueCount()
-        if (queueCount >= maxPendingJobs) return null
-        val job = UploadProcessingJob(
+        return enqueueMutex.withLock {
+            val now = System.currentTimeMillis()
+            val queueCount = dao.getActiveQueueCount()
+            if (queueCount >= maxPendingJobs) return@withLock null
+            val job = UploadProcessingJob(
             jobId = "upload-job-${UUID.randomUUID()}",
             sourceUri = sourceUri,
             trackingMode = trackingMode,
@@ -41,8 +45,9 @@ class UploadProcessingQueueRepository(
             currentStage = UploadJobStage.IMPORTING_RAW_VIDEO,
             maxRetries = 3,
         )
-        dao.upsert(job)
-        return job
+            dao.upsert(job)
+            job
+        }
     }
 
     suspend fun getJob(jobId: String): UploadProcessingJob? = dao.getById(jobId)

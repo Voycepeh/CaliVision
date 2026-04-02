@@ -8,6 +8,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
+import com.inversioncoach.app.model.UploadJobStage
 import com.inversioncoach.app.model.UploadJobStatus
 import com.inversioncoach.app.storage.ServiceLocator
 import com.inversioncoach.app.storage.repository.UploadProcessingQueueRepository
@@ -46,8 +47,9 @@ class UploadQueueCoordinator private constructor(
     }
 
     suspend fun reconcileAndKickoff(reason: String) {
+        normalizeRetryingJobs()
         recoverDeadRunningJobs()
-        val active = queueRepository.getActiveJob()
+        val active = queueRepository.getActiveJob()?.takeIf { it.status == UploadJobStatus.RUNNING }
         if (active != null) return
         val next = queueRepository.getNextQueuedJob() ?: return
         Log.i(TAG, "queue_start_next reason=$reason jobId=${next.jobId}")
@@ -59,17 +61,30 @@ class UploadQueueCoordinator private constructor(
         WorkManager.getInstance(context).enqueueUniqueWork(UNIQUE_WORK, ExistingWorkPolicy.REPLACE, work)
     }
 
-    private suspend fun recoverDeadRunningJobs() {
+
+    private suspend fun normalizeRetryingJobs() {
         val active = queueRepository.getActiveJob() ?: return
+        if (active.status != UploadJobStatus.RETRYING) return
+        val now = System.currentTimeMillis()
+        if (now - active.updatedAt < RETRY_BACKOFF_MS) return
+        queueRepository.save(active.copy(status = UploadJobStatus.QUEUED, updatedAt = now))
+    }
+
+    private suspend fun recoverDeadRunningJobs() {
+        val active = queueRepository.getActiveJob()?.takeIf { it.status == UploadJobStatus.RUNNING } ?: return
         val now = System.currentTimeMillis()
         val heartbeatStale = active.lastHeartbeatAt?.let { now - it > HEARTBEAT_TIMEOUT_MS } ?: true
-        if (!heartbeatStale) return
+        val progressStale = active.lastProgressAt?.let { now - it > PROGRESS_TIMEOUT_MS } ?: false
+        val stageStale = active.stageStartedAt?.let { now - it > stageTimeoutFor(active.currentStage) } ?: false
+        val overallStale = active.startedAt?.let { now - it > OVERALL_JOB_TIMEOUT_MS } ?: false
+        if (!heartbeatStale && !progressStale && !stageStale && !overallStale) return
         val recoverable = active.isRecoverable && active.retryCount < active.maxRetries
         val updated = if (recoverable) {
             active.copy(
-                status = UploadJobStatus.QUEUED,
+                status = UploadJobStatus.RETRYING,
                 retryCount = active.retryCount + 1,
                 updatedAt = now,
+                timeoutReason = timeoutReason(heartbeatStale, progressStale, stageStale, overallStale),
                 failureReason = "RECOVERED_STALE_WORKER",
                 workerToken = null,
             )
@@ -78,7 +93,8 @@ class UploadQueueCoordinator private constructor(
                 status = UploadJobStatus.FAILED,
                 completedAt = now,
                 updatedAt = now,
-                timeoutReason = "heartbeat_timeout",
+                timeoutReason = timeoutReason(heartbeatStale, progressStale, stageStale, overallStale),
+                currentStage = UploadJobStage.FAILED,
                 failureReason = active.failureReason ?: "JOB_STALLED",
             )
         }
@@ -88,6 +104,9 @@ class UploadQueueCoordinator private constructor(
     companion object {
         private const val UNIQUE_WORK = "uploaded-video-queue-runner"
         private const val HEARTBEAT_TIMEOUT_MS = 60_000L
+        private const val PROGRESS_TIMEOUT_MS = 90_000L
+        private const val OVERALL_JOB_TIMEOUT_MS = 25 * 60_000L
+        private const val RETRY_BACKOFF_MS = 15_000L
 
         fun get(context: Context): UploadQueueCoordinator {
             val appContext = context.applicationContext
@@ -102,4 +121,22 @@ class UploadQueueCoordinator private constructor(
 sealed interface EnqueueResult {
     data class Enqueued(val jobId: String) : EnqueueResult
     data object QueueFull : EnqueueResult
+}
+
+
+internal fun stageTimeoutFor(stage: UploadJobStage): Long = when (stage) {
+    UploadJobStage.IMPORTING_RAW_VIDEO -> 3 * 60_000L
+    UploadJobStage.ANALYZING_VIDEO -> 12 * 60_000L
+    UploadJobStage.VALIDATING_INPUT -> 2 * 60_000L
+    UploadJobStage.RENDERING_ANNOTATED_VIDEO -> 12 * 60_000L
+    UploadJobStage.FINALIZING -> 4 * 60_000L
+    else -> 3 * 60_000L
+}
+
+internal fun timeoutReason(heartbeatStale: Boolean, progressStale: Boolean, stageStale: Boolean, overallStale: Boolean): String = when {
+    overallStale -> "overall_timeout"
+    stageStale -> "stage_timeout"
+    progressStale -> "progress_timeout"
+    heartbeatStale -> "heartbeat_timeout"
+    else -> "unknown_timeout"
 }
