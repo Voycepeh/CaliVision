@@ -1,6 +1,9 @@
 package com.inversioncoach.app.drills.catalog
 
 import com.inversioncoach.app.motion.SkeletonAnimationSpec
+import com.inversioncoach.app.motion.BodyJoint
+import com.inversioncoach.app.motion.NormalizedPoint
+import com.inversioncoach.app.motion.SkeletonKeyframe
 
 enum class CatalogMovementType {
     HOLD,
@@ -67,16 +70,39 @@ data class DrillTemplate(
             fpsHint = skeletonTemplate.framesPerSecond,
             loop = skeletonTemplate.loop,
             keyframes = skeletonTemplate.keyframes.mapIndexed { index, keyframe ->
-                com.inversioncoach.app.motion.SkeletonKeyframe(
+                SkeletonKeyframe(
                     name = "kf_$index",
                     progress = keyframe.progress,
                     joints = keyframe.joints.mapNotNull { (name, pt) ->
-                    val joint = runCatching { com.inversioncoach.app.motion.BodyJoint.valueOf(name) }.getOrNull()
-                    joint?.let { it to com.inversioncoach.app.motion.NormalizedPoint(pt.x, pt.y) }
+                    val joint = name.toBodyJointOrNull()
+                    joint?.let { it to NormalizedPoint(pt.x, pt.y) }
                 }.toMap(),
                 )
             },
         )
+}
+
+private fun String.toBodyJointOrNull(): BodyJoint? {
+    val normalized = trim()
+    return when (normalized.lowercase()) {
+        "head", "nose" -> BodyJoint.HEAD
+        "neck" -> BodyJoint.NECK
+        "left_shoulder", "shoulder_left" -> BodyJoint.LEFT_SHOULDER
+        "right_shoulder", "shoulder_right" -> BodyJoint.RIGHT_SHOULDER
+        "left_elbow", "elbow_left" -> BodyJoint.LEFT_ELBOW
+        "right_elbow", "elbow_right" -> BodyJoint.RIGHT_ELBOW
+        "left_wrist", "wrist_left" -> BodyJoint.LEFT_WRIST
+        "right_wrist", "wrist_right" -> BodyJoint.RIGHT_WRIST
+        "ribcage" -> BodyJoint.RIBCAGE
+        "pelvis" -> BodyJoint.PELVIS
+        "left_hip", "hip_left" -> BodyJoint.LEFT_HIP
+        "right_hip", "hip_right" -> BodyJoint.RIGHT_HIP
+        "left_knee", "knee_left" -> BodyJoint.LEFT_KNEE
+        "right_knee", "knee_right" -> BodyJoint.RIGHT_KNEE
+        "left_ankle", "ankle_left" -> BodyJoint.LEFT_ANKLE
+        "right_ankle", "ankle_right" -> BodyJoint.RIGHT_ANKLE
+        else -> runCatching { BodyJoint.valueOf(normalized.uppercase()) }.getOrNull()
+    }
 }
 
 data class DrillPhaseTemplate(

@@ -85,4 +85,18 @@ class SeededDrillCatalogV1Test {
         assertFalse(reDecoded.drills.first().skeletonTemplate.phasePoses.first().joints.isEmpty())
         assertFalse(reDecoded.drills.first().skeletonTemplate.keyframes.first().joints.isEmpty())
     }
+
+    @Test
+    fun seededCatalog_animationSpecMapsSeededJointsIntoRuntimeSkeleton() {
+        val catalog = loadCatalog()
+
+        catalog.drills.forEach { drill ->
+            val runtimeFrames = drill.animationSpec.keyframes
+            assertTrue("${drill.id} runtime keyframes should not be empty", runtimeFrames.isNotEmpty())
+            assertTrue(
+                "${drill.id} should hydrate runtime joints from seeded catalog",
+                runtimeFrames.any { it.joints.isNotEmpty() },
+            )
+        }
+    }
 }

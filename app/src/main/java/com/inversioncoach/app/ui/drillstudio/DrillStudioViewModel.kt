@@ -22,6 +22,7 @@ import com.inversioncoach.app.drills.catalog.SkeletonKeyframeTemplate
 import com.inversioncoach.app.drills.catalog.SkeletonTemplate
 import com.inversioncoach.app.model.DrillDefinitionRecord
 import com.inversioncoach.app.storage.repository.SessionRepository
+import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -54,6 +55,9 @@ class DrillStudioViewModel(
     private val sessionRepository: SessionRepository? = null,
     private val catalogLoader: (() -> com.inversioncoach.app.drills.catalog.DrillCatalog)? = null,
 ) : ViewModel() {
+    private companion object {
+        const val TAG = "DrillStudioHydration"
+    }
     private val _uiState = MutableStateFlow<DrillStudioUiState>(DrillStudioUiState.Loading)
     val uiState: StateFlow<DrillStudioUiState> = _uiState.asStateFlow()
 
@@ -98,6 +102,11 @@ class DrillStudioViewModel(
                     )
                 }
                 val normalized = normalizeDraft(draftResult.draft.template)
+                Log.d(
+                    TAG,
+                    "initialize drillId=${request.drillId} seed=${seed?.id} phases=${normalized.phases.size} " +
+                        "phasePoses=${normalized.skeletonTemplate.phasePoses.size} keyframes=${normalized.skeletonTemplate.keyframes.size}",
+                )
                 DrillStudioUiState.Ready(
                     draft = normalized,
                     sourceSeedId = draftResult.draft.sourceSeedId,
@@ -385,19 +394,43 @@ class DrillStudioViewModel(
             }
 
         val normalizedPhases = phases
-        val phasePoses = template.skeletonTemplate.phasePoses
-            .ifEmpty { phasePosesFromKeyframes(normalizedPhases, template.skeletonTemplate.keyframes) }
+        val explicitPhasePoses = template.skeletonTemplate.phasePoses
+        val explicitKeyframes = template.skeletonTemplate.keyframes
+        val fallbackSource = when {
+            explicitPhasePoses.isNotEmpty() -> "seeded_or_authored_phase_poses"
+            explicitKeyframes.isNotEmpty() -> "seeded_or_authored_keyframes"
+            else -> "default_upright_fallback"
+        }
+        val phasePoses = explicitPhasePoses
+            .ifEmpty { phasePosesFromKeyframes(normalizedPhases, explicitKeyframes) }
             .let { poses ->
                 normalizedPhases.mapIndexed { index, phase ->
-                    val existing = poses.firstOrNull { it.phaseId == phase.id } ?: poses.getOrNull(index)
+                    val existing = poses.firstOrNull { it.phaseId == phase.id }
+                    val keyframeDerived = if (existing == null && explicitKeyframes.isNotEmpty()) {
+                        phasePoseFromClosestKeyframe(phase, explicitKeyframes)
+                    } else {
+                        null
+                    }
                     (existing ?: PhasePoseTemplate(phase.id, phase.label, defaultJoints())).copy(
                         phaseId = phase.id,
                         name = phase.label,
-                        joints = DrillStudioPoseUtils.normalizeJointNames(existing?.joints ?: defaultJoints()),
-                        transitionDurationMs = existing?.transitionDurationMs?.coerceAtLeast(100) ?: 700,
+                        joints = DrillStudioPoseUtils.normalizeJointNames(existing?.joints ?: keyframeDerived?.joints ?: defaultJoints()),
+                        transitionDurationMs = (existing?.transitionDurationMs ?: keyframeDerived?.transitionDurationMs)?.coerceAtLeast(100) ?: 700,
                     )
                 }
             }
+        val normalizedKeyframes = when {
+            explicitKeyframes.isNotEmpty() -> explicitKeyframes.map { frame ->
+                frame.copy(joints = DrillStudioPoseUtils.normalizeJointNames(frame.joints))
+            }
+            phasePoses.isNotEmpty() -> phasePosesToKeyframes(phasePoses)
+            else -> listOf(SkeletonKeyframeTemplate(0f, defaultJoints()), SkeletonKeyframeTemplate(1f, defaultJoints()))
+        }
+        Log.d(
+            TAG,
+            "normalizeDraft id=${template.id} phases=${normalizedPhases.size} phasePoses=${phasePoses.size} " +
+                "keyframes=${normalizedKeyframes.size} fallbackSource=$fallbackSource",
+        )
 
         return template.copy(
             cameraView = primaryView,
@@ -407,7 +440,7 @@ class DrillStudioViewModel(
             skeletonTemplate = template.skeletonTemplate.copy(
                 framesPerSecond = template.skeletonTemplate.framesPerSecond.coerceAtLeast(12),
                 phasePoses = phasePoses,
-                keyframes = phasePosesToKeyframes(phasePoses),
+                keyframes = normalizedKeyframes,
             ),
             calibration = template.calibration.copy(
                 phaseWindows = template.calibration.phaseWindows.ifEmpty {
@@ -446,6 +479,23 @@ class DrillStudioViewModel(
                 transitionDurationMs = 700,
             )
         }
+    }
+
+    private fun phasePoseFromClosestKeyframe(
+        phase: DrillPhaseTemplate,
+        keyframes: List<SkeletonKeyframeTemplate>,
+    ): PhasePoseTemplate? {
+        val sorted = keyframes.sortedBy { it.progress }
+        if (sorted.isEmpty()) return null
+        val midpoint = ((phase.progressWindow?.start ?: 0f) + (phase.progressWindow?.end ?: 1f)) / 2f
+        val closest = sorted.minByOrNull { kotlin.math.abs(it.progress - midpoint) } ?: return null
+        return PhasePoseTemplate(
+            phaseId = phase.id,
+            name = phase.label,
+            joints = DrillStudioPoseUtils.normalizeJointNames(closest.joints),
+            holdDurationMs = null,
+            transitionDurationMs = 700,
+        )
     }
 
     private fun phasePosesToKeyframes(phasePoses: List<PhasePoseTemplate>): List<SkeletonKeyframeTemplate> {
@@ -559,19 +609,32 @@ internal fun DrillDefinitionRecord.toDrillTemplate(seed: DrillTemplate?): DrillT
             ),
         )
     }
-    val phasePoses = if (payload != null && payload.phasePoses.isNotEmpty()) {
-        payload.phasePoses
-    } else {
-        phases.map { phase ->
-            PhasePoseTemplate(
-                phaseId = phase.id,
-                name = phase.label,
-                joints = fallback.skeletonTemplate.phasePoses.firstOrNull()?.joints ?: DrillStudioPosePresets.neutralUpright.joints,
-                holdDurationMs = null,
-                transitionDurationMs = 700,
-            )
-        }
+    val seededOrAuthoredPoses = payload?.phasePoses
+        ?.takeIf { it.isNotEmpty() }
+        ?: fallback.skeletonTemplate.phasePoses.takeIf { it.isNotEmpty() }
+    val seededOrAuthoredKeyframes = payload?.keyframes
+        ?.takeIf { it.isNotEmpty() }
+        ?: fallback.skeletonTemplate.keyframes.takeIf { it.isNotEmpty() }
+    val phasePoses = phases.map { phase ->
+        val exactMatch = seededOrAuthoredPoses?.firstOrNull { it.phaseId == phase.id }
+        val fallbackPose = seededOrAuthoredPoses?.firstOrNull()
+        val chosenJoints = exactMatch?.joints
+            ?: fallbackPose?.joints
+            ?: DrillStudioPosePresets.neutralUpright.joints
+        PhasePoseTemplate(
+            phaseId = phase.id,
+            name = phase.label,
+            joints = DrillStudioPoseUtils.normalizeJointNames(chosenJoints),
+            holdDurationMs = exactMatch?.holdDurationMs,
+            transitionDurationMs = exactMatch?.transitionDurationMs ?: 700,
+        )
     }
+    Log.d(
+        "DrillStudioHydration",
+        "toDrillTemplate record=$id payloadPoses=${payload?.phasePoses?.size ?: 0} payloadKeyframes=${payload?.keyframes?.size ?: 0} " +
+            "seedPoses=${fallback.skeletonTemplate.phasePoses.size} seedKeyframes=${fallback.skeletonTemplate.keyframes.size} " +
+            "resolvedPoses=${phasePoses.size}",
+    )
     return fallback.copy(
         id = id,
         title = name,
@@ -585,7 +648,7 @@ internal fun DrillDefinitionRecord.toDrillTemplate(seed: DrillTemplate?): DrillT
         phases = phases,
         skeletonTemplate = fallback.skeletonTemplate.copy(
             phasePoses = phasePoses,
-            keyframes = if (payload != null) payload.keyframes else fallback.skeletonTemplate.keyframes,
+            keyframes = seededOrAuthoredKeyframes ?: phasePosesToKeyframes(phasePoses),
         ),
         calibration = fallback.calibration.copy(
             metricThresholds = payload?.metricThresholds ?: fallback.calibration.metricThresholds,

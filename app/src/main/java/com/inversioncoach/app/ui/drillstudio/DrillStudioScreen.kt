@@ -60,6 +60,7 @@ import com.inversioncoach.app.ui.components.MultiSelectChipsField
 import com.inversioncoach.app.ui.components.ReliableDropdownField
 import com.inversioncoach.app.ui.components.ScaffoldedScreen
 import kotlinx.coroutines.isActive
+import android.util.Log
 
 @Composable
 fun DrillStudioScreen(
@@ -192,6 +193,12 @@ private fun DrillStudioEditor(
             availablePosePhaseIds = phasePoses.map { it.phaseId },
             previousSelectedPhaseId = selectedPhaseId,
         ) ?: selectedPhaseId
+        val hasPoseForSelection = phasePoses.any { it.phaseId == selectedPhaseId }
+        Log.d(
+            "DrillStudioHydration",
+            "phaseSelection selectedPhaseId=$selectedPhaseId hasPose=$hasPoseForSelection " +
+                "available=${phasePoses.map { it.phaseId }}",
+        )
     }
 
     LaunchedEffect(autoPlay, draft.id, draft.skeletonTemplate.framesPerSecond) {
