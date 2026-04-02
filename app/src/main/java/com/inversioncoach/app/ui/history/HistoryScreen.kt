@@ -16,6 +16,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -124,93 +125,133 @@ fun HistoryScreen(
         }
     }
 
-    ScaffoldedScreen(title = if (comparisonMode) "Compare Attempts" else "History", onBack = onBack) { padding ->
-        Column(
-            Modifier
+    ScaffoldedScreen(title = if (comparisonMode) "Sessions" else "History", onBack = onBack) { padding ->
+        DrillSessionsSection(
+            modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            drillIdFilter = drillIdFilter,
+            comparisonMode = comparisonMode,
+            drills = drills,
+            sortedSessions = sortedSessions,
+            selectedSort = selectedSort,
+            sortAscending = sortAscending,
+            sessionSizes = sessionSizes,
+            totalStorageBytes = totalStorageBytes,
+            maxStorageBytes = maxStorageBytes,
+            comparedSessionIds = comparedSessionIds,
+            latestComparisonScores = latestComparisonScores,
+            onSortSelected = ::onSortSelected,
+            onOpenSession = onOpenSession,
+        )
+    }
+}
+
+@Composable
+fun DrillSessionsSection(
+    modifier: Modifier = Modifier,
+    drillIdFilter: String?,
+    comparisonMode: Boolean,
+    drills: List<com.inversioncoach.app.storage.db.DrillRecord>,
+    sortedSessions: List<com.inversioncoach.app.model.SessionRecord>,
+    selectedSort: HistorySort,
+    sortAscending: Boolean,
+    sessionSizes: Map<Long, Long>,
+    totalStorageBytes: Long,
+    maxStorageBytes: Long,
+    comparedSessionIds: List<Long>,
+    latestComparisonScores: Map<Long, Int>,
+    onSortSelected: (HistorySort) -> Unit,
+    onOpenSession: (Long) -> Unit,
+    onOpenComparisonTools: (() -> Unit)? = null,
+) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Sessions", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            if (onOpenComparisonTools != null) {
+                TextButton(onClick = onOpenComparisonTools) { Text("Compare Sessions") }
+            }
+        }
+        Text(
+            if (comparisonMode) "Select sessions to compare or open one to review results."
+            else "Review session history and open any session for details.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (!drillIdFilter.isNullOrBlank()) {
+            val drillName = drills.firstOrNull { it.id == drillIdFilter }?.name ?: drillIdFilter
+            Text("Filtered to drill: $drillName", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            MetricCard("Total sessions", "${sortedSessions.size}", Modifier.weight(1f))
+            MetricCard(
+                "Storage",
+                "${formatMb(totalStorageBytes)} MB used • ${formatMb((maxStorageBytes - totalStorageBytes).coerceAtLeast(0L))} MB left",
+                Modifier.weight(1f),
+            )
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = selectedSort == HistorySort.RECENCY,
+                onClick = { onSortSelected(HistorySort.RECENCY) },
+                label = { Text(sortLabel("By recency", selectedSort == HistorySort.RECENCY, sortAscending)) },
+            )
+            FilterChip(
+                selected = selectedSort == HistorySort.STORAGE_SIZE,
+                onClick = { onSortSelected(HistorySort.STORAGE_SIZE) },
+                label = { Text(sortLabel("By storage", selectedSort == HistorySort.STORAGE_SIZE, sortAscending)) },
+            )
+            FilterChip(
+                selected = selectedSort == HistorySort.SESSION_DURATION,
+                onClick = { onSortSelected(HistorySort.SESSION_DURATION) },
+                label = { Text(sortLabel("By duration", selectedSort == HistorySort.SESSION_DURATION, sortAscending)) },
+            )
+        }
+
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(if (comparisonMode) "Compare drill attempts" else "Session insights", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            if (comparisonMode) {
-                Text("Select a session to review results. Entries are drill-scoped when launched from Drill Workspace.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (!drillIdFilter.isNullOrBlank()) {
-                val drillName = drills.firstOrNull { it.id == drillIdFilter }?.name ?: drillIdFilter
-                Text("Filtered to drill: $drillName", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                MetricCard("Total sessions", "${sortedSessions.size}", Modifier.weight(1f))
-                MetricCard(
-                    "Storage",
-                    "${formatMb(totalStorageBytes)} MB used • ${formatMb((maxStorageBytes - totalStorageBytes).coerceAtLeast(0L))} MB left",
-                    Modifier.weight(1f),
-                )
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = selectedSort == HistorySort.RECENCY,
-                    onClick = { onSortSelected(HistorySort.RECENCY) },
-                    label = { Text(sortLabel("By recency", selectedSort == HistorySort.RECENCY, sortAscending)) },
-                )
-                FilterChip(
-                    selected = selectedSort == HistorySort.STORAGE_SIZE,
-                    onClick = { onSortSelected(HistorySort.STORAGE_SIZE) },
-                    label = { Text(sortLabel("By storage", selectedSort == HistorySort.STORAGE_SIZE, sortAscending)) },
-                )
-                FilterChip(
-                    selected = selectedSort == HistorySort.SESSION_DURATION,
-                    onClick = { onSortSelected(HistorySort.SESSION_DURATION) },
-                    label = { Text(sortLabel("By duration", selectedSort == HistorySort.SESSION_DURATION, sortAscending)) },
-                )
-            }
-
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                items(sortedSessions) { session ->
-                    val sizeMb = formatMb(sessionSizes[session.id] ?: 0L)
-                    val status = videoStatus(session)
-                    val progress = uploadProgress(session)
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onOpenSession(session.id) },
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                        ),
-                    ) {
-                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(session.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
-                            val drillId = parseHistoryMetric(session.metricsJson, "drillId")
-                            val drillName = drills.firstOrNull { it.id == drillId }?.name
-                            if (!drillId.isNullOrBlank()) {
-                                Text(
-                                    "Drill: ${drillName ?: drillId}",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            Text(historyCardDurationText(session), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("Time: ${formatSessionDateTime(session.startedAtMs)}", maxLines = 1, overflow = TextOverflow.Ellipsis)
+            items(sortedSessions) { session ->
+                val sizeMb = formatMb(sessionSizes[session.id] ?: 0L)
+                val status = videoStatus(session)
+                val progress = uploadProgress(session)
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpenSession(session.id) },
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    ),
+                ) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(session.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                        val drillId = parseHistoryMetric(session.metricsJson, "drillId")
+                        val drillName = drills.firstOrNull { it.id == drillId }?.name
+                        if (!drillId.isNullOrBlank()) {
                             Text(
-                                "Profile: ${session.userProfileId ?: "unknown"} • Body v${session.bodyProfileVersion ?: 0}" +
-                                    if (session.usedDefaultBodyModel) " (default model)" else "",
+                                "Drill: ${drillName ?: drillId}",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
-                            Text(status, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            if (comparedSessionIds.contains(session.id)) {
-                                Text("Reference comparison saved", color = MaterialTheme.colorScheme.primary)
-                                latestComparisonScores[session.id]?.let { score ->
-                                    Text("Similarity score: $score", color = MaterialTheme.colorScheme.primary)
-                                }
-                            }
-                            Text("Storage: $sizeMb MB", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
+                        Text(historyCardDurationText(session), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Time: ${formatSessionDateTime(session.startedAtMs)}", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            "Profile: ${session.userProfileId ?: "unknown"} • Body v${session.bodyProfileVersion ?: 0}" +
+                                if (session.usedDefaultBodyModel) " (default model)" else "",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+                        Text(status, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (comparedSessionIds.contains(session.id)) {
+                            Text("Reference comparison saved", color = MaterialTheme.colorScheme.primary)
+                            latestComparisonScores[session.id]?.let { score ->
+                                Text("Similarity score: $score", color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                        Text("Storage: $sizeMb MB", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -223,7 +264,7 @@ internal fun historyCardDurationText(session: com.inversioncoach.app.model.Sessi
     return "Duration: ${formatSessionDuration(durationMs)}"
 }
 
-private enum class HistorySort { RECENCY, STORAGE_SIZE, SESSION_DURATION }
+enum class HistorySort { RECENCY, STORAGE_SIZE, SESSION_DURATION }
 
 private fun parseHistoryMetric(raw: String, key: String): String? =
     raw.split('|').firstOrNull { token -> token.startsWith("$key:") }?.substringAfter(':')?.takeIf { it.isNotBlank() }
