@@ -1,8 +1,24 @@
 # Feature: Session History
 
-- Sessions are persisted with metrics, statuses, and media references.
-- Sessions persist body-profile attribution metadata (`userProfileId`, `bodyProfileId`, `bodyProfileVersion`, `usedDefaultBodyModel`) for replay/export/history integrity.
-- Legacy `userBodyProfileJson` remains migration fallback only and is not the primary runtime source when a `BodyProfileRecord` is present.
-- During migration, legacy settings JSON is promoted once into `BodyProfileRecord` for the active user, then legacy JSON is cleared.
-- History screen provides access to prior results/replay.
-- Replay source selection remains aligned with persisted media truth.
+Session History is the persisted record of drill-linked outcomes from live and upload workflows.
+
+## What history stores
+
+- Session metadata, scores, and issue summaries.
+- Media state for raw/annotated assets.
+- Resolver-selected replay source.
+- Calibration/profile attribution metadata for traceability.
+
+## User-facing behavior
+
+- Show prior sessions in drill-relevant context.
+- Open replay using resolved best media source.
+- Preserve truthful status when annotated export failed but raw replay exists.
+
+## Cross-workflow role
+
+History is not a passive archive; it is part of the training loop:
+
+- review prior attempts,
+- build references from strong sessions,
+- compare current performance to previous outcomes.

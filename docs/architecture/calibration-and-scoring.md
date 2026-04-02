@@ -1,19 +1,23 @@
 # Calibration and Scoring
 
-## Calibration
+Calibration and scoring are cross-workflow foundations, not isolated settings features.
 
-- Calibration sessions produce or refine a user body profile.
-- The active body profile should be available across live coaching, uploaded analysis, and drill-related comparisons.
-- Calibration data influences readiness checks, movement interpretation, and visual/body-proportion assumptions where supported.
+## Calibration as shared runtime context
 
-## Scoring
+- Calibration creates/refines body profile data for the active user profile.
+- Runtime body-profile resolution should be consistent in:
+  - Live Session
+  - Upload / Reference Training
+  - Drill-linked comparison flows
+- Missing calibration should degrade gracefully to default model behavior, with explicit attribution where persisted.
 
-- Pose and motion signals flow into biomechanics and quality engines.
-- Drill-specific metrics roll up into per-session scores, issue summaries, and coaching feedback.
-- Reference and comparison workflows can reuse movement-profile signals to compare later attempts against stronger examples.
+## Scoring pipeline
 
-## Imported Video Flow
+- Pose + motion signals feed biomechanics and issue classifiers.
+- Drill-specific metrics roll up into session-level feedback, summaries, and outcomes.
+- Comparison/reference training can reuse extracted movement signals for drill-linked benchmarking.
 
-- Imported clips use video frame sources and pose detection pipelines.
-- Analysis and scoring are parallel in intent to live coaching, but differ in timing source, orchestration, and media lifecycle.
-- Uploaded analysis can also feed drill-reference workflows instead of existing only as standalone review.
+## Cross-workflow implications
+
+- Calibration updates can change interpretation of future analyses across multiple workflows.
+- Contributors should treat calibration changes as architecture-level behavior changes, not just UI/settings changes.

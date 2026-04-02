@@ -1,23 +1,29 @@
 # Video Pipeline
 
+The media pipeline is shared by live-session finalization and upload/reference analysis outcomes.
+
 ## Inputs
 
-- Live recording raw URI from recorder finalization callback.
-- Overlay timeline frames captured during live session or synthesized for import flow.
-- Drill/session metadata (orientation, side, timestamps, duration signals).
+- Raw media callback URI (live flow) or imported media URI (upload flow).
+- Overlay timeline frames (live captured or import-synthesized).
+- Resolved metadata (orientation, duration, drill context, timestamps).
 
-## Pipeline Stages
+## Pipeline stages
 
-1. **Raw source acceptance**: callback URI canonicalization and ownership checks.
-2. **Raw persistence**: blob storage copy/retain and status updates.
-3. **Timeline resolution**: overlay frames frozen/serialized for export.
-4. **Normalization**: orientation, duration alignment, and render constraints.
-5. **Annotated render/composition**: pipeline/compositor writes output media.
-6. **Validation**: media verification and replay inspection.
-7. **Replay selection**: best playable candidate persisted to session outcome.
+1. **Source acceptance**: validate callback/import ownership and URI readiness.
+2. **Raw persistence**: copy/retain source media and persist status.
+3. **Timeline resolution**: freeze/serialize overlay timeline against session truth.
+4. **Normalization**: resolve duration/orientation/render constraints.
+5. **Annotated render**: produce export output when possible.
+6. **Verification**: inspect playable/readable media.
+7. **Replay resolution**: choose best verified replay asset and persist.
 
-## Source-of-Truth Rules
+## Annotated-first with raw fallback
 
-- Session duration is resolved from lifecycle timing and validated media metadata where available.
-- Replay selection does not assume export success; it validates availability/readability.
-- Raw and annotated outputs are both tracked to support resilience and diagnostics.
+- Annotated output is preferred when export + verification succeed.
+- Raw media remains the safety path when annotated output is missing/invalid.
+- Session truth must not depend on annotated export success.
+
+## Why this matters
+
+This design keeps coaching workflows resilient across devices/codecs while preserving a practical user outcome: a replayable session whenever capture/import succeeded.

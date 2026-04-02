@@ -1,114 +1,80 @@
 # Inversion Coach / Handstand App
 
-Inversion Coach is an Android app for handstand and inversion coaching with drill-based practice, live feedback, uploaded video analysis, reference comparison, calibration-aware feedback, and session review.
+Inversion Coach is a drill-centric handstand and inversion coaching app. It helps athletes and coaches run focused practice sessions, author and refine drills, analyze uploads for reference training, and review outcomes through results and history.
 
-## What the App Does
+## What the app is
 
-The app is built around a few connected user journeys instead of isolated recording screens:
+This app is not organized as isolated recording features. It is organized as connected coaching workflows centered on drills:
 
-- **Drill-based live practice** with countdown, realtime overlays, cues, and post-session replay.
-- **Uploaded video analysis** for offline review, export, and comparison.
-- **Drill authoring and editing** through Drill Studio and Manage Drills.
-- **Reference training workflows** to turn strong examples into reusable comparison baselines.
-- **Calibration and profile management** so analysis can adapt to the active body profile.
+- Start practice from **Home / Drill Hub**.
+- Author and maintain drills in **Manage Drills** and **Drill Studio**.
+- Run **Live Session** coaching with countdown gating and real-time overlays.
+- Use **Upload / Reference Training** for offline analysis and template creation.
+- Review outcomes in **Results / Session History**.
+- Apply shared **Calibration / Profiles** context across analysis flows.
 
-Both live and imported flows persist session truth locally and resolve replay from the best verified source, preferring annotated output when valid and falling back to raw capture when needed.
+## Current user journeys
 
-## Current Product Flows
+1. **Drill Hub → Start Live Session**
+   Select drill, resolve effective session view, complete countdown, coach live, finalize, then review results/replay.
+2. **Manage Drills → Drill Studio**
+   Create or edit drills with one obvious save path and reliable persisted reload behavior.
+3. **Upload / Reference Training**
+   Analyze imported attempts, optionally create/update drill-linked references, and compare future attempts.
+4. **Results / Session History**
+   Review scored sessions, replay media, and drill-linked context from prior practice.
+5. **Calibration / Profiles**
+   Manage active profile and calibration data that influences both live and imported analysis.
 
-### 1. Practice a drill live
-Home / Drill Hub → choose drill → configure session → countdown → live coaching → stop → results / replay / history.
+See full flow detail in [docs/features/current-user-flows.md](docs/features/current-user-flows.md).
 
-### 2. Review an uploaded attempt
-Home / Drill Hub → upload video → analyze clip → review replay and feedback → optionally save as history or compare with reference.
+## Core concepts
 
-### 3. Manage or author drills
-Manage Drills → open drill → edit in Drill Studio → save validated drill definition → return to drill list.
+- **Drill-centric context**: workflows should start from and return to drill context.
+- **Deterministic session lifecycle**: countdown gating, start, live analysis loop, finalize, persistence.
+- **Annotated-first replay with fallback**: prefer verified annotated replay; fall back to raw capture when needed.
+- **Cross-workflow calibration**: active profile informs analysis in live sessions and upload analysis.
+- **Practical simplification**: one clear save path and fewer redundant actions.
 
-### 4. Build reference-based training
-Upload or review a strong session → associate to drill → create or update reference template / baseline → compare future attempts.
+## Repo structure / documentation map
 
-### 5. Calibrate and manage profiles
-Calibration / Profiles → create or select active body profile → use calibrated analysis across drill and session flows.
+- `app/src/main/java/com/inversioncoach/app/ui` - screens, navigation, workflow state.
+- `app/src/main/java/com/inversioncoach/app/drills` - drill definitions and drill-authoring support.
+- `app/src/main/java/com/inversioncoach/app/calibration` - calibration sessions and profile handling.
+- `app/src/main/java/com/inversioncoach/app/movementprofile` - upload/reference extraction and comparison data.
+- `app/src/main/java/com/inversioncoach/app/recording` - recording, export, replay preparation.
+- `app/src/main/java/com/inversioncoach/app/storage` - Room repositories and media/blob persistence.
 
-## Current Capabilities
+Docs entry points:
 
-- Live coaching sessions with countdown and drill-aware session options.
-- Pose smoothing, correction, issue detection, and overlay rendering in-session.
-- Overlay timeline capture for annotated replay/export.
-- Raw capture persistence and media verification.
-- Annotated export pipeline with explicit progress and failure state.
-- Replay source resolution with deterministic fallback rules.
-- Uploaded video analysis with stage-based processing.
-- Drill authoring, editing, and management flows.
-- Reference training and baseline-oriented comparison workflows.
-- Calibration/body profile support for analysis tuning.
-- Session history and results review.
+- Architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
+- Architecture details: [`docs/architecture/`](docs/architecture)
+- Feature docs: [`docs/features/`](docs/features)
+- Diagrams: [`docs/diagrams/`](docs/diagrams)
+- Decisions/ADRs: [`docs/decisions/`](docs/decisions)
 
-## Repo Structure
+## Running locally
 
-- `app/src/main/java/com/inversioncoach/app/ui` - Compose screens, route wiring, and UI state.
-- `app/src/main/java/com/inversioncoach/app/drills` - drill definitions, registry, studio support, and drill-related workflow logic.
-- `app/src/main/java/com/inversioncoach/app/calibration` - calibration sessions, body profiles, readiness, and profile usage.
-- `app/src/main/java/com/inversioncoach/app/movementprofile` - imported video pose sourcing and movement/reference extraction.
-- `app/src/main/java/com/inversioncoach/app/recording` - recording, export, normalization, validation, and replay preparation.
-- `app/src/main/java/com/inversioncoach/app/storage` - Room entities, DAOs, repositories, and blob storage.
-- `docs/architecture` - system and subsystem documentation.
-- `docs/diagrams` - Mermaid diagrams for user flows and architecture sequences.
-- `docs/features` - feature-facing behavior notes.
-- `docs/decisions` - architecture and product decision records.
-
-For deeper technical documentation, see [ARCHITECTURE.md](ARCHITECTURE.md).
-
-## Documentation Map
-
-- [Architecture guide](ARCHITECTURE.md)
-- [System overview](docs/architecture/system-overview.md)
-- [App modules](docs/architecture/app-modules.md)
-- [Session lifecycle](docs/architecture/session-lifecycle.md)
-- [Video pipeline](docs/architecture/video-pipeline.md)
-- [Replay and fallback](docs/architecture/replay-and-fallback.md)
-- [Calibration and scoring](docs/architecture/calibration-and-scoring.md)
-- [Current user flows](docs/features/current-user-flows.md)
-- [Workflow simplification decision](docs/decisions/adr-004-product-workflow-simplification.md)
-- [UI flow diagram](docs/diagrams/ui-flow.md)
-
-## Known Limitations
-
-- Annotated export latency can exceed raw replay readiness on lower-end devices.
-- Final playback correctness still depends on metadata normalization and validation.
-- Some export and replay edge cases are intentionally guarded by defensive diagnostics.
-
-## Running the Project
-
-### Prerequisites
+Prerequisites:
 
 - JDK 17
 - Android SDK (`compileSdk 34`, `targetSdk 34`, `minSdk 28`)
-- Gradle 8.14.x available locally (wrapper script is not checked in)
+- Gradle 8.14.x on PATH (wrapper is not checked in)
 
-### Quick Start
+Quick start:
 
 ```bash
 export JAVA_HOME=/path/to/jdk-17
 export PATH="$JAVA_HOME/bin:$PATH"
-java -version
 gradle testDebugUnitTest
 gradle :app:assembleDebug
 ```
 
-## Testing
+## Contribution expectations
 
-Primary unit test command:
+- Target PRs to `main`.
+- If workflow/UI behavior changes, update matching docs and diagrams in the same PR.
+- Prefer simple, deterministic UX over branching/overlapping controls.
+- Keep terminology aligned with current flows: Drill Hub, Manage Drills, Drill Studio, Upload / Reference Training, Results / Session History, Calibration / Profiles.
 
-```bash
-gradle testDebugUnitTest
-```
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## Changelog
-
-See [CHANGELOG.md](CHANGELOG.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidance.

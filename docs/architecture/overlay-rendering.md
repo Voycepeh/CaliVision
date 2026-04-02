@@ -1,21 +1,21 @@
 # Overlay Rendering
 
-Overlay rendering is split between realtime UI overlays and offline annotated export rendering.
+Overlay responsibilities are intentionally split between live coaching UI and export rendering.
 
-## Realtime Overlay
+## Live overlay responsibilities
 
-- Pose frames are smoothed/validated.
-- UI renders skeleton/guide overlays in-session for coaching feedback.
-- Freestyle orientation helpers influence how overlays are interpreted.
+- Draw low-latency visual guidance during active coaching.
+- Reflect current pose/cue state for immediate user feedback.
+- Prioritize responsiveness and coaching clarity.
 
-## Export Overlay
+## Export overlay responsibilities
 
-- Overlay timeline frames are recorded with timestamps.
-- Export pipeline resolves timeline against chosen render preset.
-- Annotated compositor writes a media file with overlay baked into frames.
+- Render timeline-consistent overlays for saved/exported media.
+- Apply normalized orientation/duration metadata.
+- Produce stable output suitable for replay/history/share.
 
-## Consistency Goals
+## Contract between live and export
 
-- Preserve visual intent between live overlay and exported replay.
-- Avoid timeline drift during stop/finalization boundaries.
-- Fail safely when timeline/media validation detects mismatches.
+- Live loop records timeline data needed by export.
+- Export should preserve visual intent without requiring live rendering internals.
+- Drift, timestamp mismatches, or invalid timeline/media combinations should fail safely and emit diagnostics.

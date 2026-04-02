@@ -1,22 +1,31 @@
 # System Overview
 
-Inversion Coach is now best understood as a drill-centric coaching system with shared live, imported-video, drill-authoring, reference-training, and calibration workflows.
+Inversion Coach is a drill-centric coaching system. The product is shaped around practical coaching journeys that share common analysis, media, and persistence infrastructure.
 
-## Runtime Subsystems
+## Workflow surfaces
 
-- **UI/navigation**: Compose screens route users through home, drill hub, manage drills, drill studio, live coaching, upload analysis, calibration, history, and results.
-- **Live orchestration**: `LiveCoachingViewModel` coordinates countdown, frame ingestion, session stop/finalization, replay preparation, and export kickoff.
-- **Upload orchestration**: upload flow view models/coordinators handle imported asset processing, persistence, and optional reference/template outcomes.
-- **Drill workflow layer**: drill selection, drill editing, drill metadata, and drill-linked comparison/reference flows provide the main context for practice.
-- **Analysis engines**: pose processing, biomechanics, readiness/fault detection, movement profiling, and summary generation.
-- **Recording/export**: timeline capture, normalization, annotated composition, media verification, compression, and cleanup.
-- **Persistence**: Room and blob storage through `SessionRepository`, `SessionBlobStorage`, and drill/template persistence paths.
+- **Home / Drill Hub**: primary entry for starting practice and navigating core actions.
+- **Manage Drills**: drill catalog management and drill selection context.
+- **Drill Studio**: drill authoring/editing with deterministic save behavior.
+- **Live Session**: countdown-gated live coaching and scoring loop.
+- **Upload / Reference Training**: imported clip analysis, reference creation, and comparison setup.
+- **Results / Session History**: persisted session outcomes, replay, and drill-linked review.
+- **Calibration / Profiles**: active body profile context applied across coaching workflows.
 
-## Cross-Flow Invariants
+## Runtime subsystems
 
-1. Drill context should remain stable across live practice, upload analysis, comparison, and history review.
-2. Session metadata is persisted even when annotated export fails.
-3. Replay is selected from validated assets, preferring annotated output when ready.
-4. Raw capture remains a fallback when annotated output is unavailable or invalid.
-5. Calibration/profile context should be available to both live and imported analysis paths.
-6. Export and finalization events remain diagnostics-heavy because these are async, failure-prone boundaries.
+- **UI + navigation**: route state and screen coordination.
+- **Workflow orchestrators**: live and upload coordinators own lifecycle transitions.
+- **Drill/reference domain**: drill definitions, drill-linked references/templates, comparison inputs.
+- **Analysis engines**: pose, motion, biomechanics, issue detection, score rollups.
+- **Media pipelines**: recording, timeline capture, export, validation, replay selection.
+- **Persistence**: session, drill, calibration, and media state in Room + blob storage.
+
+## System invariants
+
+1. Drill context should stay recoverable through live, upload, history, and comparison flows.
+2. Countdown and start gating should prevent premature “started” state.
+3. Session truth must persist even when annotated export fails.
+4. Replay selection should prefer verified annotated output, then fall back to verified raw media.
+5. Calibration/profile context should resolve consistently across live and imported analysis.
+6. Finalization and export boundaries should remain diagnostics-friendly and failure-tolerant.

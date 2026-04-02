@@ -1,33 +1,34 @@
-# Sequence: Live Coaching Session
+# Sequence: Live Session
 
 ```mermaid
 sequenceDiagram
     actor User
-    participant HUB as Drill Hub / Start Drill UI
-    participant UI as Live UI
-    participant VM as LiveCoachingViewModel
-    participant REC as SessionRecorder
-    participant OC as OverlayTimelineRecorder
-    participant REPO as SessionRepository
-    participant EXP as AnnotatedExportPipeline
-    participant RES as SessionMediaResolver
+    participant HUB as Home / Drill Hub
+    participant LIVEUI as Live Session UI
+    participant ORCH as Live Session Orchestrator
+    participant REC as Recorder
+    participant OVR as Overlay Timeline Recorder
+    participant EXP as Annotated Export Pipeline
+    participant RES as Replay Resolver
+    participant REPO as Session Repository
 
-    User->>HUB: Choose drill and start live session
-    HUB->>UI: Open live screen with drill context
-    UI->>VM: Resolve session options / effective view
-    UI->>VM: Countdown complete
-    VM->>REC: Start recording
-    loop per pose frame
-      UI->>VM: onPoseFrame
-      VM->>OC: append overlay frame
+    User->>HUB: Select drill and start session
+    HUB->>LIVEUI: Open with drill context
+    LIVEUI->>ORCH: Resolve effective session view
+    LIVEUI->>ORCH: Countdown complete (start gate)
+    ORCH->>REC: Start recording
+    loop active session frames
+      LIVEUI->>ORCH: onPoseFrame
+      ORCH->>OVR: Append overlay/cue frame
     end
-    User->>UI: Stop session
-    UI->>VM: stopSession()
-    REC-->>VM: onRecordingFinalized(rawUri)
-    VM->>REPO: Persist raw session state
-    VM->>EXP: Launch annotated export
-    EXP-->>VM: export complete or fail
-    VM->>RES: Resolve best replay source
-    VM->>REPO: Persist final media outcome
-    VM-->>UI: Navigate to results
+    User->>LIVEUI: Stop session
+    LIVEUI->>ORCH: Request finalize
+    REC-->>ORCH: Recording finalized (raw URI)
+    ORCH->>REPO: Persist raw session/media state
+    ORCH->>OVR: Freeze timeline
+    ORCH->>EXP: Run annotated export
+    EXP-->>ORCH: Success or failure
+    ORCH->>RES: Resolve best replay candidate
+    ORCH->>REPO: Persist final outcome
+    ORCH-->>LIVEUI: Navigate to Results / History
 ```

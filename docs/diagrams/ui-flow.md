@@ -2,39 +2,42 @@
 
 ```mermaid
 flowchart TD
-    H[Home]
-    DH[Drill Hub]
-    MD[Manage Drills]
-    DS[Drill Studio]
-    SD[Start Drill]
-    L[Live Session]
-    C[Countdown]
-    R[Recording]
-    P[Processing / Export]
-    RS[Results / Replay]
-    HI[History]
-    U[Upload / Reference Training]
-    CMP[Compare / Reference Review]
+    HOME[Home / Drill Hub]
+    MANAGE[Manage Drills]
+    STUDIO[Drill Studio]
+    START[Start Live Session]
+    COUNTDOWN[Countdown / Start Gating]
+    LIVE[Live Session]
+    FINALIZE[Finalize + Export]
+    RESULTS[Results]
+    HISTORY[Session History]
+    UPLOAD[Upload / Reference Training]
+    REF[Reference Template / Comparison]
     CAL[Calibration / Profiles]
 
-    H --> DH
-    H --> HI
-    H --> CAL
-    DH --> SD
-    DH --> MD
-    DH --> U
-    SD --> C
-    C --> L
-    L --> R
-    R --> P
-    P --> RS
-    RS --> HI
-    RS --> DH
-    MD --> DS
-    DS --> MD
-    U --> P
-    U --> CMP
-    CMP --> RS
-    CAL --> DH
-    HI --> RS
+    HOME --> START
+    HOME --> MANAGE
+    HOME --> UPLOAD
+    HOME --> HISTORY
+    HOME --> CAL
+
+    MANAGE --> STUDIO
+    STUDIO --> MANAGE
+    STUDIO --> HOME
+
+    START --> COUNTDOWN
+    COUNTDOWN --> LIVE
+    LIVE --> FINALIZE
+    FINALIZE --> RESULTS
+    RESULTS --> HISTORY
+    RESULTS --> HOME
+
+    UPLOAD --> RESULTS
+    UPLOAD --> REF
+    REF --> RESULTS
+
+    HISTORY --> RESULTS
+    HISTORY --> REF
+
+    CAL --> HOME
 ```
