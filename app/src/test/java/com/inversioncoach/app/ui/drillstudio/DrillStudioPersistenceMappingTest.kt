@@ -150,6 +150,38 @@ class DrillStudioPersistenceMappingTest {
         assertNotNull(decodeStudioPayload(updated.cueConfigJson))
     }
 
+    @Test
+    fun toDrillTemplate_prefersSeededKeyframesWhenPayloadHasOnlyMetadata() {
+        val seed = sampleDraft().copy(
+            id = "seed_flow",
+            skeletonTemplate = sampleDraft().skeletonTemplate.copy(
+                keyframes = listOf(
+                    SkeletonKeyframeTemplate(0f, mapOf("wrist_left" to JointPoint(0.11f, 0.22f))),
+                    SkeletonKeyframeTemplate(0.5f, mapOf("wrist_left" to JointPoint(0.33f, 0.44f))),
+                    SkeletonKeyframeTemplate(1f, mapOf("wrist_left" to JointPoint(0.55f, 0.66f))),
+                ),
+            ),
+        )
+        val persisted = seed.toDrillDefinitionRecord(existingId = seed.id, existing = null, ready = true)
+            .copy(cueConfigJson = "legacyDrillType:FREE_HANDSTAND|comparisonMode:POSE_TIMELINE")
+
+        val reopened = persisted.toDrillTemplate(seed = seed)
+
+        assertEquals(seed.skeletonTemplate.keyframes, reopened.skeletonTemplate.keyframes)
+        assertEquals(seed.skeletonTemplate.phasePoses.map { it.phaseId }, reopened.skeletonTemplate.phasePoses.map { it.phaseId })
+    }
+
+    @Test
+    fun decodePayload_preservesSeededPosesAndKeyframesAfterSaveReopenWithoutEdits() {
+        val seeded = sampleDraft(title = "Seeded Original").copy(id = "seed_round_trip")
+        val saved = seeded.toDrillDefinitionRecord(existingId = seeded.id, existing = null, ready = true)
+
+        val reopened = saved.toDrillTemplate(seed = seeded)
+
+        assertEquals(seeded.skeletonTemplate.phasePoses, reopened.skeletonTemplate.phasePoses)
+        assertEquals(seeded.skeletonTemplate.keyframes, reopened.skeletonTemplate.keyframes)
+    }
+
     private fun sampleDraft(
         title: String = "Handstand Flow",
         description: String = "Desc",
