@@ -6,30 +6,43 @@ Accepted
 
 ## Context
 
-The app accumulated overlapping actions and partially separate workflows for drill editing, saving, reference handling, and navigation. That created avoidable UI complexity and made it harder for users to understand what would actually happen when they pressed a button.
+As the app evolved beyond a narrow live/import framing, workflow complexity increased in drill authoring and related navigation. Contributors introduced overlapping save paths, redundant actions, and branching UI decisions that were hard for users to reason about.
 
-Examples of confusion included duplicate destructive actions, multiple save variants that implied different levels of persistence or template behavior, and drill-opening flows that did not reliably restore prior selections.
+Observed issues:
+
+- Multiple save variants that implied different outcomes without clear value.
+- Redundant actions (for example archive/delete style overlaps) that added UX noise.
+- Existing drill edit flows that did not always reload persisted data reliably.
+- Expert-only branches that obscured the main path for most users.
 
 ## Decision
 
-The product should favor simpler, more deterministic workflows:
+We intentionally simplify product workflows around a few rules:
 
-1. Prefer one clear save path in drill authoring over multiple overlapping save variants.
-2. Keep destructive actions explicit and confirmation-based.
-3. Remove or hide options that do not provide distinct user value.
-4. Preserve persisted drill data reliably when reopening and editing drills.
-5. Keep workflows drill-centric so users return to the context they started from.
+1. **Prefer one obvious save path** over multiple confusing save variants.
+2. **Avoid redundant actions** (such as archive vs delete) when they do not provide clear user value.
+3. **Ensure persisted editing reliability**: opening an existing drill should restore saved drill data deterministically.
+4. **Favor workflow clarity over expert-only branching** in primary UI paths.
+5. **Keep flows drill-centric** so users return to meaningful practice context.
 
 ## Consequences
 
 ### Positive
 
-- Lower UI and workflow complexity.
-- Easier mental model for drill creation and editing.
-- Fewer hidden branches in navigation and persistence behavior.
-- Clearer expectations for future contributors.
+- Faster understanding of the app’s primary workflows.
+- Lower maintenance burden for UI/state branching.
+- More predictable persistence behavior in Drill Studio and related flows.
+- Cleaner docs/diagrams and reduced terminology drift.
 
 ### Trade-offs
 
-- Fewer expert-facing shortcuts in the UI.
-- Some previously exposed internal concepts may remain supported in code while no longer being first-class UI actions.
+- Some advanced or legacy options may be removed from first-class UI.
+- Contributors must justify any new branching behavior against these simplification rules.
+
+## Contributor actions
+
+When changing workflow behavior:
+
+- Update feature docs and architecture docs in the same PR.
+- Update Mermaid diagrams for affected user journeys.
+- Use current terminology consistently (Drill Hub, Manage Drills, Drill Studio, Upload / Reference Training, Results / Session History, Calibration / Profiles).

@@ -1,33 +1,32 @@
 # Session Lifecycle
 
-This document captures the live coaching lifecycle and the async transitions that follow a drill-based practice session.
+This document describes the drill-centric live session lifecycle from drill selection through final persistence.
 
-## Happy Path
+## End-to-end lifecycle
 
-1. User enters live coaching from drill context.
-2. Session options resolve a concrete effective view before capture begins.
-3. Countdown completes and the session becomes active.
-4. Recording starts and pose frames stream into analysis, cues, and overlay collectors.
-5. User stops session.
-6. Recorder finalize callback provides raw URI.
-7. Raw artifact is persisted and verified.
-8. Overlay timeline is frozen and resolved against session truth.
-9. Annotated export runs asynchronously.
-10. Replay source resolver chooses the best playable URI, preferring annotated replay and falling back to raw.
-11. Session is finalized and appears in results and history under the originating drill context.
+1. **Drill selection** from Home / Drill Hub.
+2. **Effective/resolved view** is computed (drill options + runtime context).
+3. **Countdown gating** runs and confirms ready-to-start boundaries.
+4. **Session starts** and recorder/analysis loop activates.
+5. **Overlay + cue loop** processes frames during active coaching.
+6. **Stop requested** by user.
+7. **Finalize callback accepted** (deduped/ownership-checked).
+8. **Raw media persisted + verified**.
+9. **Annotated export launched** with resolved timeline metadata.
+10. **Replay source resolved** from verified candidates.
+11. **Session persisted as final outcome** and shown in Results / Session History.
 
-## Important State Boundaries
+## State boundaries to protect
 
-- **Entry state**: drill selection, session option resolution, permission/camera readiness.
-- **Countdown state**: warm-up without prematurely treating the session as started.
-- **Recording state**: live frame processing, overlay/cue updates, and timeline capture.
-- **Finalization state**: stop pressed → finalize callback acceptance → raw persistence → export launch.
-- **Replay state**: readiness and validation determine the selected replay asset.
+- **Pre-start**: drill context, permissions, camera readiness, resolved options.
+- **Countdown**: visible warm-up without marking the session active early.
+- **Active live loop**: frame ingestion, scoring/cues, overlay timeline capture.
+- **Finalize boundary**: stop → callback handling → raw persistence.
+- **Post-finalize async**: export, verification, resolver, repository update.
 
-## Failure and Fallback
+## Failure behavior
 
-- Empty or duplicate finalize callbacks are ignored and diagnosed.
-- Raw persist failures are captured in status and diagnostics.
-- Annotated export failures preserve session truth and the fallback replay path.
-- Verification failures force replay selection away from invalid assets.
-- Drill context should still remain recoverable even when one downstream media step fails.
+- Ignore duplicate/invalid finalize callbacks.
+- If raw persistence fails, keep explicit failure status and diagnostics.
+- If annotated export fails, keep session truth and raw fallback path.
+- If media verification fails for one asset, resolver must select the next valid candidate.

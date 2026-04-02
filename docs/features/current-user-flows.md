@@ -1,55 +1,75 @@
-# Current User Flows
+# Feature: Current User Flows
 
-This document describes the intended top-level product journeys after the recent UI, UX, and workflow simplification changes.
+This page describes the intended end-to-end user journeys for the current product direction.
 
-## Drill Hub as the Main Entry Point
+## 1) Home / Drill Hub
 
-The app should feel drill-centric. Users should be able to move from home into drill selection, drill management, live practice, upload analysis, and history without being dropped into unrelated editing flows by accident.
+Home routes users into Drill Hub as the main practice anchor. From Drill Hub users should be able to:
 
-## Main Journeys
+- Start a live session for a drill.
+- Open Manage Drills.
+- Open Upload / Reference Training.
+- Reach Results / Session History and Calibration / Profiles without losing workflow context.
 
-### Practice live
+## 2) Manage Drills
 
-1. Open Drill Hub or choose a drill from the home surface.
-2. Start a live session for that drill.
-3. Countdown completes.
-4. Practice with realtime overlays and cues.
-5. Stop session.
-6. Review results, replay, and saved history.
+Manage Drills is the operational list for drill maintenance.
 
-### Upload and review an attempt
+Typical flow:
 
-1. Open upload/reference training flow.
-2. Select a video.
-3. Analyze the clip.
-4. Review replay and feedback.
-5. Optionally save it as part of drill history or use it as reference input.
+1. Open drill list.
+2. Create new drill or select existing drill.
+3. Enter Drill Studio for edit.
+4. Save and return to managed list state.
 
-### Manage and edit drills
+## 3) Drill Studio
 
-1. Open Manage Drills.
-2. Open an existing drill or create a new one.
-3. Edit it in Drill Studio.
-4. Save through one clear validation-and-save path.
-5. Return to Manage Drills.
+Drill Studio is where drill definitions are authored and edited.
 
-### Build reference-based training
+Expected behavior:
 
-1. Use a strong session or imported clip.
-2. Link it to a drill.
-3. Create or update a reference template / baseline.
-4. Compare future attempts to that drill-linked reference.
+- Existing drills reload persisted values reliably.
+- Validation is explicit and user-facing.
+- Save path is clear and deterministic.
+- Redundant save variants are avoided.
 
-### Calibrate and manage profiles
+## 4) Start Live Session
 
-1. Open calibration/profile flow.
-2. Create, edit, or select the active body profile.
-3. Use that profile across analysis flows.
+Typical flow:
 
-## Simplification Rules
+1. Select drill from Drill Hub.
+2. Resolve effective session configuration.
+3. Complete countdown/start gating.
+4. Run live coaching loop with overlays/cues.
+5. Stop and finalize session.
+6. Review outcome in Results and Session History.
 
-- Avoid duplicate actions that lead to the same outcome.
-- Keep destructive actions explicit and confirm before deletion.
-- Reopening an existing drill should restore persisted values reliably.
-- Save actions should be truthful and easy to understand.
-- Drill workflows should return users to drill context after completion.
+## 5) Upload / Reference Training
+
+Typical flow:
+
+1. Select video clip.
+2. Run analysis/scoring.
+3. Review results and replay.
+4. Optionally create/update a drill-linked reference template.
+5. Optionally compare against existing references.
+
+## 6) Results / History
+
+Results show immediate post-session outcomes; History provides ongoing access to prior sessions.
+
+Both surfaces should present:
+
+- Drill-linked context.
+- Replay source chosen by resolver policy.
+- Persisted scores/issues/metadata.
+
+## 7) Calibration / Profiles
+
+Calibration and profiles manage person-level context used in analysis.
+
+Expected behavior:
+
+- One active profile at runtime.
+- Profile changes affect future live/upload analysis.
+- Lack of calibration falls back gracefully to default behavior.

@@ -1,22 +1,29 @@
 # Replay and Fallback
 
-Replay is selected from persisted candidates using readiness + validation rules.
+Replay resolution is deterministic and shared across live results, history, and upload-analysis outcomes.
 
-## Candidate Priority
+## Candidate order
 
-1. Validated annotated replay when export is complete and playable.
-2. Persisted raw replay when annotated export is unavailable or invalid.
-3. No replay asset (explicit failure state) when neither is usable.
+1. **Verified annotated media** (preferred).
+2. **Verified raw media** (fallback).
+3. **Explicit no-replay state** when neither candidate is valid.
 
-## Why This Exists
+## Decision inputs
 
-- Export can fail independently of recording success.
-- Media metadata/readability can differ across devices/codecs.
-- Users should still receive a truthful replay whenever raw capture succeeded.
+- Annotated export status.
+- Raw/annotated persistence outcomes.
+- Media verification/readability checks.
+- Resolver policy for preferred but unavailable candidates.
 
-## Operational Signals
+## Annotated-first with truthful fallback
 
-- `AnnotatedExportStatus`
-- Raw persistence status
-- Media verification/replay inspection results
-- Retained asset type and best playable URI in finalized session outcome
+The app should not hide failures by pretending annotated export always succeeds. It should also avoid blocking user review when raw media is available. Resolver output should reflect real persisted state.
+
+## Contributor guidance
+
+If replay behavior changes, update:
+
+- `docs/architecture/video-pipeline.md`
+- `docs/architecture/session-lifecycle.md`
+- `docs/features/session-history.md`
+- relevant sequence diagrams

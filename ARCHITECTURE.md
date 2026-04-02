@@ -1,73 +1,59 @@
 # Architecture Guide
 
-This document is the top-level map for the current app shape. The app is no longer just a pair of live/import flows. It now centers around drill-driven workflows, authoring, reference-based comparison, calibration, and resilient replay/export behavior.
+This is the top-level architecture map for the current product direction on `main`: a **drill-centric coaching app** with connected workflows for live practice, drill authoring, upload/reference training, replay/history, and calibration profiles.
 
-## Core Layers
+## Current implemented shape
 
-1. **UI layer** (`ui/*`)
-   Compose screens, navigation routes, workflow entry points, and user interaction state.
+### Product workflow anchors
 
-2. **Workflow / orchestration layer** (`ui/live`, `ui/upload`, drill workflow view models)
-   Coordinates countdown, live session lifecycle, imported-video analysis, drill editing flows, and async pipeline control.
+- **Home / Drill Hub** is the primary navigation anchor.
+- **Manage Drills** and **Drill Studio** own drill catalog and authoring behavior.
+- **Live Session** owns countdown gating, live coaching loop, and stop/finalize transitions.
+- **Upload / Reference Training** owns imported analysis and optional reference-template creation.
+- **Results / Session History** owns persisted outcomes and replay access.
+- **Calibration / Profiles** provides cross-workflow context for analysis behavior.
 
-3. **Domain layer** (`drills/*`, `movementprofile/*`, `calibration/*`)
-   Owns drill definitions, reference templates, baseline logic, calibration/body profile behavior, and session option resolution.
+### Technical layers
 
-4. **Analysis layer** (`pose/*`, `motion/*`, `biomechanics/*`)
-   Handles pose processing, scoring, phase detection, readiness, and issue classification.
+1. **UI/navigation** (`ui/*`)
+2. **Workflow orchestration** (`ui/live`, `ui/upload`, drill flow view models)
+3. **Domain** (`drills/*`, `movementprofile/*`, `calibration/*`)
+4. **Analysis** (`pose/*`, `motion/*`, `biomechanics/*`)
+5. **Media/recording/export** (`recording/*`, `camera/*`, `overlay/*`)
+6. **Persistence** (`storage/*`)
 
-5. **Recording / export layer** (`recording/*`, `camera/*`, `overlay/*`)
-   Handles capture, overlay timelines, normalization, composition, verification, and replay preparation.
+### Ownership boundaries
 
-6. **Data / persistence layer** (`storage/*`)
-   Owns Room entities, repositories, blob persistence, and cross-flow session truth.
+- **Drill authoring ownership**: drill studio view models + drill persistence mapping.
+- **Reference/comparison ownership**: movement profile/template creation and drill association flows.
+- **Calibration/profile ownership**: active profile resolution and calibration data history.
+- **Live lifecycle ownership**: session orchestration, countdown gating, finalize transitions.
+- **Replay/export ownership**: export pipeline, validation, media resolver, and session repository updates.
 
-## Current Product Ownership Boundaries
+## Future direction (intentional)
 
-- **Live session state owner**: `LiveCoachingViewModel`
-- **Uploaded analysis owner**: upload/import analysis coordinator classes under `ui/upload`
-- **Drill authoring owner**: Drill Studio and drill repository / mapper paths
-- **Reference/baseline ownership**: drill-linked movement profile and template persistence flows
-- **Calibration/profile ownership**: calibration and active body profile modules
-- **Replay source decision owner**: replay/media resolver helpers used by live, results, and share/save flows
-- **Persistence boundary**: `SessionRepository` / `SessionBlobStorage`
+- Keep drill workflows simple and deterministic.
+- Prefer one obvious save path in Drill Studio.
+- Avoid duplicate UX actions that produce the same outcome.
+- Keep replay decisions resilient: annotated-first when verified, raw fallback when needed.
+- Keep calibration/profile context available to all coaching workflows, not isolated settings pages.
 
-## Architecture Themes That Matter Now
+See [ADR-004](docs/decisions/adr-004-product-workflow-simplification.md).
 
-### Drill-centric workflows
-Most user journeys should start from a drill or return cleanly to drill context. Live practice, uploaded attempts, reference comparison, and drill editing should not feel like disconnected systems.
-
-### Simplified authoring UX
-Drill Studio should favor one obvious save path, truthful validation, reliable persistence, and minimal destructive actions.
-
-### Calibration-aware analysis
-Body profile and calibration data should influence analysis behavior consistently across live and imported flows.
-
-### Replay resilience
-Recording success, export success, and replay availability are related but independent. The app preserves session truth even when annotated export fails.
-
-## Most Important Docs
+## Architecture index
 
 - [System overview](docs/architecture/system-overview.md)
-- [App modules and boundaries](docs/architecture/app-modules.md)
+- [App modules](docs/architecture/app-modules.md)
 - [Session lifecycle](docs/architecture/session-lifecycle.md)
 - [Video pipeline](docs/architecture/video-pipeline.md)
-- [Overlay rendering](docs/architecture/overlay-rendering.md)
 - [Replay and fallback](docs/architecture/replay-and-fallback.md)
 - [Calibration and scoring](docs/architecture/calibration-and-scoring.md)
-- [Current user flows](docs/features/current-user-flows.md)
+- [Overlay rendering](docs/architecture/overlay-rendering.md)
 
-## Diagrams
+## Diagram index
 
 - [UI flow](docs/diagrams/ui-flow.md)
 - [Class diagram](docs/diagrams/class-diagram.md)
-- [Live session sequence](docs/diagrams/sequence-live-session.md)
-- [Import analysis sequence](docs/diagrams/sequence-import-analysis.md)
-- [Export finalization sequence](docs/diagrams/sequence-export-finalization.md)
-
-## Decision Records
-
-- [ADR-001 annotated export strategy](docs/decisions/adr-001-annotated-export-strategy.md)
-- [ADR-002 replay fallback strategy](docs/decisions/adr-002-replay-fallback-strategy.md)
-- [ADR-003 session duration source of truth](docs/decisions/adr-003-session-duration-source-of-truth.md)
-- [ADR-004 product workflow simplification](docs/decisions/adr-004-product-workflow-simplification.md)
+- [Sequence: live session](docs/diagrams/sequence-live-session.md)
+- [Sequence: import analysis](docs/diagrams/sequence-import-analysis.md)
+- [Sequence: export finalization](docs/diagrams/sequence-export-finalization.md)

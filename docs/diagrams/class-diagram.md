@@ -1,56 +1,62 @@
-# Class Diagram (Key Architecture Classes)
+# Class Diagram (Drill-Centric Ownership)
 
 ```mermaid
 classDiagram
-    class LiveCoachingViewModel {
-      +startSession()
-      +stopSession()
-      +onRecordingFinalized(uri)
+    class DrillHubViewModel {
+      +selectDrill()
+      +openFlow()
     }
     class DrillStudioViewModel {
-      +loadDrill(id)
+      +loadPersistedDrill(id)
       +validateAndSave()
     }
-    class SessionRepository {
-      +saveSession(record)
-      +updateAnnotatedExportStatus(sessionId, status)
+    class LiveSessionOrchestrator {
+      +resolveEffectiveView()
+      +startAfterCountdown()
+      +finalizeSession()
     }
-    class SessionBlobStorage {
-      +saveRawVideoBlob()
-      +saveAnnotatedVideoBlob()
+    class UploadAnalysisCoordinator {
+      +analyzeUpload()
+      +persistOutcome()
+    }
+    class ReferenceTemplateService {
+      +createOrUpdateTemplate()
+      +compareAttempt()
+    }
+    class RuntimeBodyProfileResolver {
+      +resolveActiveProfile()
+    }
+    class OverlayTimelineRecorder {
+      +appendFrame()
+      +freezeTimeline()
     }
     class AnnotatedExportPipeline {
-      +export(...)
+      +exportAnnotatedReplay()
     }
     class SessionMediaResolver {
-      +resolveReplay(...)
+      +resolveBestReplay()
     }
-    class DrillRegistry {
-      +getDrill(...)
+    class SessionRepository {
+      +saveSession()
+      +updateMediaOutcome()
     }
-    class ReferenceTemplateBuilder {
-      +buildFromProfile(...)
-    }
-    class MlKitVideoPoseFrameSource {
-      +open(...)
-    }
-    class MotionAnalysisPipeline {
-      +analyze(...)
-    }
-    class CalibrationEngine {
-      +buildProfile(...)
+    class SessionBlobStorage {
+      +persistRawMedia()
+      +persistAnnotatedMedia()
     }
 
-    LiveCoachingViewModel --> DrillRegistry
-    LiveCoachingViewModel --> SessionRepository
-    LiveCoachingViewModel --> AnnotatedExportPipeline
-    LiveCoachingViewModel --> MotionAnalysisPipeline
-    LiveCoachingViewModel --> SessionMediaResolver
-    DrillStudioViewModel --> DrillRegistry
+    DrillHubViewModel --> LiveSessionOrchestrator
+    DrillHubViewModel --> UploadAnalysisCoordinator
+    DrillHubViewModel --> DrillStudioViewModel
     DrillStudioViewModel --> SessionRepository
-    SessionRepository --> SessionBlobStorage
+    LiveSessionOrchestrator --> OverlayTimelineRecorder
+    LiveSessionOrchestrator --> AnnotatedExportPipeline
+    LiveSessionOrchestrator --> SessionMediaResolver
+    LiveSessionOrchestrator --> RuntimeBodyProfileResolver
+    UploadAnalysisCoordinator --> ReferenceTemplateService
+    UploadAnalysisCoordinator --> SessionRepository
+    UploadAnalysisCoordinator --> RuntimeBodyProfileResolver
     AnnotatedExportPipeline --> SessionMediaResolver
-    MlKitVideoPoseFrameSource --> MotionAnalysisPipeline
-    ReferenceTemplateBuilder --> MotionAnalysisPipeline
-    CalibrationEngine --> MotionAnalysisPipeline
+    SessionRepository --> SessionBlobStorage
+    ReferenceTemplateService --> SessionRepository
 ```

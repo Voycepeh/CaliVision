@@ -1,37 +1,47 @@
 # App Modules
 
-## UI Packages
+This page gives a scan-friendly map of key modules and why they exist.
 
-- `ui/home`, `ui/drills`, `ui/startdrill`, `ui/drilldetail`, `ui/live`, `ui/upload`, `ui/results`, `ui/history`, `ui/settings`
-- `ui/components`, `ui/common`, and `ui/navigation` provide shared UI primitives and routes.
+## 1) UI and navigation
 
-## Workflow and Flow Control
+- `ui/home`, `ui/navigation`: entry points and route wiring.
+- `ui/drills`, `ui/drilldetail`, `ui/startdrill`: drill hub, drill management, and launch paths.
+- `ui/live`: live coaching screens and state.
+- `ui/upload`: upload/reference training flows.
+- `ui/results`, `ui/history`: outcomes, replay, and prior sessions.
+- `ui/settings`: profile and calibration entry points.
 
-- `ui/live/LiveCoachingViewModel.kt` owns live session state transitions and finalization sequencing.
-- Upload flow classes under `ui/upload` coordinate imported-video analysis lifecycle.
-- Drill-management and drill-studio flows under `ui/drills` own drill editing, validation, and drill-linked navigation.
+## 2) Workflow orchestrators
 
-## Drill and Reference Domain
+- Live session orchestration (`ui/live/*`) controls countdown gating, start/stop, finalization, and post-session transitions.
+- Upload orchestration (`ui/upload/*`) controls import analysis, optional reference creation, and persistence.
+- Drill authoring orchestration (`ui/drills/*`) controls editing, validation, and save behavior in Drill Studio.
 
-- `drills/*` covers drill definitions, drill registry/catalog behavior, and authoring support.
-- `movementprofile/*` covers imported-video pose sourcing, movement extraction, and reference/template compatibility.
-- Reference-template and baseline selection logic sits at the boundary between drill workflows, movement profiles, and persistence.
+## 3) Drill + reference domain
 
-## Calibration and Analysis
+- `drills/*`: drill definitions, registry/catalog, drill metadata, authoring support.
+- `movementprofile/*`: extracted movement/reference data from uploads or prior sessions.
+- Drill-linked reference/template logic spans drill domain + movement profile + persistence.
 
-- `calibration/*` covers calibration sessions, user body profiles, and readiness/profile application.
-- `pose/*` handles frame validation, smoothing, and coordinate mapping.
-- `motion/*` handles movement, phase, and quality analysis.
-- `biomechanics/*` handles drill-specific scoring and issue classification.
+## 4) Calibration + analysis
 
-## Media and Recording
+- `calibration/*`: user profiles, calibration history, active profile resolution.
+- `pose/*`: frame validity, smoothing, coordinate mapping.
+- `motion/*`: phase/movement analysis.
+- `biomechanics/*`: drill-specific scoring and issue classification.
 
-- `camera/CameraSessionManager.kt` handles camera and recording session control.
-- `recording/*` includes annotated export pipeline, normalization, overlay timeline, replay preparation, and media verification.
-- `overlay/*` handles overlay render geometry and frame rendering support.
+## 5) Media, overlay, and export
 
-## Data and Storage
+- `camera/*`: capture lifecycle and recorder interaction.
+- `overlay/*`: live overlay geometry/render support.
+- `recording/*`: timeline capture, normalization, annotated render, verification.
 
-- `storage/repository/SessionRepository.kt` is the main persistence boundary.
-- `storage/db/*` provides Room entities, converters, and DAOs.
-- `storage/SessionBlobStorage.kt` persists media artifacts.
+## 6) Persistence
+
+- `storage/db/*`: Room schema + DAOs.
+- `storage/repository/*`: session/drill/profile persistence boundaries.
+- `storage/SessionBlobStorage.kt`: media artifact persistence.
+
+## Practical rule of thumb
+
+If a change affects user workflow semantics (start gating, save behavior, replay selection, reference creation), update the matching architecture + feature docs and corresponding diagrams in the same PR.
