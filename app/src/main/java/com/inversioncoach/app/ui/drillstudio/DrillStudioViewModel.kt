@@ -648,7 +648,7 @@ internal fun DrillDefinitionRecord.toDrillTemplate(seed: DrillTemplate?): DrillT
         phases = phases,
         skeletonTemplate = fallback.skeletonTemplate.copy(
             phasePoses = phasePoses,
-            keyframes = seededOrAuthoredKeyframes ?: phasePosesToKeyframes(phasePoses),
+            keyframes = seededOrAuthoredKeyframes ?: phasePosesToKeyframesForRecord(phasePoses),
         ),
         calibration = fallback.calibration.copy(
             metricThresholds = payload?.metricThresholds ?: fallback.calibration.metricThresholds,
@@ -667,6 +667,35 @@ internal data class PersistedStudioPayload(
     val keyframes: List<SkeletonKeyframeTemplate>,
     val metricThresholds: Map<String, Float>,
 )
+
+private fun phasePosesToKeyframesForRecord(phasePoses: List<PhasePoseTemplate>): List<SkeletonKeyframeTemplate> {
+    if (phasePoses.isEmpty()) {
+        val fallbackJoints = DrillStudioPoseUtils.normalizeJointNames(DrillStudioPosePresets.neutralUpright.joints)
+        return listOf(
+            SkeletonKeyframeTemplate(0f, fallbackJoints),
+            SkeletonKeyframeTemplate(1f, fallbackJoints),
+        )
+    }
+    if (phasePoses.size == 1) {
+        val joints = DrillStudioPoseUtils.normalizeJointNames(phasePoses.first().joints)
+        return listOf(
+            SkeletonKeyframeTemplate(0f, joints),
+            SkeletonKeyframeTemplate(1f, joints),
+        )
+    }
+    val totalDurationMs = phasePoses.sumOf { (it.holdDurationMs ?: 0) + it.transitionDurationMs }.coerceAtLeast(1)
+    var elapsedMs = 0
+    val keyframes = phasePoses.map { pose ->
+        val progress = elapsedMs.toFloat() / totalDurationMs.toFloat()
+        elapsedMs += (pose.holdDurationMs ?: 0) + pose.transitionDurationMs
+        SkeletonKeyframeTemplate(
+            progress = progress.coerceIn(0f, 1f),
+            joints = DrillStudioPoseUtils.normalizeJointNames(pose.joints),
+        )
+    }.toMutableList()
+    keyframes += SkeletonKeyframeTemplate(1f, DrillStudioPoseUtils.normalizeJointNames(phasePoses.last().joints))
+    return keyframes
+}
 
 internal fun DrillTemplate.encodeStudioPayload(): String {
     val json = JSONObject().apply {
