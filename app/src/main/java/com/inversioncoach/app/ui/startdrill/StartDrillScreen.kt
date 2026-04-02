@@ -41,6 +41,9 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.inversioncoach.app.R
+import com.inversioncoach.app.biomechanics.DrillConfigs
+import com.inversioncoach.app.drills.DrillDefinitionResolver
 import com.inversioncoach.app.drills.SelectableDrill
 import com.inversioncoach.app.drills.catalog.JointPoint
 import com.inversioncoach.app.drills.catalog.StickFigureAnimator
@@ -59,13 +62,34 @@ private val defaultSessionOptions = LiveSessionOptions(
     effectiveView = EffectiveView.SIDE,
 )
 
+enum class StartDrillDestination { LIVE, WORKSPACE }
+
+private data class DrillGridItem(
+    val type: DrillType,
+    @DrawableRes val imageRes: Int,
+)
+
 @Composable
 fun StartDrillScreen(
     onBack: () -> Unit,
     onStart: (DrillType, LiveSessionOptions) -> Unit,
+    destination: StartDrillDestination = StartDrillDestination.LIVE,
+    onOpenWorkspace: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val repository = remember { ServiceLocator.repository(context) }
+    val drills by repository.getAllDrills().collectAsState(initial = emptyList())
+    val drillByType = remember { DrillConfigs.all.associateBy { it.type } }
+    val gridItems = remember(drillByType) {
+        listOf(
+            DrillGridItem(DrillType.FREE_HANDSTAND, R.drawable.handstand_free_preview),
+            DrillGridItem(DrillType.WALL_HANDSTAND, R.drawable.handstand_wall_preview),
+            DrillGridItem(DrillType.PIKE_PUSH_UP, R.drawable.pike_pushup_preview),
+            DrillGridItem(DrillType.ELEVATED_PIKE_PUSH_UP, R.drawable.pike_pushup_elevated_preview),
+            DrillGridItem(DrillType.HANDSTAND_PUSH_UP, R.drawable.handstand_pushup_free_preview),
+            DrillGridItem(DrillType.WALL_HANDSTAND_PUSH_UP, R.drawable.handstand_pushup_wall_preview),
+        ).filter { drillByType.containsKey(it.type) }
+    }
     val drills by repository.observeSelectableTrainingDrills().collectAsState(initial = emptyList())
 
     var selectedDrillId by remember { mutableStateOf<String?>(null) }
@@ -73,6 +97,12 @@ fun StartDrillScreen(
     var selectedView by remember { mutableStateOf(EffectiveView.SIDE) }
     var showCenterOfGravity by remember { mutableStateOf(true) }
 
+    val selectedDrillId = remember(selectedDrill, drills) {
+        val drillType = selectedDrill ?: return@remember null
+        drills.firstOrNull { DrillDefinitionResolver.resolveLegacyDrillType(it) == drillType }?.id
+    }
+
+    LaunchedEffect(selectedDrill) {
     val selectedDrill = remember(selectedDrillId, drills) { drills.firstOrNull { it.id == selectedDrillId } }
 
     LaunchedEffect(drills) {
@@ -95,7 +125,11 @@ fun StartDrillScreen(
         ) {
             Text("Choose your flow", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Text(
-                text = "Tap a drill to select it, then start coaching.",
+                text = if (destination == StartDrillDestination.WORKSPACE) {
+                    "Tap a drill to open its workspace for coaching, uploads, comparison, and history."
+                } else {
+                    "Tap a drill to select it, then start coaching."
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -117,12 +151,58 @@ fun StartDrillScreen(
             }
 
             if (selectedDrill != null) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    EffectiveView.entries.forEach { view ->
-                        FilterChip(
-                            selected = selectedView == view,
-                            onClick = { selectedView = view },
-                            label = { Text(view.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                if (destination == StartDrillDestination.LIVE) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        EffectiveView.entries.forEach { view ->
+                            FilterChip(
+                                selected = selectedView == view,
+                                onClick = { selectedView = view },
+                                label = { Text(view.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                            )
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    ) {
+                        Text("Show CoG star")
+                        Switch(checked = showCenterOfGravity, onCheckedChange = { showCenterOfGravity = it })
+                    }
+                    Card(
+                        onClick = {
+                            val drill = selectedDrill ?: return@Card
+                            onStart(
+                                drill,
+                                defaultSessionOptions.copy(
+                                    drillCameraSide = preferredSide,
+                                    showCenterOfGravity = showCenterOfGravity,
+                                    effectiveView = selectedView,
+                                ),
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                    ) {
+                        Text(
+                            "Start ${selectedDrill?.displayName}",
+                            modifier = Modifier.padding(14.dp),
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
+                } else {
+                    Card(
+                        onClick = { selectedDrillId?.let { onOpenWorkspace?.invoke(it) } },
+                        enabled = selectedDrillId != null,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                    ) {
+                        Text(
+                            "Open ${selectedDrill?.displayName} Workspace",
+                            modifier = Modifier.padding(14.dp),
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.titleMedium,
                         )
                     }
                 }

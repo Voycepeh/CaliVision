@@ -46,6 +46,7 @@ fun HistoryScreen(
     onBack: () -> Unit,
     onOpenSession: (Long) -> Unit,
     drillIdFilter: String? = null,
+    comparisonMode: Boolean = false,
 ) {
     val context = LocalContext.current
     val repository = remember { ServiceLocator.repository(context) }
@@ -123,7 +124,7 @@ fun HistoryScreen(
         }
     }
 
-    ScaffoldedScreen(title = "History", onBack = onBack) { padding ->
+    ScaffoldedScreen(title = if (comparisonMode) "Compare Attempts" else "History", onBack = onBack) { padding ->
         Column(
             Modifier
                 .fillMaxSize()
@@ -131,7 +132,10 @@ fun HistoryScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Session insights", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text(if (comparisonMode) "Compare drill attempts" else "Session insights", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            if (comparisonMode) {
+                Text("Select a session to review results. Entries are drill-scoped when launched from Drill Workspace.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             if (!drillIdFilter.isNullOrBlank()) {
                 val drillName = drills.firstOrNull { it.id == drillIdFilter }?.name ?: drillIdFilter
                 Text("Filtered to drill: $drillName", color = MaterialTheme.colorScheme.onSurfaceVariant)
