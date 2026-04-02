@@ -285,10 +285,28 @@ object DatabaseMigrations {
         }
     }
 
+
+
     val MIGRATION_18_19: Migration = object : Migration(18, 19) {
         override fun migrate(db: SupportSQLiteDatabase) {
-            db.execSQL("ALTER TABLE user_settings ADD COLUMN annotatedExportQuality TEXT NOT NULL DEFAULT 'STABLE'")
-            db.execSQL("ALTER TABLE user_settings ADD COLUMN hasCompletedPreferencesOnboarding INTEGER NOT NULL DEFAULT 0")
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `upload_processing_jobs` (
+                    `id` TEXT NOT NULL,
+                    `workId` TEXT,
+                    `sessionId` INTEGER,
+                    `stage` TEXT NOT NULL,
+                    `processedFrames` INTEGER NOT NULL,
+                    `totalFrames` INTEGER NOT NULL,
+                    `startedAt` INTEGER NOT NULL,
+                    `updatedAt` INTEGER NOT NULL,
+                    `lastHeartbeatAt` INTEGER NOT NULL,
+                    `terminalStatus` TEXT NOT NULL,
+                    `reason` TEXT,
+                    PRIMARY KEY(`id`)
+                )
+                """.trimIndent(),
+            )
         }
     }
 
