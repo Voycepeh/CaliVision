@@ -106,6 +106,51 @@ class UploadedVideoAnalysisTest {
         assertEquals(7L, result.telemetry["calibration_profile_version"])
     }
 
+    @Test
+    fun progressObserverReachesCompletion() {
+        val profile = ExistingDrillToProfileAdapter().fromDrill(DrillType.FREESTYLE)
+        val source = object : VideoPoseFrameSource {
+            override fun decode(videoUri: Uri): Sequence<PoseFrame> = sequence {
+                yield(frame(0, 0.9f))
+                yield(frame(200, 0.8f))
+            }
+        }
+        val events = mutableListOf<AnalysisProgressEvent>()
+
+        UploadedVideoAnalyzer(source).analyze(
+            videoUri = Uri.parse("file:///tmp/progress.mp4"),
+            profile = profile,
+            progressObserver = AnalysisProgressObserver { events += it },
+        )
+
+        val completion = events.last { it.stage == "analysis_complete" }
+        assertEquals(2, completion.processedFrames)
+        assertEquals(2, completion.estimatedTotalFrames)
+    }
+
+    @Test
+    fun analyzerMergesSamplingTelemetryFromFrameSource() {
+        val profile = ExistingDrillToProfileAdapter().fromDrill(DrillType.FREESTYLE)
+        val source = object : VideoPoseFrameSource, UploadSamplingTelemetryProvider {
+            override fun decode(videoUri: Uri): Sequence<PoseFrame> = sequence {
+                yield(frame(0, 0.9f))
+            }
+
+            override fun samplingTelemetry(): Map<String, Long> = mapOf(
+                "adaptive_candidate_frames" to 42L,
+                "adaptive_sampled_frames" to 9L,
+            )
+        }
+
+        val result = UploadedVideoAnalyzer(source).analyze(
+            videoUri = Uri.parse("file:///tmp/telemetry.mp4"),
+            profile = profile,
+        )
+
+        assertEquals(42L, result.telemetry["adaptive_candidate_frames"])
+        assertEquals(9L, result.telemetry["adaptive_sampled_frames"])
+    }
+
     private fun frame(ts: Long, confidence: Float): PoseFrame = PoseFrame(
         timestampMs = ts,
         confidence = confidence,

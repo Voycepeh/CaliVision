@@ -105,6 +105,7 @@ private const val TAG = "UploadVideoFlow"
 private const val ANALYSIS_PROGRESS_UPDATE_FRAME_INTERVAL = 1
 private const val ANALYSIS_PROGRESS_UPDATE_MS = 100L
 private const val UPLOADED_ANALYSIS_SAMPLE_FPS = 6
+private const val ENABLE_ADAPTIVE_UPLOAD_SAMPLING = true
 
 enum class UploadStage(val label: String) {
     IDLE("Idle"),
@@ -201,7 +202,14 @@ class DefaultUploadVideoAnalysisRunner(
     private val repository: SessionRepository,
     private val runtimeBodyProfileResolver: RuntimeBodyProfileResolver? = null,
     private val frameSourceFactory: (Context, Int) -> VideoPoseFrameSource = { appContext, fps ->
-        MlKitVideoPoseFrameSource(appContext, sampleFps = fps)
+        MlKitVideoPoseFrameSource(
+            context = appContext,
+            sampleFps = fps,
+            adaptiveConfig = com.inversioncoach.app.movementprofile.AdaptiveSamplingConfig(
+                enabled = ENABLE_ADAPTIVE_UPLOAD_SAMPLING,
+                legacyFixedFps = fps,
+            ),
+        )
     },
     private val analyzerFactory: (VideoPoseFrameSource) -> UploadedVideoAnalyzer = { UploadedVideoAnalyzer(it) },
     private val exportPipelineFactory: () -> AnnotatedExportPipeline = {
@@ -389,7 +397,17 @@ class DefaultUploadVideoAnalysisRunner(
             currentStage = UploadStage.RAW_IMPORT_COMPLETE
             logStage("RAW_IMPORTED", "rawUri=$persistedRawUri durationMs=$sourceDurationMs width=${metadata.width} height=${metadata.height}")
 
-            val profile = drillDefinition?.let { buildMovementProfileFromDrill(it) } ?: ExistingDrillToProfileAdapter().fromDrill(drillType)
+            val baseProfile = drillDefinition?.let { buildMovementProfileFromDrill(it) } ?: ExistingDrillToProfileAdapter().fromDrill(drillType)
+            val profile = baseProfile.copy(
+                movementType = if (drillDefinition != null) {
+                    baseProfile.movementType
+                } else {
+                    when (trackingMode) {
+                        UploadTrackingMode.HOLD_BASED -> MovementType.HOLD
+                        UploadTrackingMode.REP_BASED -> MovementType.REP
+                    }
+                },
+            )
             currentStage = UploadStage.PREPARING_ANALYSIS
             repository.updateAnnotatedExportStatus(sessionId, AnnotatedExportStatus.VALIDATING_INPUT)
             repository.updateAnnotatedExportProgress(
