@@ -12,7 +12,7 @@ flowchart TD
     HISTORY[Results / Session History]
 
     MANAGE[Manage Drills]
-    STUDIO[Drill Studio]
+    STUDIO[Drill Studio\nImage-per-phase Authoring]
     WORKSPACE[Drill Workspace]
 
     UPLOAD[Upload / Reference Training]
@@ -27,6 +27,7 @@ flowchart TD
     LIVE --> SHORT --> HOME
 
     HOME --> MANAGE --> STUDIO --> MANAGE
+    STUDIO -->|Export/Import Drill Package| MANAGE
     HOME --> START --> WORKSPACE
     WORKSPACE --> LIVE
     WORKSPACE --> UPLOAD

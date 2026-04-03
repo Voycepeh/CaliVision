@@ -159,6 +159,19 @@ The reference-template workflow is being structured so scoring and comparison ca
 
 Seeded drill motion previews now use one shared renderer in `ui/components/SeededSkeletonPreview.kt` across drill catalog cards and Drill Studio. The shared policy centralizes portrait aspect ratio, content padding/fit behavior, skeleton styling, and default playback timing assumptions so preview proportions stay consistent across surfaces.
 
+## Drill authoring phase-1 (image seeded phases)
+
+Drill Studio now includes a production path for **single-image phase seeding** inside the existing drill editing flow:
+
+- attach one image per phase
+- run on-device pose detection and overlay the detected skeleton on top of the image
+- apply small per-joint manual correction offsets
+- use optional frame/floor/wall/bar visual guides for alignment
+- persist authored phase pose + correction + guide metadata with the drill record
+- copy selected authoring images into app-managed storage for durable reopen behavior
+
+Manage Drills also supports **drill package export/import** for authored drills, so phase-seeded drills can be shared across devices and later promoted into app seed material with minimal transformation.
+
 ## Running locally
 
 Prerequisites:
