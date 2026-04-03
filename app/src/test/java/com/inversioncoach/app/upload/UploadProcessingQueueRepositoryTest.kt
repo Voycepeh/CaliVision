@@ -87,7 +87,7 @@ private class FakeDao : UploadProcessingJobDao {
         items.values.filter { it.status == UploadJobStatus.QUEUED }.minByOrNull { it.enqueueOrder }
 
     override suspend fun getPendingJobs(): List<UploadProcessingJob> =
-        items.values.filter { it.status in setOf(UploadJobStatus.QUEUED, UploadJobStatus.RUNNING, UploadJobStatus.RETRYING) }
+        items.values.filter { it.status in setOf(UploadJobStatus.QUEUED, UploadJobStatus.RETRYING) }
 
     override suspend fun getActiveQueueCount(): Int = getPendingJobs().size
 

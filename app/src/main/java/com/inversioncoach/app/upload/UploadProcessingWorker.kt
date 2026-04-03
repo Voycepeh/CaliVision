@@ -121,7 +121,7 @@ class UploadProcessingWorker(
                 lastProgressAt = now,
                 processedFrames = progress.processedFrames ?: job.processedFrames,
                 totalFrames = progress.totalFrames ?: job.totalFrames,
-                lastTimestampMs = job.lastTimestampMs,
+                lastTimestampMs = progress.lastTimestampMs ?: job.lastTimestampMs,
             ),
         )
         setForeground(foregroundInfo(jobId, stage.name.replace('_', ' '), (progress.percent * 100).toInt()))

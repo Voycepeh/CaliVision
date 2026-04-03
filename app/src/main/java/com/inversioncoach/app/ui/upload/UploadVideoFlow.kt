@@ -131,6 +131,7 @@ data class UploadProgress(
     val processedFrames: Int? = null,
     val totalFrames: Int? = null,
     val phasePercent: Int? = null,
+    val lastTimestampMs: Long? = null,
 )
 
 enum class UploadTrackingMode {
@@ -556,6 +557,7 @@ class DefaultUploadVideoAnalysisRunner(
                                     processedFrames = analyzedFramesForUi,
                                     totalFrames = totalFramesForUi,
                                     phasePercent = movementPercent,
+                                    lastTimestampMs = event.timestampMs,
                                 ),
                             )
                         }
@@ -569,6 +571,7 @@ class DefaultUploadVideoAnalysisRunner(
                                 processedFrames = analyzedFramesForUi,
                                 totalFrames = totalFramesForUi.takeIf { it > 0 } ?: (estimatedTotal ?: 0),
                                 phasePercent = 0,
+                                lastTimestampMs = event.timestampMs,
                             ),
                         )
                     } else if (event.stage == "analysis_complete") {
@@ -581,6 +584,7 @@ class DefaultUploadVideoAnalysisRunner(
                                 processedFrames = analyzedFramesForUi.coerceAtLeast(totalFramesForUi),
                                 totalFrames = totalFramesForUi.coerceAtLeast(analyzedFramesForUi),
                                 phasePercent = 100,
+                                lastTimestampMs = event.timestampMs,
                             ),
                         )
                     }
@@ -880,7 +884,7 @@ class DefaultUploadVideoAnalysisRunner(
                         totalFrames = total,
                         detail = "Rendering annotated video",
                     )
-                    onProgress(UploadProgress(UploadStage.EXPORTING_ANNOTATED_VIDEO, percent / 100f, detail = "Rendered $rendered/$total"))
+                    onProgress(UploadProgress(UploadStage.EXPORTING_ANNOTATED_VIDEO, percent / 100f, detail = "Rendered $rendered/$total", lastTimestampMs = null))
                 },
             )
             log("export_done started=${export.started} failure=${export.failureReason.orEmpty()} uri=${export.persistedUri.orEmpty()}")

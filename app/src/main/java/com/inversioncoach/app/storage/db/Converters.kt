@@ -77,9 +77,10 @@ class Converters {
     @TypeConverter
     fun sessionSourceToString(value: SessionSource): String = value.name
 
+
     @TypeConverter
     fun uploadJobStatusFromString(raw: String): UploadJobStatus =
-        runCatching { UploadJobStatus.valueOf(raw) }.getOrDefault(UploadJobStatus.IDLE)
+        runCatching { UploadJobStatus.valueOf(raw) }.getOrDefault(UploadJobStatus.QUEUED)
 
     @TypeConverter
     fun uploadJobStatusToString(value: UploadJobStatus): String = value.name
