@@ -100,7 +100,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.coroutineContext
-import org.json.JSONObject
 import java.util.UUID
 
 private const val TAG = "UploadVideoFlow"
@@ -720,6 +719,7 @@ class DefaultUploadVideoAnalysisRunner(
                 val selectedTemplateRecord = selectedReferenceTemplateId?.let { repository.getReferenceTemplate(it) }
                 if (selectedTemplateRecord != null) {
                     val referenceProfileId = ReferenceTemplateRecordCodec.sourceProfileIds(selectedTemplateRecord).firstOrNull().orEmpty()
+                    val referenceProfileId = repository.getReferenceProfileIds(selectedTemplateRecord).firstOrNull().orEmpty()
                     val referenceProfile = repository.getMovementProfile(referenceProfileId)
                     if (referenceProfile != null) {
                         val comparison = MovementComparisonEngine().compareStoredProfiles(
@@ -757,7 +757,7 @@ class DefaultUploadVideoAnalysisRunner(
                             )
                         }
                     } else {
-                        val templateDefinition = templateDefinitionFromRecord(selectedTemplateRecord)
+                        val templateDefinition = repository.getReferenceTemplateDefinition(selectedTemplateRecord.id)
                         if (templateDefinition != null) {
                             val comparison = MovementComparisonEngine().compare(templateDefinition, analysis)
                             repository.saveSessionComparison(
@@ -1233,6 +1233,8 @@ class DefaultUploadVideoAnalysisRunner(
     private suspend fun templatesAreEmptyForDrill(repository: SessionRepository, drillId: String): Boolean =
         repository.listTemplatesForDrill(drillId).first().isEmpty()
 
+    private suspend fun templatesAreEmptyForDrill(repository: SessionRepository, drillId: String): Boolean =
+        repository.listTemplatesForDrill(drillId).first().isEmpty()
 }
 
 internal fun validateSelectedDrillForUpload(
