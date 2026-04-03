@@ -51,7 +51,6 @@ import com.inversioncoach.app.drills.catalog.DrillCatalogRepository
 import com.inversioncoach.app.drills.catalog.DrillTemplate
 import com.inversioncoach.app.drills.catalog.JointPoint
 import com.inversioncoach.app.drills.catalog.PhasePoseTemplate
-import com.inversioncoach.app.drills.catalog.StickFigureAnimator
 import com.inversioncoach.app.overlay.OverlaySkeletonSpec
 import com.inversioncoach.app.overlay.jointStyle
 import com.inversioncoach.app.storage.ServiceLocator
@@ -59,6 +58,7 @@ import com.inversioncoach.app.ui.components.DropdownOption
 import com.inversioncoach.app.ui.components.MultiSelectChipsField
 import com.inversioncoach.app.ui.components.ReliableDropdownField
 import com.inversioncoach.app.ui.components.ScaffoldedScreen
+import com.inversioncoach.app.ui.components.SeededSkeletonPreview
 import kotlinx.coroutines.isActive
 import android.util.Log
 
@@ -203,9 +203,11 @@ private fun DrillStudioEditor(
 
     LaunchedEffect(autoPlay, draft.id, draft.skeletonTemplate.framesPerSecond) {
         if (!autoPlay) return@LaunchedEffect
+        val frameCount = draft.skeletonTemplate.keyframes.size.coerceAtLeast(1)
+        val progressStep = 1f / frameCount.toFloat()
         while (isActive) {
             val fps = draft.skeletonTemplate.framesPerSecond.coerceAtLeast(1)
-            previewProgress += 1f / fps.toFloat()
+            previewProgress += progressStep
             if (previewProgress > 1f) previewProgress -= 1f
             kotlinx.coroutines.delay((1000L / fps).coerceAtLeast(16L))
         }
@@ -486,34 +488,10 @@ private fun PoseCanvas(
 
 @Composable
 private fun PreviewCard(drill: DrillTemplate, progress: Float) {
-    val pose = remember(drill.id, progress, drill.skeletonTemplate.keyframes) {
-        DrillStudioPoseUtils.normalizeJointNames(StickFigureAnimator.poseAt(drill.skeletonTemplate, progress))
-    }
-    val baseJointColor = Color(0xFF7CF0A9)
-    Canvas(modifier = Modifier.fillMaxWidth().height(STUDIO_STAGE_HEIGHT).background(MaterialTheme.colorScheme.surface)) {
-        canonicalStudioBones().forEach { (start, end) ->
-            val a = pose[start]
-            val b = pose[end]
-            if (a != null && b != null) {
-                drawLine(
-                    color = baseJointColor,
-                    start = Offset(a.x * size.width, a.y * size.height),
-                    end = Offset(b.x * size.width, b.y * size.height),
-                    strokeWidth = 4f,
-                    cap = StrokeCap.Round,
-                )
-            }
-        }
-        pose.forEach { (name, point) ->
-            val style = jointStyle(name, baseJointColor, 6f)
-            drawCircle(
-                color = style.color,
-                radius = style.radius,
-                center = Offset(point.x * size.width, point.y * size.height),
-                style = Stroke(width = 3f),
-            )
-        }
-    }
+    SeededSkeletonPreview(
+        template = drill.skeletonTemplate,
+        progress = progress,
+    )
 }
 
 @Composable

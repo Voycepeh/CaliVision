@@ -158,6 +158,10 @@ The reference-template and movement-profile workflow is being structured so scor
 - Decision records: [`docs/decisions/`](docs/decisions)
 - Diagrams: [`docs/diagrams/`](docs/diagrams)
 
+## Seeded skeleton preview renderer (developer note)
+
+Seeded drill motion previews now use one shared renderer in `ui/components/SeededSkeletonPreview.kt` across drill catalog cards and Drill Studio. The shared policy centralizes portrait aspect ratio, content padding/fit behavior, skeleton styling, and default playback timing assumptions so preview proportions stay consistent across surfaces.
+
 ## Running locally
 
 Prerequisites:
