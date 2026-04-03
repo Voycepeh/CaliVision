@@ -1,31 +1,31 @@
 # System Overview
 
-CaliVision is a drill-centric coaching system. The product is shaped around practical coaching journeys that share common analysis, media, and persistence infrastructure.
+CaliVision is a drill-centric coaching system with connected live, upload, replay/history, and calibration workflows.
 
 ## Workflow surfaces
 
-- **Home / Drill Hub**: primary entry for starting practice and navigating core actions.
-- **Manage Drills**: drill catalog management and drill selection context.
-- **Drill Studio**: drill authoring/editing with deterministic save behavior.
-- **Live Session**: countdown-gated live coaching and scoring loop.
-- **Upload / Reference Training**: imported clip analysis, reference creation, and comparison setup.
-- **Results / Session History**: persisted session outcomes, replay, and drill-linked review.
-- **Calibration / Profiles**: active body profile context applied across coaching workflows.
+- **Home / Drill Hub**: primary navigation and launch surface.
+- **Manage Drills**: drill catalog maintenance.
+- **Drill Studio**: create/edit drill definitions.
+- **Live Session**: countdown-gated real-time coaching.
+- **Upload / Reference Training**: imported clip analysis and optional drill-linked reference creation.
+- **Results / Session History**: persisted outcomes and replay access.
+- **Calibration / Profiles**: active body profile context for analysis.
 
 ## Runtime subsystems
 
-- **UI + navigation**: route state and screen coordination.
-- **Workflow orchestrators**: live and upload coordinators own lifecycle transitions.
-- **Drill/reference domain**: drill definitions, drill-linked references/templates, comparison inputs.
-- **Analysis engines**: pose, motion, biomechanics, issue detection, score rollups.
-- **Media pipelines**: recording, timeline capture, export, validation, replay selection.
-- **Persistence**: session, drill, calibration, and media state in Room + blob storage.
+- **Navigation/UI**: `ui/navigation`, feature screens in `ui/**`.
+- **Workflow orchestrators**: `LiveCoachingViewModel`, `UploadVideoViewModel`, drill studio view models.
+- **Domain**: `drills`, `movementprofile`, `calibration`.
+- **Analysis**: `pose`, `motion`, `biomechanics`, coaching cues.
+- **Media**: recording, overlay timeline, annotated export, replay resolver.
+- **Persistence**: Room + repository + blob storage.
 
-## System invariants
+## Operational invariants
 
-1. Drill context should stay recoverable through live, upload, history, and comparison flows.
-2. Countdown and start gating should prevent premature “started” state.
-3. Session truth must persist even when annotated export fails.
-4. Replay selection should prefer verified annotated output, then fall back to verified raw media.
-5. Calibration/profile context should resolve consistently across live and imported analysis.
-6. Finalization and export boundaries should remain diagnostics-friendly and failure-tolerant.
+1. Drill context remains recoverable across live/upload/results/history flows.
+2. Countdown/start gating prevents premature active-session state.
+3. Session truth persists even if annotated export fails.
+4. Replay prefers verified annotated output, then verified raw fallback.
+5. Calibration/profile context is consistently applied to live and upload analysis.
+6. Workflow/architecture naming changes require docs and diagrams updates in the same PR.

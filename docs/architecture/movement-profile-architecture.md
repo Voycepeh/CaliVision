@@ -1,18 +1,26 @@
-# Movement Profile Architecture (Foundation)
+# Movement Profile Architecture
 
-## Old model vs new model
+This document summarizes how drill-linked movement profiles are represented and used today.
 
-- **Old**: drill-specific logic and threshold branching lived in multiple live-coaching components.
-- **New foundation**: `MovementProfile` becomes the generic movement definition contract, with legacy drills mapped through adapters.
+## Core model
 
-## Core domain additions
+The movement-profile domain lives in `app/src/main/java/com/inversioncoach/app/movementprofile`.
 
-- `MovementProfile`, `MovementType`, `CameraViewConstraint`
-- `PhaseDefinition`, `AlignmentRule`, `HoldRule`, `RepRule`, `ReadinessRule`
-- `CalibrationProfile` for versioned threshold overrides
-- `MovementTemplateCandidate` (draft-only artifact generated from uploaded analysis)
+Key model types include:
 
-## Core services additions
+- `MovementProfile`
+- `MovementType`
+- `PhaseDefinition`
+- `AlignmentRule`
+- `HoldRule`
+- `RepRule`
+- `ReadinessRule`
+- `CalibrationProfile`
+- `MovementTemplateCandidate`
+
+## Core engines and adapters
+
+Current reusable engines:
 
 - `PoseFrameNormalizer`
 - `LandmarkVisibilityEvaluator`
@@ -24,28 +32,26 @@
 - `AlignmentScorer`
 - `MovementFeedbackEngine`
 
-These are profile-driven and reusable for both live sessions and upload analysis.
+Compatibility bridge:
 
-## Upload analysis pipeline (offline)
+- `ExistingDrillToProfileAdapter` maps drill definitions to movement-profile contracts.
 
-`UploadedVideoAnalysisCoordinator -> UploadedVideoAnalyzer -> UploadedAnalysisRepository`
+## Upload/reference analysis integration
 
-Output artifact is `UploadedMovementSession` with:
-- source video URI
-- timing and telemetry
-- phase timeline
-- overlay-ready timeline points
-- derived metrics
-- generated draft `MovementTemplateCandidate`
+Upload analysis pipeline classes:
 
-## Compatibility layer
+- `UploadedVideoAnalyzer`
+- `UploadedVideoAnalysisCoordinator`
+- `UploadedAnalysisRepository` (`FileUploadedAnalysisRepository` implementation)
+- `MovementTemplateCandidateGenerator`
 
-- `ExistingDrillToProfileAdapter` maps existing drill catalog definitions to a `MovementProfile`.
-- `LegacyDrillExecutionBridge` applies calibration profile versions to base defaults while preserving drill identity and behavior.
+Outputs include timeline points, derived metrics, and candidate templates used for drill-linked reference workflows.
 
-## Migration strategy
+## Contributor note
 
-1. Use adapters to preserve all current drills.
-2. Enable freestyle/generic paths to consume profile-backed readiness + analysis.
-3. Add upload analysis storage and draft candidate generation.
-4. Iterate calibration persistence from in-memory to Room-backed storage in a follow-up.
+When movement-profile schema, thresholds, or mapping logic change, update:
+
+- this document,
+- `docs/features/video-import.md`,
+- `docs/features/reference-training.md`,
+- and relevant sequence/class diagrams.

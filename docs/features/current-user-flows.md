@@ -1,75 +1,69 @@
 # Feature: Current User Flows
 
-This page describes the intended end-to-end user journeys for the current product direction.
+This document captures the current end-to-end app workflows and route surfaces.
+
+## Route-level flow map
+
+- `home` -> Home / Drill Hub
+- `start` -> Start Drill selector
+- `live/...` -> Live Session
+- `results/{sessionId}` -> Results
+- `history` + `session-history?...` -> Results / Session History surfaces
+- `manage-drills` -> Manage Drills
+- `drill-studio?...` -> Drill Studio
+- `drill-workspace/{drillId}` -> Drill Workspace
+- `upload-video?...` -> Upload / Reference Training
+- `calibration` -> Calibration / Profiles
 
 ## 1) Home / Drill Hub
 
-Home routes users into Drill Hub as the main practice anchor. From Drill Hub users should be able to:
+Home is the primary entry point. Users can start sessions, open drill workflows, open uploads, inspect history, and access calibration/settings.
 
-- Start a live session for a drill.
-- Open Manage Drills.
-- Open Upload / Reference Training.
-- Reach Results / Session History and Calibration / Profiles without losing workflow context.
+## 2) Manage Drills -> Drill Studio
 
-## 2) Manage Drills
+1. Open `manage-drills`.
+2. Create or open a drill.
+3. Navigate to `drill-studio`.
+4. Save and return to Manage Drills.
 
-Manage Drills is the operational list for drill maintenance.
+## 3) Drill Workspace
 
-Typical flow:
+For drill-specific context:
 
-1. Open drill list.
-2. Create new drill or select existing drill.
-3. Enter Drill Studio for edit.
-4. Save and return to managed list state.
+- Start a live session for the drill.
+- Upload an attempt scoped to the drill.
+- Open drill comparison history.
+- Open drill editing in Drill Studio.
 
-## 3) Drill Studio
+## 4) Live Session
 
-Drill Studio is where drill definitions are authored and edited.
-
-Expected behavior:
-
-- Existing drills reload persisted values reliably.
-- Validation is explicit and user-facing.
-- Save path is clear and deterministic.
-- Redundant save variants are avoided.
-
-## 4) Start Live Session
-
-Typical flow:
-
-1. Select drill from Drill Hub.
-2. Resolve effective session configuration.
-3. Complete countdown/start gating.
-4. Run live coaching loop with overlays/cues.
-5. Stop and finalize session.
-6. Review outcome in Results and Session History.
+1. Start from Home or Drill Workspace.
+2. Pass countdown gate.
+3. Run active coaching loop.
+4. Stop and finalize media.
+5. Resolve replay source.
+6. Navigate to Results.
 
 ## 5) Upload / Reference Training
 
-Typical flow:
+1. Select a video and drill context (optional or drill-scoped).
+2. Run sampled-frame analysis.
+3. Optionally create/update drill-linked reference artifacts.
+4. Export/verify replay candidates.
+5. Resolve replay source and open Results.
 
-1. Select video clip.
-2. Run analysis/scoring.
-3. Review results and replay.
-4. Optionally create/update a drill-linked reference template.
-5. Optionally compare against existing references.
+## 6) Results / Session History
 
-## 6) Results / History
-
-Results show immediate post-session outcomes; History provides ongoing access to prior sessions.
-
-Both surfaces should present:
-
-- Drill-linked context.
-- Replay source chosen by resolver policy.
-- Persisted scores/issues/metadata.
+- Results: immediate per-session outcome surface.
+- Session History: ongoing list/compare/reopen surface.
+- Replay uses resolver output (annotated preferred, raw fallback).
 
 ## 7) Calibration / Profiles
 
-Calibration and profiles manage person-level context used in analysis.
+- Set/maintain active profile.
+- Calibration affects analysis interpretation in live and upload workflows.
+- Missing calibration falls back to defaults.
 
-Expected behavior:
+## Maintenance rule
 
-- One active profile at runtime.
-- Profile changes affect future live/upload analysis.
-- Lack of calibration falls back gracefully to default behavior.
+When any route name, screen name, or navigation behavior changes, update this file and matching diagrams in the same PR.

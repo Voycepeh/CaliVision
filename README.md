@@ -1,97 +1,127 @@
 # CaliVision
 
-Calisthenics motion analysis
+CaliVision is a drill-centric Android training app for calisthenics practice. It connects live coaching, upload analysis, drill authoring, replay review, and calibration/profile context in one workflow.
 
-CaliVision is a drill-centric calisthenics and handstand training app focused on connected workflows for live coaching, upload analysis, drill authoring, review, and calibration-aware feedback.
+## What the app does
 
-## What the app is
+CaliVision keeps users in drill context from start to review:
 
-CaliVision is organized around drills, not isolated recording tools. Each workflow is meant to carry drill context through capture, analysis, review, and iteration:
+- **Home / Drill Hub**: launch point for practice and navigation.
+- **Manage Drills**: maintain drill catalog entries.
+- **Drill Studio**: create/edit drill definitions and templates.
+- **Live Session**: countdown-gated real-time coaching with overlays.
+- **Upload / Reference Training**: analyze imported clips and optionally produce drill-linked references.
+- **Results / Session History**: inspect outcomes and replay assets.
+- **Calibration / Profiles**: manage active body profile inputs used by analysis.
 
-- Start practice from **Home / Drill Hub**.
-- Author and refine drills in **Manage Drills** and **Drill Studio**.
-- Run **Live Session** coaching with countdown gating and real-time overlays.
-- Use **Upload / Reference Training** for offline analysis and reference-template work.
-- Review outcomes in **Results / Session History**.
-- Apply shared **Calibration / Profiles** context across analysis flows.
+## Core workflows
 
-## Current user journeys
+```mermaid
+flowchart TD
+    HOME[Home / Drill Hub]
+    START[Start Drill]
+    LIVE[Live Session]
+    FINALIZE[Finalize + Export]
+    RESULTS[Results]
+    HISTORY[Session History]
+    MANAGE[Manage Drills]
+    STUDIO[Drill Studio]
+    UPLOAD[Upload / Reference Training]
+    CAL[Calibration / Profiles]
 
-1. **Drill Hub → Start Live Session**
-   Select a drill, resolve the effective session view, complete countdown, coach live, finalize, then review results/replay.
-2. **Manage Drills → Drill Studio**
-   Create or edit drills with a single, clear save path and reliable persisted reload behavior.
-3. **Upload / Reference Training**
-   Analyze imported attempts, optionally create or update drill-linked references, and compare future attempts.
-4. **Results / Session History**
-   Review scored sessions, replay media, and revisit drill-linked context from prior practice.
-5. **Calibration / Profiles**
-   Manage active profile and calibration data that influences both live and imported analysis.
+    HOME --> START --> LIVE --> FINALIZE --> RESULTS
+    RESULTS --> HISTORY
+    HISTORY --> RESULTS
 
-See full flow detail in [docs/features/current-user-flows.md](docs/features/current-user-flows.md).
+    HOME --> MANAGE --> STUDIO --> MANAGE
+    HOME --> UPLOAD --> RESULTS
+    HOME --> CAL --> HOME
+```
 
-## Tech stack and how it plays together
+```mermaid
+sequenceDiagram
+    actor User
+    participant Upload as Upload Video UI
+    participant VM as UploadVideoViewModel
+    participant Analyzer as UploadedVideoAnalyzer
+    participant Export as AnnotatedExportPipeline
+    participant Resolver as SessionMediaResolver
 
-- **Kotlin** powers the core app logic and workflow orchestration.
-- **Jetpack Compose** renders the drill-centric screens and keeps UI state aligned with each coaching step.
-- **Room + local storage** persist drills, sessions, profile/calibration state, references, and analysis outputs for reliable review and continuity.
-- **ML Kit pose detection** extracts body landmarks from live camera sessions and uploaded video.
-- **Recording/media pipelines** manage raw capture, annotated replay/export, and fallback playback behavior.
-- **Calibration and movement-analysis modules** interpret landmarks in drill context for drill-specific scoring, comparison, and feedback.
+    User->>Upload: Select video + drill context
+    Upload->>VM: Start analysis
+    VM->>Analyzer: Analyze sampled frames
+    Analyzer-->>VM: Metrics + timeline + template candidate
+    VM->>Export: Export annotated replay
+    Export-->>VM: Success/failure
+    VM->>Resolver: Resolve replay source
+    VM-->>User: Navigate to Results
+```
 
-In practice, the user starts from a drill, Compose screens collect workflow state, camera or upload flows produce media frames, pose detection extracts landmarks, analysis/calibration layers interpret movement for the active drill, persistence stores sessions/results/profiles, and replay/export surfaces outcomes back to the user.
+Detailed diagrams live in [`docs/diagrams/`](docs/diagrams).
 
-## Machine learning and analysis scope
+## Tech stack
 
-Under the hood, CaliVision already uses on-device machine-learning-powered pose detection to extract landmarks from live camera sessions and uploaded videos. Those landmarks flow through our own motion-analysis, biomechanics, calibration, and drill-scoring layers to produce structured feedback, replay overlays, and comparison results. Current seeded drill baselines (including v1 JSON/template inputs) are based on our own analysis of target movement patterns. The reference-template and movement-profile workflow is being structured to support a more adaptive learning path over time as more drill data is captured, without claiming a fully self-learning end-to-end model today.
+- Kotlin + Jetpack Compose
+- AndroidX Navigation + ViewModel state flows
+- Room database + blob/media storage
+- ML Kit pose detection
+- On-device motion/biomechanics scoring modules
+- WorkManager-backed upload queue processing
 
-## Core concepts
+## How the system works
 
-- **Drill-centric context**: workflows should start from and return to drill context.
-- **Deterministic session lifecycle**: countdown gating, start, live analysis loop, finalize, persistence.
-- **Annotated-first replay with fallback**: prefer verified annotated replay; fall back to raw capture when needed.
-- **Cross-workflow calibration**: active profile informs analysis in live sessions and upload analysis.
-- **Practical simplification**: one clear save path and fewer redundant actions.
+1. UI routes in `ui/navigation/Nav.kt` coordinate screen transitions.
+2. Workflow view models (`ui/live`, `ui/upload`, `ui/drillstudio`) orchestrate user flows.
+3. Domain modules (`drills`, `movementprofile`, `calibration`) provide drill and profile behavior.
+4. Analysis modules (`pose`, `motion`, `biomechanics`) score and classify movement.
+5. Recording/export modules (`recording`, `media`) generate replay outputs with fallback.
+6. `storage/repository/SessionRepository` persists sessions, drill metadata, media status, and references.
 
-## Repo structure / documentation map
+## Project structure / docs map
 
-- `app/src/main/java/com/inversioncoach/app/ui` - screens, navigation, and workflow-state coordination.
-- `app/src/main/java/com/inversioncoach/app/drills` - drill definitions and drill-authoring support.
-- `app/src/main/java/com/inversioncoach/app/calibration` - calibration sessions and profile handling.
-- `app/src/main/java/com/inversioncoach/app/movementprofile` - upload/reference extraction and comparison data.
-- `app/src/main/java/com/inversioncoach/app/recording` - recording, export, and replay preparation.
-- `app/src/main/java/com/inversioncoach/app/storage` - Room repositories and media/blob persistence.
-
-Docs entry points:
-
-- Architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
-- Architecture details: [`docs/architecture/`](docs/architecture)
-- Feature docs: [`docs/features/`](docs/features)
+- Top-level architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md)
+- Contribution guide: [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- Testing guide: [`TESTING.md`](TESTING.md)
+- Docs index: [`docs/README.md`](docs/README.md)
+- Architecture deep dives: [`docs/architecture/`](docs/architecture)
+- Feature behavior: [`docs/features/`](docs/features)
+- Decision records: [`docs/decisions/`](docs/decisions)
 - Diagrams: [`docs/diagrams/`](docs/diagrams)
-- Decisions/ADRs: [`docs/decisions/`](docs/decisions)
 
 ## Running locally
 
 Prerequisites:
 
 - JDK 17
-- Android SDK (`compileSdk 34`, `targetSdk 34`, `minSdk 28`)
-- Gradle 8.14.x on PATH (wrapper is not checked in)
+- Android SDK 34 (compileSdk/targetSdk 34)
+- `gradle` available on PATH (the Gradle wrapper is not checked in)
 
-Quick start:
+Commands:
 
 ```bash
-export JAVA_HOME=/path/to/jdk-17
-export PATH="$JAVA_HOME/bin:$PATH"
 gradle testDebugUnitTest
 gradle :app:assembleDebug
 ```
 
-## Contribution expectations
+## Documentation
 
-- Target PRs to `main`.
-- If workflow/UI behavior changes, update matching docs and diagrams in the same PR.
-- Prefer simple, deterministic UX over branching/overlapping controls.
-- Keep terminology aligned with current flows: Drill Hub, Manage Drills, Drill Studio, Upload / Reference Training, Results / Session History, Calibration / Profiles.
+If you change workflow names, routes, navigation behavior, architecture boundaries, replay/export/media behavior, upload/reference behavior, or calibration/profile behavior, **update docs and diagrams in the same PR**.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidance.
+Start here:
+
+- [`docs/features/current-user-flows.md`](docs/features/current-user-flows.md)
+- [`docs/architecture/system-overview.md`](docs/architecture/system-overview.md)
+- [`docs/diagrams/ui-flow.md`](docs/diagrams/ui-flow.md)
+
+## Screenshots / media assets
+
+No screenshots are currently checked in.
+
+Expected README asset placeholders:
+
+- `docs/assets/home-drill-hub.png`
+- `docs/assets/live-session.png`
+- `docs/assets/upload-reference-training.png`
+- `docs/assets/results-session-history.png`
+
+When assets are added, keep them optimized and update this section.

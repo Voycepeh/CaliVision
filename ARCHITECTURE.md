@@ -1,59 +1,59 @@
 # Architecture Guide
 
-This is the top-level architecture map for the current product direction on `main`: a **drill-centric coaching app** with connected workflows for live practice, drill authoring, upload/reference training, replay/history, and calibration profiles.
+This document is the top-level architecture map for the current CaliVision implementation.
 
-## Current implemented shape
+## Product workflow anchors
 
-### Product workflow anchors
+- **Home / Drill Hub** (`Route.Home`)
+- **Manage Drills** (`Route.ManageDrills`)
+- **Drill Studio** (`Route.DrillStudio`)
+- **Live Session** (`Route.Live`)
+- **Upload / Reference Training** (`Route.UploadVideo`, `Route.UploadVideoForDrill`)
+- **Results / Session History** (`Route.Results`, `Route.SessionHistory`, `Route.ProgressOverview`)
+- **Calibration / Profiles** (`Route.Calibration`)
 
-- **Home / Drill Hub** is the primary navigation anchor.
-- **Manage Drills** and **Drill Studio** own drill catalog and authoring behavior.
-- **Live Session** owns countdown gating, live coaching loop, and stop/finalize transitions.
-- **Upload / Reference Training** owns imported analysis and optional reference-template creation.
-- **Results / Session History** owns persisted outcomes and replay access.
-- **Calibration / Profiles** provides cross-workflow context for analysis behavior.
+## Runtime layers
 
-### Technical layers
+1. **UI and navigation**: `app/ui/**`
+2. **Workflow orchestration**: live/upload/drill studio view models and route args
+3. **Domain**: `drills/**`, `movementprofile/**`, `calibration/**`
+4. **Analysis**: `pose/**`, `motion/**`, `biomechanics/**`
+5. **Media/replay/export**: `recording/**`, `media/**`, `camera/**`, `overlay/**`
+6. **Persistence**: `storage/db/**`, `storage/repository/**`, `SessionBlobStorage`
 
-1. **UI/navigation** (`ui/*`)
-2. **Workflow orchestration** (`ui/live`, `ui/upload`, drill flow view models)
-3. **Domain** (`drills/*`, `movementprofile/*`, `calibration/*`)
-4. **Analysis** (`pose/*`, `motion/*`, `biomechanics/*`)
-5. **Media/recording/export** (`recording/*`, `camera/*`, `overlay/*`)
-6. **Persistence** (`storage/*`)
+## Key boundaries
 
-### Ownership boundaries
+- `SessionRepository` is the persistence boundary for sessions, drills, templates, profiles, and media status.
+- `SessionMediaResolver` resolves replay source from verified media candidates.
+- `AnnotatedExportPipeline` handles annotated replay generation.
+- `RuntimeBodyProfileResolver` supplies active profile context across live and upload analysis.
+- `UploadedVideoAnalyzer` + `UploadVideoViewModel` drive upload/reference analysis flow.
 
-- **Drill authoring ownership**: drill studio view models + drill persistence mapping.
-- **Reference/comparison ownership**: movement profile/template creation and drill association flows.
-- **Calibration/profile ownership**: active profile resolution and calibration data history.
-- **Live lifecycle ownership**: session orchestration, countdown gating, finalize transitions.
-- **Replay/export ownership**: export pipeline, validation, media resolver, and session repository updates.
+## Rules for contributors
 
-## Future direction (intentional)
+- Keep drill-centric flow integrity intact.
+- Prefer one clear path for drill creation/editing outcomes.
+- Do not silently break drill metadata/catalog schema.
+- Do not silently break replay/export/upload/calibration flows.
+- Keep naming aligned with current UX terms.
+- Any PR that changes workflows, navigation, architecture, terminology, or media flow must update docs and diagrams in the same PR.
 
-- Keep drill workflows simple and deterministic.
-- Prefer one obvious save path in Drill Studio.
-- Avoid duplicate UX actions that produce the same outcome.
-- Keep replay decisions resilient: annotated-first when verified, raw fallback when needed.
-- Keep calibration/profile context available to all coaching workflows, not isolated settings pages.
+## Architecture docs index
 
-See [ADR-004](docs/decisions/adr-004-product-workflow-simplification.md).
-
-## Architecture index
-
-- [System overview](docs/architecture/system-overview.md)
-- [App modules](docs/architecture/app-modules.md)
-- [Session lifecycle](docs/architecture/session-lifecycle.md)
-- [Video pipeline](docs/architecture/video-pipeline.md)
-- [Replay and fallback](docs/architecture/replay-and-fallback.md)
-- [Calibration and scoring](docs/architecture/calibration-and-scoring.md)
-- [Overlay rendering](docs/architecture/overlay-rendering.md)
+- [`docs/architecture/system-overview.md`](docs/architecture/system-overview.md)
+- [`docs/architecture/app-modules.md`](docs/architecture/app-modules.md)
+- [`docs/architecture/session-lifecycle.md`](docs/architecture/session-lifecycle.md)
+- [`docs/architecture/video-pipeline.md`](docs/architecture/video-pipeline.md)
+- [`docs/architecture/replay-and-fallback.md`](docs/architecture/replay-and-fallback.md)
+- [`docs/architecture/calibration-and-scoring.md`](docs/architecture/calibration-and-scoring.md)
+- [`docs/architecture/overlay-rendering.md`](docs/architecture/overlay-rendering.md)
+- [`docs/architecture/movement-profile-architecture.md`](docs/architecture/movement-profile-architecture.md)
 
 ## Diagram index
 
-- [UI flow](docs/diagrams/ui-flow.md)
-- [Class diagram](docs/diagrams/class-diagram.md)
-- [Sequence: live session](docs/diagrams/sequence-live-session.md)
-- [Sequence: import analysis](docs/diagrams/sequence-import-analysis.md)
-- [Sequence: export finalization](docs/diagrams/sequence-export-finalization.md)
+- [`docs/diagrams/ui-flow.md`](docs/diagrams/ui-flow.md)
+- [`docs/diagrams/architecture-subsystems.md`](docs/diagrams/architecture-subsystems.md)
+- [`docs/diagrams/sequence-live-session.md`](docs/diagrams/sequence-live-session.md)
+- [`docs/diagrams/sequence-import-analysis.md`](docs/diagrams/sequence-import-analysis.md)
+- [`docs/diagrams/sequence-export-finalization.md`](docs/diagrams/sequence-export-finalization.md)
+- [`docs/diagrams/class-diagram.md`](docs/diagrams/class-diagram.md)
