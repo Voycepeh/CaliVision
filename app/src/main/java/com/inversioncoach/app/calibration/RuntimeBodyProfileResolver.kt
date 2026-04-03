@@ -17,6 +17,7 @@ class RuntimeBodyProfileResolver(
         val activeProfile = sessionRepository.getActiveProfile()
         val activeCalibration = UserBodyProfile.normalize(sessionRepository.getActiveProfileCalibration())
         val activeCalibrationVersion = sessionRepository.getActiveProfileCalibrationVersion()
+            ?.takeIf { activeCalibration != null }
         return RuntimeBodyProfileResolution(
             userProfileId = activeProfile?.id?.toString(),
             bodyProfileId = null,
