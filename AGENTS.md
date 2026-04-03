@@ -2,7 +2,7 @@
 
 ## Project purpose
 
-CaliVision is a drill-centric Android app for calisthenics coaching and analysis. Product direction emphasizes connected workflows across live coaching, upload/reference training, replay/history, and calibration/profile context.
+CaliVision is a drill-centric Android app for calisthenics coaching and analysis. Product direction emphasizes connected workflows across live coaching, upload/reference training, replay/history.
 
 ## Toolchain requirements
 
@@ -28,7 +28,7 @@ gradle :app:assembleDebug
 - Preserve drill-centric flow integrity.
 - Keep terminology aligned with the current UX labels.
 - Do not silently break drill metadata/catalog/schema behavior.
-- Do not silently break replay/export/upload/calibration workflows.
+- Do not silently break replay/export/upload workflows.
 - Avoid duplicate entry points or overlapping controls that create ambiguous outcomes.
 
 ## Documentation and diagrams rule (required)
