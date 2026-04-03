@@ -43,6 +43,8 @@ import androidx.core.content.FileProvider
 import com.inversioncoach.app.drills.catalog.CatalogAnalysisPlane
 import com.inversioncoach.app.drills.catalog.CatalogCameraView
 import com.inversioncoach.app.drills.catalog.CatalogComparisonMode
+import com.inversioncoach.app.drills.studio.DrillCatalogDraftStore
+import com.inversioncoach.app.drills.studio.DrillCatalogImportExportManager
 import com.inversioncoach.app.drills.studio.DrillStudioDocument
 import com.inversioncoach.app.drills.studio.DrillStudioPhase
 import com.inversioncoach.app.drills.studio.DrillStudioThresholdRegistry
@@ -57,7 +59,10 @@ import kotlin.math.min
 @Composable
 fun DrillStudioScreen(onBack: () -> Unit, initialDrillId: String? = null) {
     val context = LocalContext.current
-    val vm: DrillStudioEditorViewModel = viewModel { DrillStudioEditorViewModel(context.applicationContext) }
+    val appContext = context.applicationContext
+    val store = remember(appContext) { DrillCatalogDraftStore(appContext) }
+    val importExport = remember(appContext, store) { DrillCatalogImportExportManager(appContext, store) }
+    val vm: DrillStudioEditorViewModel = viewModel { DrillStudioEditorViewModel(store, importExport) }
     val editorState by vm.state.collectAsState()
     val drills = editorState.drills
     val selectedDrillId = editorState.selectedDrillId

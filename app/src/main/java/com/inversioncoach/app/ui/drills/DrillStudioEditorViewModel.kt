@@ -1,6 +1,5 @@
 package com.inversioncoach.app.ui.drills
 
-import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -30,12 +29,9 @@ data class DrillStudioEditorState(
 }
 
 class DrillStudioEditorViewModel(
-    context: Context,
+    private val store: DrillCatalogDraftStore,
+    private val importExport: DrillCatalogImportExportManager,
 ) : ViewModel() {
-    private val appContext = context.applicationContext
-    private val store = DrillCatalogDraftStore(appContext)
-    private val importExport = DrillCatalogImportExportManager(appContext, store)
-
     private val _state = MutableStateFlow(DrillStudioEditorState())
     val state: StateFlow<DrillStudioEditorState> = _state.asStateFlow()
 
@@ -43,7 +39,7 @@ class DrillStudioEditorViewModel(
         val current = _state.value
         if (current.hasUnsavedChanges) return
         viewModelScope.launch {
-            refreshAndSelect(initialDrillId)
+            refreshAndSelect(initialDrillId, resetWorking = false)
         }
     }
 
@@ -54,7 +50,7 @@ class DrillStudioEditorViewModel(
             return
         }
         viewModelScope.launch {
-            refreshAndSelect(drillId)
+            refreshAndSelect(drillId, resetWorking = current.selectedDrillId != drillId)
         }
     }
 
@@ -67,7 +63,7 @@ class DrillStudioEditorViewModel(
         viewModelScope.launch {
             runCatching {
                 withContext(Dispatchers.IO) { store.saveDraft(draft) }
-                refreshAndSelect(draft.id, status = "Draft saved")
+                refreshAndSelect(draft.id, status = "Draft saved", resetWorking = true)
             }.onFailure { throwable ->
                 _state.value = _state.value.copy(status = "Save failed: ${throwable.message}")
             }
@@ -79,7 +75,7 @@ class DrillStudioEditorViewModel(
         viewModelScope.launch {
             runCatching {
                 withContext(Dispatchers.IO) { store.resetDraft(draft.id) }
-                refreshAndSelect(draft.id, status = "Draft reset")
+                refreshAndSelect(draft.id, status = "Draft reset", resetWorking = true)
             }.onFailure { throwable ->
                 _state.value = _state.value.copy(status = "Reset failed: ${throwable.message}")
             }
@@ -91,7 +87,7 @@ class DrillStudioEditorViewModel(
         viewModelScope.launch {
             runCatching {
                 val duplicate = withContext(Dispatchers.IO) { store.duplicate(draft.id) }
-                refreshAndSelect(duplicate.id, status = "Duplicated to ${duplicate.displayName}")
+                refreshAndSelect(duplicate.id, status = "Duplicated to ${duplicate.displayName}", resetWorking = true)
             }.onFailure { throwable ->
                 _state.value = _state.value.copy(status = "Duplicate failed: ${throwable.message}")
             }
@@ -102,7 +98,7 @@ class DrillStudioEditorViewModel(
         viewModelScope.launch {
             runCatching {
                 val imported = withContext(Dispatchers.IO) { importExport.importDraft(uri) }
-                refreshAndSelect(imported.id, status = "Imported ${imported.displayName}")
+                refreshAndSelect(imported.id, status = "Imported ${imported.displayName}", resetWorking = true)
             }.onFailure { throwable ->
                 _state.value = _state.value.copy(status = "Import failed: ${throwable.message}")
             }
@@ -126,7 +122,11 @@ class DrillStudioEditorViewModel(
         }
     }
 
-    private suspend fun refreshAndSelect(requestedId: String?, status: String? = null) {
+    private suspend fun refreshAndSelect(
+        requestedId: String?,
+        status: String? = null,
+        resetWorking: Boolean,
+    ) {
         val (drills, selectedId, baseline) = withContext(Dispatchers.IO) {
             val drills = store.listDrills()
             val selectedId = requestedId
@@ -136,11 +136,13 @@ class DrillStudioEditorViewModel(
             val baseline = selectedId.takeIf { it.isNotBlank() }?.let(store::loadForEditor)
             Triple(drills, selectedId, baseline)
         }
-        _state.value = DrillStudioEditorState(
+        val current = _state.value
+        val keepWorking = !resetWorking && current.selectedDrillId == selectedId && current.working != null
+        _state.value = current.copy(
             drills = drills,
             selectedDrillId = selectedId,
             baseline = baseline,
-            working = baseline,
+            working = if (keepWorking) current.working else baseline,
             status = status,
         )
     }
