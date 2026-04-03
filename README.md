@@ -4,9 +4,12 @@ CaliVision is a drill-centric Android training app for calisthenics practice. It
 
 ## Why I built CaliVision
 
-I built CaliVision because my own movement practice felt too unstructured when it depended on recording videos and replaying them manually. I wanted a tighter loop: practice with intention, compare against references, and get structured feedback quickly enough to adjust in the next set—not hours later.
+I built CaliVision because i want help in visualizing my handstand stack. I was already recording videos and replaying them manually.
+I wanted to compare it against references, and get structured feedback quickly enough to adjust in the next set.
 
-The goal is simple: shorten the feedback cycle for calisthenics and handstand training through analysis, comparison, and drill-centered review. CaliVision is also an active experiment in practical AI-assisted software development, where AI helps accelerate the work but does not replace human judgment.
+The goal is simple: shorten the feedback cycle for calisthenics and handstand training through analysis, comparison, and drill-centered review.
+
+CaliVision is also an active experiment in practical AI-assisted software development (aka vibe coding), where AI helps accelerate the work but does not replace human judgment. I come from a data architecture and business intelligence background so i have little to no App development experience. So why not take a challenge in creating an android app that use computer vison to analyse my body skeleton and supervise a ML classification model to recognize phases of a handstand push-up.
 
 ## How this project is built
 
@@ -157,23 +160,6 @@ The reference-template workflow is being structured so scoring and comparison ca
 - Feature behavior: [`docs/features/`](docs/features)
 - Decision records: [`docs/decisions/`](docs/decisions)
 - Diagrams: [`docs/diagrams/`](docs/diagrams)
-
-## Seeded skeleton preview renderer (developer note)
-
-Seeded drill motion previews now use one shared renderer in `ui/components/SeededSkeletonPreview.kt` across drill catalog cards and Drill Studio. The shared policy centralizes portrait aspect ratio, content padding/fit behavior, skeleton styling, and default playback timing assumptions so preview proportions stay consistent across surfaces.
-
-## Drill authoring phase-1 (image seeded phases)
-
-Drill Studio now includes a production path for **single-image phase seeding** inside the existing drill editing flow:
-
-- attach one image per phase
-- run on-device pose detection and overlay the detected skeleton on top of the image
-- apply small per-joint manual correction offsets
-- use optional frame/floor/wall/bar visual guides for alignment
-- persist authored phase pose + correction + guide metadata with the drill record
-- copy selected authoring images into app-managed storage for durable reopen behavior
-
-Manage Drills also supports **drill package export/import** for authored drills, so phase-seeded drills can be shared across devices and later promoted into app seed material with minimal transformation.
 
 ## Running locally
 
