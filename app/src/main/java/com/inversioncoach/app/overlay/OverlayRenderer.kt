@@ -54,6 +54,7 @@ fun OverlayRenderer(
                 // Live analyzer coordinates are already normalized to preview-upright space.
                 // Keep live projection in preview space and avoid an extra rotation.
                 sourceRotationDegrees = 0,
+                coordinateSpace = OverlayCoordinateSpace.UPRIGHT_NORMALIZED,
                 mirrored = frame?.mirrored ?: false,
                 previewContentRect = previewContentRect,
                 scaleMode = scaleMode,
