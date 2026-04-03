@@ -117,7 +117,12 @@ class UploadedVideoAnalyzer(
                 request = VideoDecodeRequest(
                     movementType = profile.movementType,
                 ),
-            )
+            ).toList()
+            val resolvedTotalFrames = if (estimatedTotalFrames > 0) {
+                estimatedTotalFrames
+            } else {
+                sourceFrames.size
+            }
             val decodeDuration = System.currentTimeMillis() - decodeStart
 
             val analysisStart = System.currentTimeMillis()
@@ -130,7 +135,7 @@ class UploadedVideoAnalyzer(
                 AnalysisProgressEvent(
                     stage = "analysis_started",
                     processedFrames = 0,
-                    estimatedTotalFrames = estimatedTotalFrames.takeIf { it > 0 },
+                    estimatedTotalFrames = resolvedTotalFrames,
                     droppedFrames = 0,
                     detail = "Starting post-processing on decoded frames",
                 )
@@ -142,7 +147,7 @@ class UploadedVideoAnalyzer(
                 if (index % 2 == 0) {
                     Log.i(
                         UPLOAD_ANALYSIS_TAG,
-                        "analysis_sample frameIndex=$index totalHint=$estimatedTotalFrames timestampMs=${frame.timestampMs} dropped=$dropped",
+                        "analysis_sample frameIndex=$index totalHint=$resolvedTotalFrames timestampMs=${frame.timestampMs} dropped=$dropped",
                     )
                 }
                 if (frame.confidence <= 0f || frame.joints.isEmpty()) {
@@ -151,7 +156,7 @@ class UploadedVideoAnalyzer(
                         AnalysisProgressEvent(
                             stage = "analysis_frame_dropped",
                             processedFrames = index + 1,
-                            estimatedTotalFrames = estimatedTotalFrames.takeIf { it > 0 },
+                            estimatedTotalFrames = resolvedTotalFrames,
                             droppedFrames = dropped,
                             timestampMs = frame.timestampMs,
                         ),
@@ -179,7 +184,7 @@ class UploadedVideoAnalyzer(
                         AnalysisProgressEvent(
                             stage = "analysis_frame_processed",
                             processedFrames = index + 1,
-                            estimatedTotalFrames = estimatedTotalFrames.takeIf { it > 0 },
+                            estimatedTotalFrames = resolvedTotalFrames,
                             droppedFrames = dropped,
                             timestampMs = frame.timestampMs,
                             detail = "postProcessMs=$postProcessMs",
@@ -190,11 +195,11 @@ class UploadedVideoAnalyzer(
                 if (index % 4 == 0) {
                     val processed = index + 1
                     val throughput = (processed * 1000.0) / maxOf(1L, System.currentTimeMillis() - analysisStart).toDouble()
-                    val remaining = (estimatedTotalFrames - processed).coerceAtLeast(0)
+                    val remaining = (resolvedTotalFrames - processed).coerceAtLeast(0)
                     val etaSec = if (throughput <= 0.0) -1 else (remaining / throughput).roundToLong()
                     Log.i(
                         UPLOAD_ANALYSIS_TAG,
-                        "analysis_timing frame=$processed/$estimatedTotalFrames frameMs=$elapsedMs throughputFps=${"%.2f".format(throughput)} etaSec=$etaSec",
+                        "analysis_timing frame=$processed/$resolvedTotalFrames frameMs=$elapsedMs throughputFps=${"%.2f".format(throughput)} etaSec=$etaSec",
                     )
                 }
             }
@@ -216,7 +221,7 @@ class UploadedVideoAnalyzer(
                 AnalysisProgressEvent(
                     stage = "analysis_complete",
                     processedFrames = processedFrames,
-                    estimatedTotalFrames = maxOf(estimatedTotalFrames, processedFrames),
+                    estimatedTotalFrames = maxOf(resolvedTotalFrames, processedFrames),
                     droppedFrames = dropped,
                     detail = "Uploaded analysis complete",
                 ),
