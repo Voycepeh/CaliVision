@@ -66,6 +66,22 @@ private val TERMINAL_EXPORT_STATUSES = setOf(
     AnnotatedExportStatus.CANCELLED,
 )
 
+internal fun canMutateAttemptOwnedExportState(
+    session: SessionRecord,
+    attemptId: String?,
+    ownerType: String?,
+    ownerId: String?,
+): Boolean {
+    val hasClaimedAttempt = !session.activeProcessingAttemptId.isNullOrBlank()
+    val requiresOwnershipProof = hasClaimedAttempt || session.annotatedExportStatus in ACTIVE_EXPORT_STATUSES
+    if (!requiresOwnershipProof) return true
+    if (attemptId.isNullOrBlank()) return false
+    if (session.activeProcessingAttemptId != attemptId) return false
+    if (!ownerType.isNullOrBlank() && session.processingOwnerType != ownerType) return false
+    if (!ownerId.isNullOrBlank() && session.processingOwnerId != ownerId) return false
+    return true
+}
+
 data class UserProfileStatus(
     val id: Long,
     val name: String,
@@ -513,6 +529,32 @@ class SessionRepository(
         sessionDao.upsert(session.copy(annotatedExportFailureReason = reason))
     }
 
+    suspend fun adminUpdateAnnotatedExportStatus(
+        sessionId: Long,
+        status: AnnotatedExportStatus,
+    ) {
+        val session = sessionDao.getById(sessionId) ?: return
+        val now = System.currentTimeMillis()
+        sessionDao.upsert(
+            session.copy(
+                annotatedExportStatus = status,
+                annotatedExportLastUpdatedAt = now,
+                processingLastProgressAtMs = now,
+                activeProcessingAttemptId = null,
+                processingOwnerType = null,
+                processingOwnerId = null,
+            ),
+        )
+    }
+
+    suspend fun adminUpdateAnnotatedExportFailureReason(
+        sessionId: Long,
+        reason: String?,
+    ) {
+        val session = sessionDao.getById(sessionId) ?: return
+        sessionDao.upsert(session.copy(annotatedExportFailureReason = reason))
+    }
+
     suspend fun updateUploadPipelineProgress(
         sessionId: Long,
         stageLabel: String?,
@@ -703,13 +745,7 @@ class SessionRepository(
         attemptId: String?,
         ownerType: String?,
         ownerId: String?,
-    ): Boolean {
-        if (attemptId.isNullOrBlank()) return true
-        if (session.activeProcessingAttemptId != attemptId) return false
-        if (!ownerType.isNullOrBlank() && session.processingOwnerType != ownerType) return false
-        if (!ownerId.isNullOrBlank() && session.processingOwnerId != ownerId) return false
-        return true
-    }
+    ): Boolean = canMutateAttemptOwnedExportState(session, attemptId, ownerType, ownerId)
 
     private fun hasVerifiedActiveExportOwnership(
         session: SessionRecord,

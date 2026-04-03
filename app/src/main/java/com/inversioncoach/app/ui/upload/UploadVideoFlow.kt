@@ -1691,8 +1691,8 @@ class UploadVideoViewModel(
         Log.i(TAG, "upload_cancel requested sessionId=${_state.value.sessionId ?: -1}")
         _state.value.sessionId?.let { sessionId ->
             viewModelScope.launch {
-                repository?.updateAnnotatedExportStatus(sessionId, AnnotatedExportStatus.ANNOTATED_FAILED)
-                repository?.updateAnnotatedExportFailureReason(sessionId, "EXPORT_CANCELLED")
+                repository?.adminUpdateAnnotatedExportStatus(sessionId, AnnotatedExportStatus.ANNOTATED_FAILED)
+                repository?.adminUpdateAnnotatedExportFailureReason(sessionId, "EXPORT_CANCELLED")
                 repository?.markUploadJobTerminal(
                     sessionId = sessionId,
                     status = UploadJobStatus.CANCELLED,

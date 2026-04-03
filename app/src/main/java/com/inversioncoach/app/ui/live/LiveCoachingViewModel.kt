@@ -824,8 +824,8 @@ class LiveCoachingViewModel(
                 resolveTerminalAnnotatedExportStatus(hasActiveExportJob)
                 val (reconciledStatus, reconciledFailureReason) = reconcileMediaStateForPersistence(hasActiveExportJob)
                 if (reconciledStatus == AnnotatedExportStatus.ANNOTATED_FAILED && !reconciledFailureReason.isNullOrBlank()) {
-                    repository.updateAnnotatedExportStatus(activeSessionId, reconciledStatus)
-                    repository.updateAnnotatedExportFailureReason(activeSessionId, reconciledFailureReason)
+                    repository.adminUpdateAnnotatedExportStatus(activeSessionId, reconciledStatus)
+                    repository.adminUpdateAnnotatedExportFailureReason(activeSessionId, reconciledFailureReason)
                 }
                 val finalVideos = resolveSessionVideoOutcome(
                     rawVideoUri = rawVideoUri,
