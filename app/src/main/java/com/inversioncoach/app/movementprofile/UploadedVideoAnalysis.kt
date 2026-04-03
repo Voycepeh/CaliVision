@@ -60,8 +60,20 @@ class FileUploadedAnalysisRepository(private val rootDir: File) : UploadedAnalys
 
 interface VideoPoseFrameSource {
     fun decode(videoUri: Uri): Sequence<PoseFrame>
+    fun decode(videoUri: Uri, request: VideoDecodeRequest): Sequence<PoseFrame> = decode(videoUri)
     fun decode(videoUri: Uri, observer: AnalysisProgressObserver): Sequence<PoseFrame> = decode(videoUri)
+    fun decode(videoUri: Uri, observer: AnalysisProgressObserver, request: VideoDecodeRequest): Sequence<PoseFrame> =
+        decode(videoUri, request)
 }
+
+interface UploadSamplingTelemetryProvider {
+    fun samplingTelemetry(): Map<String, Long>
+}
+
+data class VideoDecodeRequest(
+    val movementType: MovementType?,
+    val adaptiveConfig: AdaptiveSamplingConfig = AdaptiveSamplingConfig(),
+)
 
 data class AnalysisProgressEvent(
     val stage: String,
@@ -98,6 +110,9 @@ class UploadedVideoAnalyzer(
                 observer = AnalysisProgressObserver { progressEvent ->
                     progressObserver?.onProgress(progressEvent)
                 },
+                request = VideoDecodeRequest(
+                    movementType = profile.movementType,
+                ),
             ).toList()
             val decodeDuration = System.currentTimeMillis() - decodeStart
 
@@ -212,7 +227,7 @@ class UploadedVideoAnalyzer(
                     "frames_dropped" to dropped.toLong(),
                     "candidate_phase_count" to phaseTimeline.map { it.second }.distinct().size.toLong(),
                     "calibration_profile_version" to (calibrationProfileVersion?.toLong() ?: -1L),
-                ),
+                ) + (frameSource as? UploadSamplingTelemetryProvider)?.samplingTelemetry().orEmpty(),
                 candidate = template,
             )
         } catch (e: Exception) {

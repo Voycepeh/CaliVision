@@ -30,11 +30,14 @@ private const val MAX_ANALYSIS_DIMENSION = 720
 class MlKitVideoPoseFrameSource(
     private val context: Context,
     private val sampleFps: Int = 6,
+    private val adaptiveConfig: AdaptiveSamplingConfig = AdaptiveSamplingConfig(legacyFixedFps = sampleFps),
     workerCount: Int = defaultWorkerCount(),
     private val queueCapacity: Int = 6,
-) : VideoPoseFrameSource {
+) : VideoPoseFrameSource, UploadSamplingTelemetryProvider {
     data class DecodeTelemetry(
+        val candidateFrames: Int,
         val sampledFrames: Int,
+        val inferredFrames: Int,
         val workerCount: Int,
         val maxQueueBacklog: Int,
         val averageWorkerActive: Double,
@@ -42,18 +45,59 @@ class MlKitVideoPoseFrameSource(
         val maxDecodeMs: Long,
         val averageInferenceMs: Double,
         val maxInferenceMs: Long,
+        val modeCounts: Map<SamplingMode, Int>,
+        val burstTriggerCounts: Map<BurstTriggerReason, Int>,
+        val averageSelectedIntervalMs: Long,
+        val maxSelectedIntervalMs: Long,
     )
 
     private val boundedWorkerCount = workerCount.coerceIn(1, 2)
     @Volatile
-    var lastDecodeTelemetry: DecodeTelemetry = DecodeTelemetry(0, boundedWorkerCount, 0, 0.0, 0.0, 0L, 0.0, 0L)
+    var lastDecodeTelemetry: DecodeTelemetry = DecodeTelemetry(
+        candidateFrames = 0,
+        sampledFrames = 0,
+        inferredFrames = 0,
+        workerCount = boundedWorkerCount,
+        maxQueueBacklog = 0,
+        averageWorkerActive = 0.0,
+        averageDecodeMs = 0.0,
+        maxDecodeMs = 0L,
+        averageInferenceMs = 0.0,
+        maxInferenceMs = 0L,
+        modeCounts = emptyMap(),
+        burstTriggerCounts = emptyMap(),
+        averageSelectedIntervalMs = 0L,
+        maxSelectedIntervalMs = 0L,
+    )
         private set
 
     private val poseMapper = MlKitPoseMapper()
 
-    override fun decode(videoUri: Uri): Sequence<PoseFrame> = decode(videoUri, observer = AnalysisProgressObserver { })
+    override fun samplingTelemetry(): Map<String, Long> = mapOf(
+        "adaptive_candidate_frames" to lastDecodeTelemetry.candidateFrames.toLong(),
+        "adaptive_sampled_frames" to lastDecodeTelemetry.sampledFrames.toLong(),
+        "adaptive_inferred_frames" to lastDecodeTelemetry.inferredFrames.toLong(),
+        "adaptive_mode_sparse" to (lastDecodeTelemetry.modeCounts[SamplingMode.SPARSE] ?: 0).toLong(),
+        "adaptive_mode_burst" to (lastDecodeTelemetry.modeCounts[SamplingMode.BURST] ?: 0).toLong(),
+        "adaptive_mode_hold_steady" to (lastDecodeTelemetry.modeCounts[SamplingMode.HOLD_STEADY] ?: 0).toLong(),
+        "adaptive_mode_recovery" to (lastDecodeTelemetry.modeCounts[SamplingMode.RECOVERY] ?: 0).toLong(),
+        "adaptive_mode_legacy" to (lastDecodeTelemetry.modeCounts[SamplingMode.LEGACY_FIXED] ?: 0).toLong(),
+        "adaptive_trigger_visual_diff" to (lastDecodeTelemetry.burstTriggerCounts[BurstTriggerReason.VISUAL_DIFF] ?: 0).toLong(),
+        "adaptive_trigger_subject_move" to (lastDecodeTelemetry.burstTriggerCounts[BurstTriggerReason.SUBJECT_MOVEMENT] ?: 0).toLong(),
+        "adaptive_trigger_joint_move" to (lastDecodeTelemetry.burstTriggerCounts[BurstTriggerReason.JOINT_MOVEMENT] ?: 0).toLong(),
+        "adaptive_trigger_conf_drop" to (lastDecodeTelemetry.burstTriggerCounts[BurstTriggerReason.CONFIDENCE_DROP] ?: 0).toLong(),
+        "adaptive_average_interval_ms" to lastDecodeTelemetry.averageSelectedIntervalMs,
+        "adaptive_max_interval_ms" to lastDecodeTelemetry.maxSelectedIntervalMs,
+    )
 
-    override fun decode(videoUri: Uri, observer: AnalysisProgressObserver): Sequence<PoseFrame> {
+    override fun decode(videoUri: Uri): Sequence<PoseFrame> = decode(videoUri, observer = AnalysisProgressObserver { }, request = VideoDecodeRequest(movementType = null))
+    override fun decode(videoUri: Uri, request: VideoDecodeRequest): Sequence<PoseFrame> =
+        decode(videoUri, observer = AnalysisProgressObserver { }, request = request)
+
+    override fun decode(videoUri: Uri, observer: AnalysisProgressObserver): Sequence<PoseFrame> =
+        decode(videoUri, observer, request = VideoDecodeRequest(movementType = null))
+
+    override fun decode(videoUri: Uri, observer: AnalysisProgressObserver, request: VideoDecodeRequest): Sequence<PoseFrame> {
         val frames = mutableListOf<PoseFrame>()
         runBlocking(Dispatchers.Default) {
             val retriever = MediaMetadataRetriever()
@@ -65,9 +109,18 @@ class MlKitVideoPoseFrameSource(
                     observer.onProgress(AnalysisProgressEvent(stage = "decode_failed", detail = "missing_duration"))
                     return@runBlocking
                 }
-                val intervalMs = (1000f / sampleFps.coerceAtLeast(1)).toLong().coerceAtLeast(16L)
-                val estimatedTotalFrames = (durationMs / intervalMs).toInt().coerceAtLeast(1) + 1
-                Log.i(TAG, "decode_loop_start uri=$videoUri durationMs=$durationMs intervalMs=$intervalMs estimatedTotalFrames=$estimatedTotalFrames")
+                val activeAdaptiveConfig = request.adaptiveConfig.copy(legacyFixedFps = sampleFps)
+                val candidateIntervalMs = (1000f / if (activeAdaptiveConfig.enabled) {
+                    activeAdaptiveConfig.candidateDecodeFps.coerceAtLeast(1)
+                } else {
+                    sampleFps.coerceAtLeast(1)
+                }).toLong().coerceAtLeast(16L)
+                val estimatedTotalFrames = (durationMs / candidateIntervalMs).toInt().coerceAtLeast(1) + 1
+                val planner = UploadedVideoSamplingPlanner(
+                    config = activeAdaptiveConfig,
+                    movementType = request.movementType,
+                )
+                Log.i(TAG, "decode_loop_start uri=$videoUri durationMs=$durationMs intervalMs=$candidateIntervalMs estimatedTotalFrames=$estimatedTotalFrames adaptive=${activeAdaptiveConfig.enabled} movementType=${request.movementType}")
                 observer.onProgress(
                     AnalysisProgressEvent(
                         stage = "decode_start",
@@ -80,6 +133,11 @@ class MlKitVideoPoseFrameSource(
                 val frameQueue = Channel<FramePacket>(capacity = queueCapacity.coerceAtLeast(2))
                 val resultQueue = Channel<Pair<Int, PoseFrame>>(capacity = queueCapacity.coerceAtLeast(2))
                 val orderedFrames = mutableMapOf<Int, PoseFrame>()
+                val modeCounts = mutableMapOf<SamplingMode, Int>()
+                val triggerCounts = mutableMapOf<BurstTriggerReason, Int>()
+                var selectedIntervals = mutableListOf<Long>()
+                var maxSelectedInterval = 0L
+                var lastSelectedTs = -1L
                 val backlog = AtomicInteger(0)
                 var maxBacklog = 0
                 val activeWorkers = AtomicInteger(0)
@@ -89,6 +147,9 @@ class MlKitVideoPoseFrameSource(
                 val maxDecodeNanos = AtomicLong(0L)
                 val totalInferenceNanos = AtomicLong(0L)
                 val maxInferenceNanos = AtomicLong(0L)
+
+                var previousLumaSignal: Double? = null
+                var candidateFramesDecoded = 0
 
                 coroutineScope {
                     val workers = (0 until boundedWorkerCount).map {
@@ -144,7 +205,8 @@ class MlKitVideoPoseFrameSource(
 
                     val producer = launch(Dispatchers.IO) {
                         var timestampMs = 0L
-                        var index = 0
+                        var selectedIndex = 0
+                        var candidateIndex = 0
                         while (timestampMs <= durationMs) {
                             try {
                                 val frameTimeUs = timestampMs * 1000L
@@ -161,34 +223,78 @@ class MlKitVideoPoseFrameSource(
                                 }
                                 val decodeMs = (decodeNanos / 1_000_000.0).roundToLong()
                                 bitmap?.let { nonNullBitmap ->
-                                    if (index % 2 == 0) {
-                                        Log.i(
-                                            TAG,
-                                            "decode_sample frameIndex=$index timestampMs=$timestampMs/$durationMs decodeMs=$decodeMs",
-                                        )
+                                    val lumaSignal = bitmapLumaSignal(nonNullBitmap)
+                                    val signalReliable = lumaSignal != null && previousLumaSignal != null
+                                    val visualDiff = if (lumaSignal != null && previousLumaSignal != null) {
+                                        kotlin.math.abs(lumaSignal - previousLumaSignal!!)
+                                    } else {
+                                        0.0
                                     }
-                                    frameQueue.send(FramePacket(index = index, timestampMs = timestampMs, bitmap = nonNullBitmap))
-                                    maxBacklog = maxOf(maxBacklog, backlog.incrementAndGet())
-                                    activeSamples += activeWorkers.get().toLong()
-                                    activeTicks += 1
-                                    observer.onProgress(
-                                        AnalysisProgressEvent(
-                                            stage = "frame_sampled",
-                                            processedFrames = index + 1,
-                                            estimatedTotalFrames = estimatedTotalFrames,
+                                    val decision = planner.decide(
+                                        AdaptiveSamplingSignal(
                                             timestampMs = timestampMs,
-                                            detail = "Frame sampled for pose detection (decodeMs=$decodeMs)",
+                                            videoDurationMs = durationMs,
+                                            visualDiff = visualDiff,
+                                            subjectMovement = 0.0,
+                                            jointMovement = 0.0,
+                                            confidenceDrop = 0.0,
+                                            signalReliable = signalReliable,
                                         ),
                                     )
-                                    index += 1
+                                    modeCounts[decision.mode] = (modeCounts[decision.mode] ?: 0) + 1
+                                    decision.reasons.forEach { reason ->
+                                        triggerCounts[reason] = (triggerCounts[reason] ?: 0) + 1
+                                    }
+                                    if (candidateIndex % 2 == 0) {
+                                        Log.i(
+                                            TAG,
+                                            "decode_sample frameIndex=$candidateIndex timestampMs=$timestampMs/$durationMs decodeMs=$decodeMs mode=${decision.mode} sample=${decision.sample} motionScore=${"%.3f".format(decision.motionScore)} reasons=${decision.reasons.joinToString(separator = \",\")}",
+                                        )
+                                    }
+                                    if (decision.sample) {
+                                        frameQueue.send(FramePacket(index = selectedIndex, timestampMs = timestampMs, bitmap = nonNullBitmap))
+                                        maxBacklog = maxOf(maxBacklog, backlog.incrementAndGet())
+                                        activeSamples += activeWorkers.get().toLong()
+                                        activeTicks += 1
+                                        if (lastSelectedTs >= 0L) {
+                                            val gap = timestampMs - lastSelectedTs
+                                            selectedIntervals += gap
+                                            maxSelectedInterval = maxOf(maxSelectedInterval, gap)
+                                        }
+                                        lastSelectedTs = timestampMs
+                                        observer.onProgress(
+                                            AnalysisProgressEvent(
+                                                stage = "frame_sampled",
+                                                processedFrames = candidateIndex + 1,
+                                                estimatedTotalFrames = estimatedTotalFrames,
+                                                timestampMs = timestampMs,
+                                                detail = "Frame sampled for pose detection (decodeMs=$decodeMs mode=${decision.mode})",
+                                            ),
+                                        )
+                                        selectedIndex += 1
+                                    } else {
+                                        nonNullBitmap.recycle()
+                                        observer.onProgress(
+                                            AnalysisProgressEvent(
+                                                stage = "frame_skipped",
+                                                processedFrames = candidateIndex + 1,
+                                                estimatedTotalFrames = estimatedTotalFrames,
+                                                timestampMs = timestampMs,
+                                                detail = "Adaptive sampler skipped frame (mode=${decision.mode})",
+                                            ),
+                                        )
+                                    }
+                                    previousLumaSignal = lumaSignal ?: previousLumaSignal
                                 } ?: run {
-                                    Log.w(TAG, "decode_frame_missing timestampMs=$timestampMs index=$index decodeMs=$decodeMs")
+                                    Log.w(TAG, "decode_frame_missing timestampMs=$timestampMs index=$candidateIndex decodeMs=$decodeMs")
                                 }
                             } catch (e: Exception) {
-                                Log.e(TAG, "decode_exception frameIndex=$index timestampMs=$timestampMs message=${e.message}", e)
+                                Log.e(TAG, "decode_exception frameIndex=$candidateIndex timestampMs=$timestampMs message=${e.message}", e)
                                 throw e
                             }
-                            timestampMs += intervalMs
+                            candidateFramesDecoded += 1
+                            candidateIndex += 1
+                            timestampMs += candidateIntervalMs
                         }
                         frameQueue.close()
                     }
@@ -205,11 +311,17 @@ class MlKitVideoPoseFrameSource(
                 }
 
                 frames += orderedFrames.toSortedMap().values
-                val sampledFrames = frames.size.coerceAtLeast(1)
-                val avgDecodeMs = totalDecodeNanos.get().toDouble() / sampledFrames.toDouble() / 1_000_000.0
-                val avgInferenceMs = totalInferenceNanos.get().toDouble() / sampledFrames.toDouble() / 1_000_000.0
+                val avgDecodeMs = if (candidateFramesDecoded == 0) 0.0 else {
+                    totalDecodeNanos.get().toDouble() / candidateFramesDecoded.toDouble() / 1_000_000.0
+                }
+                val avgInferenceMs = if (frames.isEmpty()) 0.0 else {
+                    totalInferenceNanos.get().toDouble() / frames.size.toDouble() / 1_000_000.0
+                }
+                val averageSelectedInterval = if (selectedIntervals.isEmpty()) 0L else selectedIntervals.average().roundToLong()
                 lastDecodeTelemetry = DecodeTelemetry(
+                    candidateFrames = candidateFramesDecoded,
                     sampledFrames = frames.size,
+                    inferredFrames = frames.size,
                     workerCount = boundedWorkerCount,
                     maxQueueBacklog = maxBacklog,
                     averageWorkerActive = if (activeTicks == 0) 0.0 else activeSamples.toDouble() / activeTicks.toDouble(),
@@ -217,6 +329,10 @@ class MlKitVideoPoseFrameSource(
                     maxDecodeMs = (maxDecodeNanos.get() / 1_000_000.0).roundToLong(),
                     averageInferenceMs = avgInferenceMs,
                     maxInferenceMs = (maxInferenceNanos.get() / 1_000_000.0).roundToLong(),
+                    modeCounts = modeCounts.toMap(),
+                    burstTriggerCounts = triggerCounts.toMap(),
+                    averageSelectedIntervalMs = averageSelectedInterval,
+                    maxSelectedIntervalMs = maxSelectedInterval,
                 )
                 observer.onProgress(
                     AnalysisProgressEvent(
@@ -295,6 +411,29 @@ class MlKitVideoPoseFrameSource(
         val targetWidth = (width * scale).toInt().coerceAtLeast(1)
         val targetHeight = (height * scale).toInt().coerceAtLeast(1)
         return Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
+    }
+
+    private fun bitmapLumaSignal(bitmap: Bitmap): Double? {
+        return runCatching {
+            val targetWidth = 16
+            val targetHeight = 16
+            val sampleBitmap = Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
+            try {
+                val pixels = IntArray(targetWidth * targetHeight)
+                sampleBitmap.getPixels(pixels, 0, targetWidth, 0, 0, targetWidth, targetHeight)
+                if (pixels.isEmpty()) return@runCatching null
+                var total = 0.0
+                pixels.forEach { pixel ->
+                    val r = (pixel shr 16) and 0xFF
+                    val g = (pixel shr 8) and 0xFF
+                    val b = pixel and 0xFF
+                    total += (0.299 * r) + (0.587 * g) + (0.114 * b)
+                }
+                (total / pixels.size.toDouble()) / 255.0
+            } finally {
+                if (sampleBitmap !== bitmap) sampleBitmap.recycle()
+            }
+        }.getOrNull()
     }
 
 
