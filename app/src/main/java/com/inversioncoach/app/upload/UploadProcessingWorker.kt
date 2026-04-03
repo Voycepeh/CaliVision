@@ -44,11 +44,13 @@ class UploadProcessingWorker(
             repository = sessionRepo,
             runtimeBodyProfileResolver = ServiceLocator.runtimeBodyProfileResolver(applicationContext),
         )
+        val orchestrator = UploadAnalysisOrchestrator(runner)
         val tracking = runCatching { UploadTrackingMode.valueOf(job.trackingMode) }.getOrDefault(UploadTrackingMode.HOLD_BASED)
 
         val result = runCatching {
-            runner.run(
+            orchestrator.execute(
                 uri = Uri.parse(job.sourceUri),
+                ownerToken = id.toString(),
                 trackingMode = tracking,
                 selectedDrillId = job.selectedDrillId,
                 selectedReferenceTemplateId = job.selectedReferenceTemplateId,
@@ -119,9 +121,6 @@ class UploadProcessingWorker(
                 stageStartedAt = if (job.currentStage != stage) now else job.stageStartedAt,
                 lastHeartbeatAt = now,
                 lastProgressAt = now,
-                processedFrames = progress.processedFrames ?: job.processedFrames,
-                totalFrames = progress.totalFrames ?: job.totalFrames,
-                lastTimestampMs = progress.lastTimestampMs ?: job.lastTimestampMs,
             ),
         )
         setForeground(foregroundInfo(jobId, stage.name.replace('_', ' '), (progress.percent * 100).toInt()))

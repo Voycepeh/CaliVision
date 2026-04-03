@@ -105,15 +105,19 @@ class UploadedVideoAnalyzer(
             val decodeStart = System.currentTimeMillis()
             Log.i(UPLOAD_ANALYSIS_TAG, "analysis_loop_start uri=$videoUri")
             progressObserver?.onProgress(AnalysisProgressEvent(stage = "decode_start", detail = "Sampling uploaded video frames"))
+            var estimatedTotalFrames = 0
             val sourceFrames = frameSource.decode(
                 videoUri = videoUri,
                 observer = AnalysisProgressObserver { progressEvent ->
+                    progressEvent.estimatedTotalFrames?.let { estimated ->
+                        if (estimated > 0) estimatedTotalFrames = max(estimatedTotalFrames, estimated)
+                    }
                     progressObserver?.onProgress(progressEvent)
                 },
                 request = VideoDecodeRequest(
                     movementType = profile.movementType,
                 ),
-            ).toList()
+            )
             val decodeDuration = System.currentTimeMillis() - decodeStart
 
             val analysisStart = System.currentTimeMillis()
@@ -126,17 +130,19 @@ class UploadedVideoAnalyzer(
                 AnalysisProgressEvent(
                     stage = "analysis_started",
                     processedFrames = 0,
-                    estimatedTotalFrames = sourceFrames.size,
+                    estimatedTotalFrames = estimatedTotalFrames.takeIf { it > 0 },
                     droppedFrames = 0,
                     detail = "Starting post-processing on decoded frames",
                 )
             )
-            sourceFrames.forEachIndexed { index, frame ->
+            var processedFrames = 0
+            for ((index, frame) in sourceFrames.withIndex()) {
+                processedFrames = index + 1
                 val frameStart = System.nanoTime()
                 if (index % 2 == 0) {
                     Log.i(
                         UPLOAD_ANALYSIS_TAG,
-                        "analysis_sample frameIndex=$index total=${sourceFrames.size} timestampMs=${frame.timestampMs} dropped=$dropped",
+                        "analysis_sample frameIndex=$index totalHint=$estimatedTotalFrames timestampMs=${frame.timestampMs} dropped=$dropped",
                     )
                 }
                 if (frame.confidence <= 0f || frame.joints.isEmpty()) {
@@ -145,7 +151,7 @@ class UploadedVideoAnalyzer(
                         AnalysisProgressEvent(
                             stage = "analysis_frame_dropped",
                             processedFrames = index + 1,
-                            estimatedTotalFrames = sourceFrames.size,
+                            estimatedTotalFrames = estimatedTotalFrames.takeIf { it > 0 },
                             droppedFrames = dropped,
                             timestampMs = frame.timestampMs,
                         ),
@@ -173,7 +179,7 @@ class UploadedVideoAnalyzer(
                         AnalysisProgressEvent(
                             stage = "analysis_frame_processed",
                             processedFrames = index + 1,
-                            estimatedTotalFrames = sourceFrames.size,
+                            estimatedTotalFrames = estimatedTotalFrames.takeIf { it > 0 },
                             droppedFrames = dropped,
                             timestampMs = frame.timestampMs,
                             detail = "postProcessMs=$postProcessMs",
@@ -184,11 +190,11 @@ class UploadedVideoAnalyzer(
                 if (index % 4 == 0) {
                     val processed = index + 1
                     val throughput = (processed * 1000.0) / maxOf(1L, System.currentTimeMillis() - analysisStart).toDouble()
-                    val remaining = sourceFrames.size - processed
+                    val remaining = (estimatedTotalFrames - processed).coerceAtLeast(0)
                     val etaSec = if (throughput <= 0.0) -1 else (remaining / throughput).roundToLong()
                     Log.i(
                         UPLOAD_ANALYSIS_TAG,
-                        "analysis_timing frame=$processed/${sourceFrames.size} frameMs=$elapsedMs throughputFps=${"%.2f".format(throughput)} etaSec=$etaSec",
+                        "analysis_timing frame=$processed/$estimatedTotalFrames frameMs=$elapsedMs throughputFps=${"%.2f".format(throughput)} etaSec=$etaSec",
                     )
                 }
             }
@@ -204,13 +210,13 @@ class UploadedVideoAnalyzer(
             )
             Log.i(
                 UPLOAD_ANALYSIS_TAG,
-                "decodeMs=$decodeDuration analyzeMs=$analysisDuration total=${sourceFrames.size} dropped=$dropped view=$view phases=${phaseTimeline.size} candidate=${template.status} calibrationVersion=${calibrationProfileVersion ?: -1}",
+                "decodeMs=$decodeDuration analyzeMs=$analysisDuration total=$processedFrames dropped=$dropped view=$view phases=${phaseTimeline.size} candidate=${template.status} calibrationVersion=${calibrationProfileVersion ?: -1}",
             )
             progressObserver?.onProgress(
                 AnalysisProgressEvent(
                     stage = "analysis_complete",
-                    processedFrames = sourceFrames.size,
-                    estimatedTotalFrames = sourceFrames.size,
+                    processedFrames = processedFrames,
+                    estimatedTotalFrames = maxOf(estimatedTotalFrames, processedFrames),
                     droppedFrames = dropped,
                     detail = "Uploaded analysis complete",
                 ),
@@ -223,7 +229,7 @@ class UploadedVideoAnalyzer(
                 telemetry = mapOf(
                     "decode_time_ms" to decodeDuration,
                     "analysis_time_ms" to analysisDuration,
-                    "total_frames_processed" to sourceFrames.size.toLong(),
+                    "total_frames_processed" to processedFrames.toLong(),
                     "frames_dropped" to dropped.toLong(),
                     "candidate_phase_count" to phaseTimeline.map { it.second }.distinct().size.toLong(),
                     "calibration_profile_version" to (calibrationProfileVersion?.toLong() ?: -1L),
