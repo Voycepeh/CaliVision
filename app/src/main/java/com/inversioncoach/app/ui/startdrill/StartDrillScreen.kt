@@ -1,12 +1,5 @@
 package com.inversioncoach.app.ui.startdrill
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,20 +29,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.inversioncoach.app.drills.SelectableDrill
-import com.inversioncoach.app.drills.catalog.JointPoint
-import com.inversioncoach.app.drills.catalog.StickFigureAnimator
 import com.inversioncoach.app.model.DrillType
 import com.inversioncoach.app.model.LiveSessionOptions
 import com.inversioncoach.app.overlay.EffectiveView
 import com.inversioncoach.app.storage.ServiceLocator
 import com.inversioncoach.app.ui.components.ScaffoldedScreen
+import com.inversioncoach.app.ui.components.SeededSkeletonPreview
+import com.inversioncoach.app.ui.components.SeededSkeletonPreviewDefaults
+import com.inversioncoach.app.ui.components.rememberSeededSkeletonPreviewProgress
 
 private val defaultSessionOptions = LiveSessionOptions(
     voiceEnabled = true,
@@ -231,7 +223,7 @@ private fun DrillSkeletonPreview(drill: SelectableDrill) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(1f)
+                .aspectRatio(SeededSkeletonPreviewDefaults.PORTRAIT_ASPECT_RATIO)
                 .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(14.dp)),
         ) {
             Text(
@@ -244,39 +236,9 @@ private fun DrillSkeletonPreview(drill: SelectableDrill) {
         return
     }
 
-    val transition = rememberInfiniteTransition(label = "choose_drill_preview")
-    val previewLineColor = MaterialTheme.colorScheme.primary
-    val progress = transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = (1000f * 16f / skeleton.framesPerSecond.coerceAtLeast(1)).toInt(), easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "choose_drill_preview_progress",
-    ).value
-    val pose = remember(skeleton, progress) { StickFigureAnimator.poseAt(skeleton, progress) }
-
-    Canvas(
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(1f)
-            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(14.dp)),
-    ) {
-        StickFigureAnimator.canonicalBones.forEach { (start, end) ->
-            val a = pose[start]
-            val b = pose[end]
-            if (a != null && b != null) {
-                drawLine(
-                    color = previewLineColor,
-                    start = a.toOffset(size.width, size.height),
-                    end = b.toOffset(size.width, size.height),
-                    strokeWidth = 5f,
-                    cap = StrokeCap.Round,
-                )
-            }
-        }
-    }
+    val progress = rememberSeededSkeletonPreviewProgress(template = skeleton)
+    SeededSkeletonPreview(
+        template = skeleton,
+        progress = progress,
+    )
 }
-
-private fun JointPoint.toOffset(width: Float, height: Float): Offset = Offset(x * width, y * height)
