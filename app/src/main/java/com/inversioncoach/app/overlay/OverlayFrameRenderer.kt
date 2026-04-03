@@ -22,6 +22,7 @@ data class OverlayDrawingFrame(
     val scaleMode: PoseScaleMode = PoseScaleMode.FIT,
     val debugProjection: Boolean = false,
     val renderTarget: OverlayRenderTarget = OverlayRenderTarget.LIVE_PREVIEW,
+    val coordinateSpace: OverlayCoordinateSpace,
     val styleScaleMultiplier: Float = 1f,
     val unreliableJointNames: Set<String> = emptySet(),
 )
@@ -74,15 +75,10 @@ object OverlayFrameRenderer {
         skeletonPaint.strokeWidth = style.skeletonStrokeWidth
         idealLinePaint.strokeWidth = style.idealLineStrokeWidth
 
-        val projection = PoseProjectionInput(
-            sourceWidth = frame.sourceWidth.coerceAtLeast(1),
-            sourceHeight = frame.sourceHeight.coerceAtLeast(1),
-            previewWidth = width.toFloat(),
-            previewHeight = height.toFloat(),
-            previewContentRect = frame.previewContentRect,
-            rotationDegrees = frame.sourceRotationDegrees,
-            mirrored = frame.mirrored,
-            scaleMode = frame.scaleMode,
+        val projection = OverlayProjection.inputForFrame(
+            frame = frame,
+            renderWidth = width,
+            renderHeight = height,
         )
         val projectionDiagnostics = mapper.diagnostics(projection)
         val projectedJointBounds = projectedJointBounds(model = model, projection = projection)
@@ -92,7 +88,8 @@ object OverlayFrameRenderer {
                 "Projection diagnostics canvas=0,0,${width}x${height} " +
                     "baseContentRect=${frame.previewContentRect ?: Rect(0f, 0f, width.toFloat(), height.toFloat())} " +
                     "projectedContentRect=${projectionDiagnostics.contentRect} " +
-                    "scaleMode=${frame.scaleMode} skeletonBounds=${projectedJointBounds ?: "none"}",
+                    "scaleMode=${frame.scaleMode} coordinateSpace=${frame.coordinateSpace} " +
+                    "skeletonBounds=${projectedJointBounds ?: "none"}",
             )
         }
         val mappedJoints = mapJoints(

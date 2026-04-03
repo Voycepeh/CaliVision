@@ -30,6 +30,7 @@ import com.inversioncoach.app.overlay.DrillCameraSide
 import com.inversioncoach.app.overlay.OverlayDrawingFrame
 import com.inversioncoach.app.overlay.OverlayFrameRenderer
 import com.inversioncoach.app.overlay.OverlayGeometry
+import com.inversioncoach.app.overlay.OverlayCoordinateSpace
 import com.inversioncoach.app.overlay.OverlayRenderModel
 import com.inversioncoach.app.overlay.OverlayRenderTarget
 import com.inversioncoach.app.pose.PoseScaleMode
@@ -602,6 +603,7 @@ class AnnotatedVideoCompositor(
                 sourceWidth = displaySize.first,
                 sourceHeight = displaySize.second,
                 sourceRotationDegrees = 0,
+                coordinateSpace = OverlayCoordinateSpace.UPRIGHT_NORMALIZED,
                 mirrored = false,
                 previewContentRect = androidx.compose.ui.geometry.Rect(
                     left = contentRect.left,
@@ -727,12 +729,10 @@ class AnnotatedVideoCompositor(
                 height = height,
                 model = model,
                 frame = overlayProjectionFrame.copy(
-                drawSkeleton = instruction.drawSkeleton,
-                drawIdealLine = instruction.drawIdealLine,
-                drawCenterOfGravity = instruction.drawCenterOfGravity,
-                    // Export video frames are already normalized into upright output space.
-                    // Keep overlay projection in this same export-upright coordinate system.
-                    sourceRotationDegrees = 0,
+                    drawSkeleton = instruction.drawSkeleton,
+                    drawIdealLine = instruction.drawIdealLine,
+                    drawCenterOfGravity = instruction.drawCenterOfGravity,
+                    coordinateSpace = OverlayCoordinateSpace.UPRIGHT_NORMALIZED,
                     mirrored = instruction.mirrored,
                     scaleMode = instruction.scaleMode,
                     renderTarget = OverlayRenderTarget.ANNOTATED_EXPORT,
