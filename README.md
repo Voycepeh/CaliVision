@@ -126,6 +126,7 @@ Detailed diagrams live in [`docs/diagrams/`](docs/diagrams).
 4. Analysis modules (`pose`, `motion`, `biomechanics`) score and classify movement.
 5. Recording/export modules (`recording`, `media`) generate replay outputs with fallback.
 6. `storage/repository/SessionRepository` persists sessions, drill metadata, media status, and references.
+7. `app/src/main/assets/drill_catalog/drill_catalog_v1.json` is the canonical seeded source; seeded reference/baseline templates are derived from catalog drill metadata at startup (no standalone `assets/reference_templates/*.json` dependency).
 
 ## Project structure / docs map
 

@@ -17,6 +17,7 @@ CaliVision is a drill-centric coaching system with connected live, upload, repla
 - **Navigation/UI**: `ui/navigation`, feature screens in `ui/**`.
 - **Workflow orchestrators**: `LiveCoachingViewModel`, `UploadVideoViewModel`, drill studio view models.
 - **Domain**: `drills`, `movementprofile`, `calibration`.
+- **Seeded data source of truth**: `app/src/main/assets/drill_catalog/drill_catalog_v1.json` seeds drill definitions and startup baseline/reference templates (catalog-derived, not standalone reference-template assets).
 - **Analysis**: `pose`, `motion`, `biomechanics`, coaching cues.
 - **Media**: recording, overlay timeline, annotated export, replay resolver.
 - **Persistence**: Room + repository + blob storage.
