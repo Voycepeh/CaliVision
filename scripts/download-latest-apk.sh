@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="${1:-Voycepeh/Handstand-App}"
+REPO="${1:-Voycepeh/CaliVision}"
 OUT_DIR="${2:-artifacts}"
 
 API_URL="https://api.github.com/repos/${REPO}/releases/latest"
