@@ -3,6 +3,7 @@ package com.inversioncoach.app.storage
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import com.inversioncoach.app.media.SessionMediaOwnership
 import java.io.File
 
 class SessionBlobStorage(
@@ -78,6 +79,10 @@ class SessionBlobStorage(
 
     fun deleteUri(uri: String?): Boolean {
         if (uri.isNullOrBlank()) return true
+        if (!SessionMediaOwnership.isOwnedAppFile(uri, ownedDeleteRoots())) {
+            Log.w(TAG, "Refusing to delete non-owned uri=$uri")
+            return false
+        }
         val path = runCatching { Uri.parse(uri).path }.getOrNull() ?: return false
         return runCatching { File(path).delete() }.getOrDefault(false)
     }
@@ -86,6 +91,21 @@ class SessionBlobStorage(
 
     fun deleteAllBlobs() {
         rootDir().deleteRecursively()
+    }
+
+    fun cleanupStaleCacheArtifacts(maxAgeMs: Long = 24L * 60L * 60L * 1000L): Int {
+        val now = System.currentTimeMillis()
+        val recordings = recordingsCacheDir()
+        if (!recordings.exists()) return 0
+        var deleted = 0
+        recordings.listFiles().orEmpty().forEach { file ->
+            if (!file.isFile) return@forEach
+            val ageMs = (now - file.lastModified()).coerceAtLeast(0L)
+            if (ageMs >= maxAgeMs && file.name.endsWith(".mp4")) {
+                if (runCatching { file.delete() }.getOrDefault(false)) deleted += 1
+            }
+        }
+        return deleted
     }
 
     private fun persistVideo(sessionId: Long, sourceUri: String, targetFileName: String): String? = runCatching {
@@ -111,12 +131,15 @@ class SessionBlobStorage(
     }
 
     private fun rootDir(): File = File(context.filesDir, ROOT_DIRECTORY)
+    private fun recordingsCacheDir(): File = File(context.cacheDir, RECORDINGS_DIRECTORY)
+    private fun ownedDeleteRoots(): List<File> = listOf(rootDir(), recordingsCacheDir())
 
     private fun sessionDir(sessionId: Long): File = File(rootDir(), "session_$sessionId")
 
     companion object {
         private const val TAG = "SessionBlobStorage"
         private const val ROOT_DIRECTORY = "session_blobs"
+        private const val RECORDINGS_DIRECTORY = "recordings"
         const val RAW_MASTER_FILE_NAME = "raw_master.mp4"
         const val ANNOTATED_MASTER_FILE_NAME = "annotated_master.mp4"
         const val RAW_FINAL_FILE_NAME = "raw_final.mp4"

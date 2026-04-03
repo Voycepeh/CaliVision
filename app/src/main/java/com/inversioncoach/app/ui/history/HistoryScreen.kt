@@ -35,6 +35,7 @@ import com.inversioncoach.app.model.UserSettings
 import com.inversioncoach.app.model.AnnotatedExportStage
 import com.inversioncoach.app.model.AnnotatedExportStatus
 import com.inversioncoach.app.model.RawPersistStatus
+import com.inversioncoach.app.media.SessionMediaOwnership
 import com.inversioncoach.app.storage.ServiceLocator
 import com.inversioncoach.app.storage.repository.resolvedDrillId
 import com.inversioncoach.app.ui.common.computeSessionDurationMs
@@ -295,11 +296,7 @@ internal fun uploadProgress(session: com.inversioncoach.app.model.SessionRecord)
 }
 
 private fun rawReplayPlayableForUi(session: com.inversioncoach.app.model.SessionRecord): Boolean {
-    if (session.rawPersistFailureReason in setOf("RAW_REPLAY_INVALID", "RAW_MEDIA_CORRUPT", "SOURCE_VIDEO_UNREADABLE")) return false
-    val rawUri = session.rawFinalUri ?: session.rawVideoUri ?: session.rawMasterUri
-    if (rawUri.isNullOrBlank()) return false
-    val bestPlayableUri = session.bestPlayableUri
-    return bestPlayableUri.isNullOrBlank() || bestPlayableUri == rawUri
+    return SessionMediaOwnership.rawReplayPlayable(session)
 }
 
 private fun sortLabel(baseLabel: String, isSelected: Boolean, isAscending: Boolean): String = when {

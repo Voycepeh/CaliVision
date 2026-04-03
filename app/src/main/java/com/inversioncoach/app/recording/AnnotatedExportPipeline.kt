@@ -1,5 +1,6 @@
 package com.inversioncoach.app.recording
 
+import android.net.Uri
 import android.util.Log
 import com.inversioncoach.app.model.AnnotatedExportFailureReason
 import com.inversioncoach.app.model.AnnotatedExportStatus
@@ -16,6 +17,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import java.io.File
 import kotlin.math.abs
 
 private const val TAG = "AnnotatedExportPipeline"
@@ -453,31 +455,45 @@ class AnnotatedExportPipeline(
             )
         }
 
-        val persisted = persistAnnotatedVideo(sessionId, composeResult.uri)
-        if (persisted.isNullOrBlank()) {
-            return failExport(
-                reason = AnnotatedExportFailureReason.ANNOTATED_URI_NOT_PERSISTED.name,
-                started = telemetry?.decoderInitializedAtMs != null,
-                telemetry = telemetry,
-            )
+        try {
+            val persisted = persistAnnotatedVideo(sessionId, composeResult.uri)
+            if (persisted.isNullOrBlank()) {
+                return failExport(
+                    reason = AnnotatedExportFailureReason.ANNOTATED_URI_NOT_PERSISTED.name,
+                    started = telemetry?.decoderInitializedAtMs != null,
+                    telemetry = telemetry,
+                )
+            }
+            val verification = verifyMedia(persisted)
+            val status = if (verification.isValid) AnnotatedExportStatus.ANNOTATED_READY else AnnotatedExportStatus.ANNOTATED_FAILED
+            updateExportStatus(sessionId, status)
+            if (!verification.isValid) {
+                return failExport(
+                    reason = verification.failureReason?.name ?: AnnotatedExportFailureReason.VERIFICATION_FAILED.name,
+                    started = telemetry?.decoderInitializedAtMs != null,
+                    telemetry = telemetry,
+                ).copy(verificationStatus = VerificationStatus.FAILED)
+            } else {
+                Log.d(TAG, "export_complete sessionId=$sessionId persistedUri=$persisted")
+                return ExportResult(
+                    persistedUri = persisted,
+                    verificationStatus = VerificationStatus.PASSED,
+                    started = telemetry?.decoderInitializedAtMs != null,
+                    telemetry = telemetry,
+                )
+            }
+        } finally {
+            cleanupTemporaryExportOutput(composeResult.uri)
         }
-        val verification = verifyMedia(persisted)
-        val status = if (verification.isValid) AnnotatedExportStatus.ANNOTATED_READY else AnnotatedExportStatus.ANNOTATED_FAILED
-        updateExportStatus(sessionId, status)
-        if (!verification.isValid) {
-            return failExport(
-                reason = verification.failureReason?.name ?: AnnotatedExportFailureReason.VERIFICATION_FAILED.name,
-                started = telemetry?.decoderInitializedAtMs != null,
-                telemetry = telemetry,
-            ).copy(verificationStatus = VerificationStatus.FAILED)
-        } else {
-            Log.d(TAG, "export_complete sessionId=$sessionId persistedUri=$persisted")
-            return ExportResult(
-                persistedUri = persisted,
-                verificationStatus = VerificationStatus.PASSED,
-                started = telemetry?.decoderInitializedAtMs != null,
-                telemetry = telemetry,
-            )
-        }
+    }
+
+    private fun cleanupTemporaryExportOutput(uri: String?) {
+        if (uri.isNullOrBlank()) return
+        val parsed = runCatching { Uri.parse(uri) }.getOrNull() ?: return
+        if (parsed.scheme != "file") return
+        val path = parsed.path ?: return
+        val file = File(path)
+        if (!file.name.startsWith("annotated_") || !file.name.endsWith(".mp4")) return
+        runCatching { file.delete() }
     }
 }
