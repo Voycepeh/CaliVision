@@ -55,6 +55,7 @@ import com.inversioncoach.app.ui.common.computeSessionDurationMs
 import com.inversioncoach.app.ui.common.formatSessionDateTime
 import com.inversioncoach.app.ui.common.formatSessionDuration
 import com.inversioncoach.app.ui.components.ScaffoldedScreen
+import com.inversioncoach.app.ui.live.ExportWorkOwnership
 import java.time.Instant
 import java.time.ZoneId
 import java.time.temporal.TemporalAdjusters
@@ -84,6 +85,13 @@ fun HomeScreen(
             settings?.hasCompletedPreferencesOnboarding == true -> FirstLaunchOnboardingGate.SkipOnboarding
             else -> FirstLaunchOnboardingGate.ShowOnboarding
         }
+    }
+
+    LaunchedEffect(sessions) {
+        repository.recoverStaleAnnotatedExports(
+            activeExportSessionIds = ExportWorkOwnership.activeSessionIds(),
+            trigger = "home_hydration",
+        )
     }
 
     ScaffoldedScreen(title = "CaliVision") { padding ->

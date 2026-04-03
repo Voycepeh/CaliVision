@@ -11,6 +11,7 @@ import com.inversioncoach.app.storage.ServiceLocator
 import com.inversioncoach.app.model.UploadJobStatus
 import com.inversioncoach.app.upload.UploadProcessingNotifications
 import com.inversioncoach.app.upload.UploadQueueCoordinator
+import com.inversioncoach.app.ui.live.ExportWorkOwnership
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -52,6 +53,10 @@ class InversionCoachApp : Application(), Configuration.Provider {
             repo.reconcileActiveUploadJobs(
                 hasActiveWorker = activeQueueJob,
                 reason = "app_start_queue_reconcile",
+            )
+            repo.recoverStaleAnnotatedExports(
+                activeExportSessionIds = ExportWorkOwnership.activeSessionIds(),
+                trigger = "app_startup",
             )
         }
     }
