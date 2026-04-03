@@ -1,43 +1,36 @@
-# UI Flow
+# Diagram: UI Workflow Overview
 
 ```mermaid
 flowchart TD
     HOME[Home / Drill Hub]
+    START[Start Drill]
+    LIVE[Live Session]
+    SHORT[Session Too Short]
+    RESULTS[Results]
+    HISTORY[Results / Session History]
+
     MANAGE[Manage Drills]
     STUDIO[Drill Studio]
-    START[Start Live Session]
-    COUNTDOWN[Countdown / Start Gating]
-    LIVE[Live Session]
-    FINALIZE[Finalize + Export]
-    RESULTS[Results]
-    HISTORY[Session History]
+    WORKSPACE[Drill Workspace]
+
     UPLOAD[Upload / Reference Training]
-    REF[Reference Template / Comparison]
     CAL[Calibration / Profiles]
+    SETTINGS[Settings]
 
-    HOME --> START
-    HOME --> MANAGE
-    HOME --> UPLOAD
+    HOME --> START --> LIVE
+    LIVE --> RESULTS
+    LIVE --> SHORT --> HOME
+
+    HOME --> MANAGE --> STUDIO --> MANAGE
+    HOME --> START --> WORKSPACE
+    WORKSPACE --> LIVE
+    WORKSPACE --> UPLOAD
+    WORKSPACE --> HISTORY
+
+    HOME --> UPLOAD --> RESULTS
     HOME --> HISTORY
-    HOME --> CAL
-
-    MANAGE --> STUDIO
-    STUDIO --> MANAGE
-    STUDIO --> HOME
-
-    START --> COUNTDOWN
-    COUNTDOWN --> LIVE
-    LIVE --> FINALIZE
-    FINALIZE --> RESULTS
-    RESULTS --> HISTORY
-    RESULTS --> HOME
-
-    UPLOAD --> RESULTS
-    UPLOAD --> REF
-    REF --> RESULTS
-
     HISTORY --> RESULTS
-    HISTORY --> REF
 
-    CAL --> HOME
+    HOME --> CAL --> HOME
+    HOME --> SETTINGS --> HOME
 ```

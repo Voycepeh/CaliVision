@@ -1,62 +1,31 @@
-# Class Diagram (Drill-Centric Ownership)
+# Diagram: Core Class Relationships
 
 ```mermaid
 classDiagram
-    class DrillHubViewModel {
-      +selectDrill()
-      +openFlow()
-    }
-    class DrillStudioViewModel {
-      +loadPersistedDrill(id)
-      +validateAndSave()
-    }
-    class LiveSessionOrchestrator {
-      +resolveEffectiveView()
-      +startAfterCountdown()
-      +finalizeSession()
-    }
-    class UploadAnalysisCoordinator {
-      +analyzeUpload()
-      +persistOutcome()
-    }
-    class ReferenceTemplateService {
-      +createOrUpdateTemplate()
-      +compareAttempt()
-    }
-    class RuntimeBodyProfileResolver {
-      +resolveActiveProfile()
-    }
-    class OverlayTimelineRecorder {
-      +appendFrame()
-      +freezeTimeline()
-    }
-    class AnnotatedExportPipeline {
-      +exportAnnotatedReplay()
-    }
-    class SessionMediaResolver {
-      +resolveBestReplay()
-    }
-    class SessionRepository {
-      +saveSession()
-      +updateMediaOutcome()
-    }
-    class SessionBlobStorage {
-      +persistRawMedia()
-      +persistAnnotatedMedia()
-    }
+    class LiveCoachingViewModel
+    class UploadVideoViewModel
+    class DrillStudioViewModel
+    class UploadedVideoAnalyzer
+    class UploadedVideoAnalysisCoordinator
+    class RuntimeBodyProfileResolver
+    class AnnotatedExportPipeline
+    class SessionMediaResolver
+    class SessionRepository
+    class SessionBlobStorage
 
-    DrillHubViewModel --> LiveSessionOrchestrator
-    DrillHubViewModel --> UploadAnalysisCoordinator
-    DrillHubViewModel --> DrillStudioViewModel
+    LiveCoachingViewModel --> AnnotatedExportPipeline
+    LiveCoachingViewModel --> SessionMediaResolver
+    LiveCoachingViewModel --> SessionRepository
+    LiveCoachingViewModel --> RuntimeBodyProfileResolver
+
+    UploadVideoViewModel --> UploadedVideoAnalyzer
+    UploadVideoViewModel --> UploadedVideoAnalysisCoordinator
+    UploadVideoViewModel --> AnnotatedExportPipeline
+    UploadVideoViewModel --> SessionMediaResolver
+    UploadVideoViewModel --> SessionRepository
+    UploadVideoViewModel --> RuntimeBodyProfileResolver
+
     DrillStudioViewModel --> SessionRepository
-    LiveSessionOrchestrator --> OverlayTimelineRecorder
-    LiveSessionOrchestrator --> AnnotatedExportPipeline
-    LiveSessionOrchestrator --> SessionMediaResolver
-    LiveSessionOrchestrator --> RuntimeBodyProfileResolver
-    UploadAnalysisCoordinator --> ReferenceTemplateService
-    UploadAnalysisCoordinator --> SessionRepository
-    UploadAnalysisCoordinator --> RuntimeBodyProfileResolver
-    AnnotatedExportPipeline --> SessionMediaResolver
+    UploadedVideoAnalysisCoordinator --> SessionRepository
     SessionRepository --> SessionBlobStorage
-    ReferenceTemplateService --> SessionRepository
 ```
