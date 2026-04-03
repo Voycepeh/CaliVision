@@ -57,7 +57,7 @@ import kotlin.math.min
 @Composable
 fun DrillStudioScreen(onBack: () -> Unit, initialDrillId: String? = null) {
     val context = LocalContext.current
-    val vm: DrillStudioEditorViewModel = viewModel { DrillStudioEditorViewModel(context) }
+    val vm: DrillStudioEditorViewModel = viewModel { DrillStudioEditorViewModel(context.applicationContext) }
     val editorState by vm.state.collectAsState()
     val drills = editorState.drills
     val selectedDrillId = editorState.selectedDrillId

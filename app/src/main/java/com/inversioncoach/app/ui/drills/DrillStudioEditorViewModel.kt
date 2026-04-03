@@ -32,8 +32,9 @@ data class DrillStudioEditorState(
 class DrillStudioEditorViewModel(
     context: Context,
 ) : ViewModel() {
-    private val store = DrillCatalogDraftStore(context)
-    private val importExport = DrillCatalogImportExportManager(context, store)
+    private val appContext = context.applicationContext
+    private val store = DrillCatalogDraftStore(appContext)
+    private val importExport = DrillCatalogImportExportManager(appContext, store)
 
     private val _state = MutableStateFlow(DrillStudioEditorState())
     val state: StateFlow<DrillStudioEditorState> = _state.asStateFlow()
