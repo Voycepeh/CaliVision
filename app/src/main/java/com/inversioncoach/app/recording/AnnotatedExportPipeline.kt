@@ -1,6 +1,8 @@
 package com.inversioncoach.app.recording
 
+import android.net.Uri
 import android.util.Log
+import com.inversioncoach.app.media.SessionMediaOwnership
 import com.inversioncoach.app.model.AnnotatedExportFailureReason
 import com.inversioncoach.app.model.AnnotatedExportStatus
 import com.inversioncoach.app.model.DrillType
@@ -16,6 +18,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import java.io.File
 import kotlin.math.abs
 
 private const val TAG = "AnnotatedExportPipeline"
@@ -123,6 +126,7 @@ class AnnotatedExportPipeline(
     private val debugValidationEnabled: Boolean = false,
     private val persistAnnotatedVideo: suspend (Long, String) -> String?,
     private val updateExportStatus: suspend (Long, AnnotatedExportStatus) -> Unit,
+    private val tempExportOwnedRoots: () -> List<File> = compositor::ownedTempExportRoots,
     private val verifyMedia: (String?) -> MediaVerificationResult = { uri -> MediaVerificationHelper.verify(uri) },
     private val exportTimeoutMs: Long = BASE_EXPORT_TIMEOUT_MS,
     private val stallWindowMs: Long = DEFAULT_STALL_WINDOW_MS,
@@ -242,11 +246,13 @@ class AnnotatedExportPipeline(
         debugValidationEnabled = debugValidationEnabled,
         persistAnnotatedVideo = repository::saveAnnotatedVideoBlob,
         updateExportStatus = repository::updateAnnotatedExportStatus,
+        tempExportOwnedRoots = compositor::ownedTempExportRoots,
     )
 
     internal constructor(
         persistAnnotatedVideo: suspend (Long, String) -> String?,
         updateExportStatus: suspend (Long, AnnotatedExportStatus) -> Unit,
+        tempExportOwnedRoots: () -> List<File> = { emptyList() },
         verifyMedia: (String?) -> MediaVerificationResult = { uri -> MediaVerificationHelper.verify(uri) },
         exportTimeoutMs: Long = BASE_EXPORT_TIMEOUT_MS,
         stallWindowMs: Long = DEFAULT_STALL_WINDOW_MS,
@@ -256,6 +262,7 @@ class AnnotatedExportPipeline(
         debugValidationEnabled = false,
         persistAnnotatedVideo = persistAnnotatedVideo,
         updateExportStatus = updateExportStatus,
+        tempExportOwnedRoots = tempExportOwnedRoots,
         verifyMedia = verifyMedia,
         exportTimeoutMs = exportTimeoutMs,
         stallWindowMs = stallWindowMs,
@@ -453,31 +460,46 @@ class AnnotatedExportPipeline(
             )
         }
 
-        val persisted = persistAnnotatedVideo(sessionId, composeResult.uri)
-        if (persisted.isNullOrBlank()) {
-            return failExport(
-                reason = AnnotatedExportFailureReason.ANNOTATED_URI_NOT_PERSISTED.name,
-                started = telemetry?.decoderInitializedAtMs != null,
-                telemetry = telemetry,
-            )
+        try {
+            val persisted = persistAnnotatedVideo(sessionId, composeResult.uri)
+            if (persisted.isNullOrBlank()) {
+                return failExport(
+                    reason = AnnotatedExportFailureReason.ANNOTATED_URI_NOT_PERSISTED.name,
+                    started = telemetry?.decoderInitializedAtMs != null,
+                    telemetry = telemetry,
+                )
+            }
+            val verification = verifyMedia(persisted)
+            val status = if (verification.isValid) AnnotatedExportStatus.ANNOTATED_READY else AnnotatedExportStatus.ANNOTATED_FAILED
+            updateExportStatus(sessionId, status)
+            if (!verification.isValid) {
+                return failExport(
+                    reason = verification.failureReason?.name ?: AnnotatedExportFailureReason.VERIFICATION_FAILED.name,
+                    started = telemetry?.decoderInitializedAtMs != null,
+                    telemetry = telemetry,
+                ).copy(verificationStatus = VerificationStatus.FAILED)
+            } else {
+                Log.d(TAG, "export_complete sessionId=$sessionId persistedUri=$persisted")
+                return ExportResult(
+                    persistedUri = persisted,
+                    verificationStatus = VerificationStatus.PASSED,
+                    started = telemetry?.decoderInitializedAtMs != null,
+                    telemetry = telemetry,
+                )
+            }
+        } finally {
+            cleanupTemporaryExportOutput(composeResult.uri)
         }
-        val verification = verifyMedia(persisted)
-        val status = if (verification.isValid) AnnotatedExportStatus.ANNOTATED_READY else AnnotatedExportStatus.ANNOTATED_FAILED
-        updateExportStatus(sessionId, status)
-        if (!verification.isValid) {
-            return failExport(
-                reason = verification.failureReason?.name ?: AnnotatedExportFailureReason.VERIFICATION_FAILED.name,
-                started = telemetry?.decoderInitializedAtMs != null,
-                telemetry = telemetry,
-            ).copy(verificationStatus = VerificationStatus.FAILED)
-        } else {
-            Log.d(TAG, "export_complete sessionId=$sessionId persistedUri=$persisted")
-            return ExportResult(
-                persistedUri = persisted,
-                verificationStatus = VerificationStatus.PASSED,
-                started = telemetry?.decoderInitializedAtMs != null,
-                telemetry = telemetry,
-            )
-        }
+    }
+
+    private fun cleanupTemporaryExportOutput(uri: String?) {
+        if (uri.isNullOrBlank()) return
+        if (!SessionMediaOwnership.isOwnedAppFile(uri, tempExportOwnedRoots())) return
+        val parsed = runCatching { Uri.parse(uri) }.getOrNull() ?: return
+        if (parsed.scheme != "file") return
+        val path = parsed.path ?: return
+        val file = File(path)
+        if (!file.name.startsWith("annotated_") || !file.name.endsWith(".mp4")) return
+        runCatching { file.delete() }
     }
 }

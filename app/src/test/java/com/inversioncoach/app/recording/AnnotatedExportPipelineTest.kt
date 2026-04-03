@@ -496,6 +496,66 @@ class AnnotatedExportPipelineTest {
         assertTrue(zeroByte.exists())
     }
 
+    @Test
+    fun cleanupTemporaryExportOutputDeletesOnlyOwnedTempFiles() {
+        val ownedRoot = createTempDir(prefix = "recordings_owned_")
+        val tempOutput = File(ownedRoot, "annotated_${System.nanoTime()}.mp4").apply {
+            parentFile?.mkdirs()
+            writeBytes(byteArrayOf(1, 2, 3))
+        }
+        val persisted = File.createTempFile("persisted_annotated", ".mp4").apply { writeBytes(byteArrayOf(9)) }
+        val pipeline = AnnotatedExportPipeline(
+            persistAnnotatedVideo = { _, _ -> persisted.toURI().toString() },
+            updateExportStatus = { _, _ -> },
+            tempExportOwnedRoots = { listOf(ownedRoot) },
+            verifyMedia = { MediaVerificationResult(true, null, 1L, 1000L) },
+            renderAnnotatedVideo = { _, _, _, _, _, _, _ -> ComposerResult(tempOutput.toURI().toString(), null) },
+        )
+
+        val exported = runBlocking {
+            pipeline.export(
+                sessionId = 7L,
+                rawVideoUri = "file:///raw.mp4",
+                drillType = DrillType.WALL_HANDSTAND,
+                drillCameraSide = DrillCameraSide.LEFT,
+                overlayTimeline = testTimeline(listOf(testFrame(1000L))),
+            )
+        }
+
+        assertEquals(AnnotatedExportPipeline.VerificationStatus.PASSED, exported.verificationStatus)
+        assertFalse(tempOutput.exists())
+    }
+
+    @Test
+    fun cleanupTemporaryExportOutputSkipsNonOwnedTempFilesEvenWhenNameMatches() {
+        val ownedRoot = createTempDir(prefix = "recordings_owned_")
+        val externalRoot = createTempDir(prefix = "recordings_external_")
+        val externalTempOutput = File(externalRoot, "annotated_${System.nanoTime()}.mp4").apply {
+            writeBytes(byteArrayOf(1, 2, 3))
+        }
+        val persisted = File.createTempFile("persisted_annotated", ".mp4").apply { writeBytes(byteArrayOf(9)) }
+        val pipeline = AnnotatedExportPipeline(
+            persistAnnotatedVideo = { _, _ -> persisted.toURI().toString() },
+            updateExportStatus = { _, _ -> },
+            tempExportOwnedRoots = { listOf(ownedRoot) },
+            verifyMedia = { MediaVerificationResult(true, null, 1L, 1000L) },
+            renderAnnotatedVideo = { _, _, _, _, _, _, _ -> ComposerResult(externalTempOutput.toURI().toString(), null) },
+        )
+
+        val exported = runBlocking {
+            pipeline.export(
+                sessionId = 7L,
+                rawVideoUri = "file:///raw.mp4",
+                drillType = DrillType.WALL_HANDSTAND,
+                drillCameraSide = DrillCameraSide.LEFT,
+                overlayTimeline = testTimeline(listOf(testFrame(1000L))),
+            )
+        }
+
+        assertEquals(AnnotatedExportPipeline.VerificationStatus.PASSED, exported.verificationStatus)
+        assertTrue(externalTempOutput.exists())
+    }
+
     private fun testTimeline(frames: List<AnnotatedOverlayFrame>) = OverlayTimeline(
         startedAtMs = 0L,
         sampleIntervalMs = 80L,

@@ -39,6 +39,7 @@ import com.inversioncoach.app.movementprofile.ReferenceTemplateDefinition
 import com.inversioncoach.app.movementprofile.ReferenceTemplateBuilder
 import com.inversioncoach.app.overlay.DrillCameraSide
 import com.inversioncoach.app.storage.SessionBlobStorage
+import com.inversioncoach.app.media.SessionMediaOwnership
 import com.inversioncoach.app.storage.db.FrameMetricDao
 import com.inversioncoach.app.storage.db.ProfileDao
 import com.inversioncoach.app.storage.db.SessionDao
@@ -393,7 +394,7 @@ class SessionRepository(
 
     suspend fun reconcileRawPersistState(sessionId: Long): Boolean {
         val session = sessionDao.getById(sessionId) ?: return false
-        val rawUri = session.rawFinalUri ?: session.rawVideoUri ?: session.rawMasterUri
+        val rawUri = SessionMediaOwnership.canonicalRawUri(session)
         val isValid = rawUri?.let { uri ->
             runCatching {
                 val path = android.net.Uri.parse(uri).path ?: return@runCatching false
@@ -616,6 +617,7 @@ class SessionRepository(
 
     suspend fun enforceStorageLimit(maxStorageMb: Int) {
         val maxBytes = maxStorageMb.coerceAtLeast(1).toLong() * 1024L * 1024L
+        sessionBlobStorage.cleanupStaleCacheArtifacts()
         val sessionsByOldest = sessionDao.getAllOldestFirst()
 
         var currentBytes = sessionBlobStorage.totalSizeBytes()

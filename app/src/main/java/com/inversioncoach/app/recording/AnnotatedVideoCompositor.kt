@@ -50,6 +50,8 @@ private const val EXPORT_DURATION_TOLERANCE_MS = 750L
 class AnnotatedVideoCompositor(
     private val context: Context,
 ) {
+    fun ownedTempExportRoots(): List<File> = listOf(File(context.cacheDir, "recordings"))
+
     suspend fun export(
         rawVideoUri: String,
         drillType: DrillType,

@@ -39,6 +39,7 @@ import androidx.lifecycle.viewModelScope
 import com.inversioncoach.app.model.AnnotatedExportStage
 import com.inversioncoach.app.model.AnnotatedExportStatus
 import com.inversioncoach.app.model.AnnotatedExportFailureReason
+import com.inversioncoach.app.media.SessionMediaOwnership
 import com.inversioncoach.app.drills.DrillStatus
 import com.inversioncoach.app.drills.DrillCameraView
 import com.inversioncoach.app.drills.DrillMovementMode
@@ -1688,11 +1689,7 @@ internal fun deriveUploadStage(session: SessionRecord): UploadStage = when {
 }
 
 private fun rawReplayPlayableForStage(session: SessionRecord): Boolean {
-    if (session.rawPersistFailureReason in setOf("RAW_REPLAY_INVALID", "RAW_MEDIA_CORRUPT", "SOURCE_VIDEO_UNREADABLE")) return false
-    val rawUri = session.rawFinalUri ?: session.rawVideoUri ?: session.rawMasterUri
-    if (rawUri.isNullOrBlank()) return false
-    val bestPlayableUri = session.bestPlayableUri
-    return bestPlayableUri.isNullOrBlank() || bestPlayableUri == rawUri
+    return SessionMediaOwnership.rawReplayPlayable(session)
 }
 
 private fun UploadTrackingMode.displayLabel(): String = when (this) {

@@ -9,9 +9,9 @@ class SessionMediaResolver(
     private val assetExists: (String?) -> Boolean,
 ) {
     fun resolve(session: SessionRecord): ResolvedSessionMedia {
-        val rawMarkedInvalid = session.rawPersistFailureReason in RAW_INVALID_FAILURE_REASONS
-        val rawUri = rawCandidates(session).firstOrNull(assetExists)
-        val annotatedUri = annotatedCandidates(session).firstOrNull(assetExists)
+        val rawMarkedInvalid = SessionMediaOwnership.isRawReplayBlocked(session)
+        val rawUri = SessionMediaOwnership.rawCandidates(session).firstOrNull(assetExists)
+        val annotatedUri = SessionMediaOwnership.annotatedCandidates(session).firstOrNull(assetExists)
 
         val raw = when {
             rawMarkedInvalid -> SessionArtifact.Unavailable(SessionArtifactError.RAW_INVALID)
@@ -59,26 +59,7 @@ class SessionMediaResolver(
         return "$base ${session.annotatedExportPercent.coerceIn(0, 100)}%"
     }
 
-    companion object {
-        private val RAW_INVALID_FAILURE_REASONS = setOf(
-            "RAW_REPLAY_INVALID",
-            "RAW_MEDIA_CORRUPT",
-            "SOURCE_VIDEO_UNREADABLE",
-        )
-    }
 }
-
-fun rawCandidates(session: SessionRecord): List<String> = listOfNotNull(
-    session.rawFinalUri,
-    session.rawVideoUri,
-    session.rawMasterUri,
-).filter { it.isNotBlank() }
-
-fun annotatedCandidates(session: SessionRecord): List<String> = listOfNotNull(
-    session.annotatedFinalUri,
-    session.annotatedVideoUri,
-    session.annotatedMasterUri,
-).filter { it.isNotBlank() }
 
 data class ResolvedSessionMedia(
     val raw: SessionArtifact,
