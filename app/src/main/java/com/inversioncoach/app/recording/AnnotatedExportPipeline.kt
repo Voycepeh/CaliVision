@@ -2,6 +2,7 @@ package com.inversioncoach.app.recording
 
 import android.net.Uri
 import android.util.Log
+import com.inversioncoach.app.media.SessionMediaOwnership
 import com.inversioncoach.app.model.AnnotatedExportFailureReason
 import com.inversioncoach.app.model.AnnotatedExportStatus
 import com.inversioncoach.app.model.DrillType
@@ -125,6 +126,7 @@ class AnnotatedExportPipeline(
     private val debugValidationEnabled: Boolean = false,
     private val persistAnnotatedVideo: suspend (Long, String) -> String?,
     private val updateExportStatus: suspend (Long, AnnotatedExportStatus) -> Unit,
+    private val tempExportOwnedRoots: () -> List<File> = compositor::ownedTempExportRoots,
     private val verifyMedia: (String?) -> MediaVerificationResult = { uri -> MediaVerificationHelper.verify(uri) },
     private val exportTimeoutMs: Long = BASE_EXPORT_TIMEOUT_MS,
     private val stallWindowMs: Long = DEFAULT_STALL_WINDOW_MS,
@@ -244,11 +246,13 @@ class AnnotatedExportPipeline(
         debugValidationEnabled = debugValidationEnabled,
         persistAnnotatedVideo = repository::saveAnnotatedVideoBlob,
         updateExportStatus = repository::updateAnnotatedExportStatus,
+        tempExportOwnedRoots = compositor::ownedTempExportRoots,
     )
 
     internal constructor(
         persistAnnotatedVideo: suspend (Long, String) -> String?,
         updateExportStatus: suspend (Long, AnnotatedExportStatus) -> Unit,
+        tempExportOwnedRoots: () -> List<File> = { emptyList() },
         verifyMedia: (String?) -> MediaVerificationResult = { uri -> MediaVerificationHelper.verify(uri) },
         exportTimeoutMs: Long = BASE_EXPORT_TIMEOUT_MS,
         stallWindowMs: Long = DEFAULT_STALL_WINDOW_MS,
@@ -258,6 +262,7 @@ class AnnotatedExportPipeline(
         debugValidationEnabled = false,
         persistAnnotatedVideo = persistAnnotatedVideo,
         updateExportStatus = updateExportStatus,
+        tempExportOwnedRoots = tempExportOwnedRoots,
         verifyMedia = verifyMedia,
         exportTimeoutMs = exportTimeoutMs,
         stallWindowMs = stallWindowMs,
@@ -489,6 +494,7 @@ class AnnotatedExportPipeline(
 
     private fun cleanupTemporaryExportOutput(uri: String?) {
         if (uri.isNullOrBlank()) return
+        if (!SessionMediaOwnership.isOwnedAppFile(uri, tempExportOwnedRoots())) return
         val parsed = runCatching { Uri.parse(uri) }.getOrNull() ?: return
         if (parsed.scheme != "file") return
         val path = parsed.path ?: return
