@@ -101,6 +101,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.coroutineContext
 import java.util.UUID
+import java.io.File
 
 private const val TAG = "UploadVideoFlow"
 private const val ANALYSIS_PROGRESS_UPDATE_FRAME_INTERVAL = 1
@@ -1333,6 +1334,9 @@ class UploadVideoViewModel(
     private val pendingDrillName: String? = null,
     private val queueCoordinator: UploadQueueCoordinator? = null,
     private val customRunner: UploadVideoAnalysisRunner? = null,
+    private val resolveCanonicalUploadUri: suspend (Uri) -> Uri = { uri ->
+        canonicalizeUploadUriForAnalysis(appContext, uri)
+    },
     private val resolveDrillTrackingMode: suspend (String) -> UploadTrackingMode? = { drillId ->
         repository?.getDrill(drillId)?.movementMode?.toUploadTrackingMode()
     },
@@ -1508,9 +1512,23 @@ class UploadVideoViewModel(
         }
         if (queueCoordinator != null) {
             viewModelScope.launch {
+                val canonicalUri = runCatching { resolveCanonicalUploadUri(uri) }
+                    .onFailure { error ->
+                        Log.e(TAG, "upload_intake_copy_failed uri=$uri", error)
+                        _state.update {
+                            it.copy(
+                                stage = UploadStage.FAILED,
+                                currentProcessingStage = UploadStage.FAILED,
+                                stageText = "Upload intake failed",
+                                errorMessage = error.message ?: "Unable to prepare selected video for upload.",
+                                canCancel = false,
+                            )
+                        }
+                    }
+                    .getOrNull() ?: return@launch
                 when (
                     queueCoordinator.enqueue(
-                        sourceUri = uri.toString(),
+                        sourceUri = canonicalUri.toString(),
                         trackingMode = trackingMode.name,
                         selectedDrillId = selectedDrillId,
                         selectedReferenceTemplateId = selectedReferenceTemplateId,
@@ -1521,7 +1539,7 @@ class UploadVideoViewModel(
                 ) {
                     is EnqueueResult.Enqueued -> _state.update {
                         it.copy(
-                            selectedVideoUri = uri,
+                            selectedVideoUri = canonicalUri,
                             stage = UploadStage.PREPARING_ANALYSIS,
                             currentProcessingStage = UploadStage.PREPARING_ANALYSIS,
                             stageText = "Upload queued for background processing.",
@@ -1543,9 +1561,13 @@ class UploadVideoViewModel(
             return
         }
         runningJob = viewModelScope.launch(Dispatchers.Default) {
+            val canonicalUri = runCatching { resolveCanonicalUploadUri(uri) }
+                .onFailure { error -> Log.e(TAG, "upload_intake_copy_failed uri=$uri", error) }
+                .getOrElse { throw IllegalStateException("UPLOAD_INTAKE_COPY_FAILED: ${it.message}", it) }
+            val usedCopiedLocalSource = canonicalUri.toString() != uri.toString()
             _state.update {
                 it.copy(
-                    selectedVideoUri = uri,
+                    selectedVideoUri = canonicalUri,
                     stage = UploadStage.VIDEO_SELECTED,
                     currentProcessingStage = UploadStage.VIDEO_SELECTED,
                     stageText = UploadStage.VIDEO_SELECTED.label,
@@ -1564,8 +1586,14 @@ class UploadVideoViewModel(
             }
             runCatching {
                 val ownerToken = UUID.randomUUID().toString()
+                val intakeLog = "upload_intake originalUri=$uri localUri=$canonicalUri usedLocal=$usedCopiedLocalSource"
+                _state.update { current ->
+                    current.copy(
+                        technicalLog = if (current.technicalLog.isBlank()) intakeLog else "${current.technicalLog}\n$intakeLog",
+                    )
+                }
                 UploadAnalysisOrchestrator(runner).execute(
-                    uri = uri,
+                    uri = canonicalUri,
                     ownerToken = ownerToken,
                     trackingMode = trackingMode,
                     selectedDrillId = selectedDrillId,
@@ -1737,6 +1765,33 @@ internal fun estimateTimelineSampleIntervalMs(
 }
 
 internal fun sanitizeUploadFrameRate(rawFps: Int): Int = rawFps.takeIf { it in 1..120 } ?: DEFAULT_UPLOAD_FRAME_RATE
+
+internal fun canonicalizeUploadUriForAnalysis(context: Context?, sourceUri: Uri): Uri {
+    if (context == null) return sourceUri
+    if (isAppOwnedUploadUri(context, sourceUri)) return sourceUri
+    val intakeDir = File(context.cacheDir, "upload_intake").apply { mkdirs() }
+    val extension = sourceUri.lastPathSegment?.substringAfterLast('.', "").orEmpty().ifBlank { "mp4" }
+    val target = File(intakeDir, "upload_intake_${System.currentTimeMillis()}.$extension")
+    val input = context.contentResolver.openInputStream(sourceUri)
+        ?: error("UPLOAD_INTAKE_COPY_FAILED: unreadable_source_uri")
+    input.use { inStream ->
+        target.outputStream().use { outStream ->
+            inStream.copyTo(outStream)
+        }
+    }
+    return Uri.fromFile(target)
+}
+
+internal fun isAppOwnedUploadUri(context: Context, uri: Uri): Boolean {
+    if (uri.scheme != "file") return false
+    val path = uri.path ?: return false
+    val file = runCatching { File(path).canonicalFile }.getOrNull() ?: return false
+    val filesRoot = runCatching { context.filesDir.canonicalFile }.getOrNull()
+    val cacheRoot = runCatching { context.cacheDir.canonicalFile }.getOrNull()
+    return listOfNotNull(filesRoot, cacheRoot).any { root ->
+        file.path == root.path || file.path.startsWith("${root.path}${File.separator}")
+    }
+}
 
 internal fun deriveUploadStage(session: SessionRecord): UploadStage = when {
     session.uploadJobStatus == UploadJobStatus.STALLED -> UploadStage.FAILED
