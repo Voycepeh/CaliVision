@@ -12,6 +12,14 @@ object AppSettingsPolicy {
     const val defaultStorageMb: Int = defaultStorageGb * MB_PER_GB
     val defaultExportQuality: AnnotatedExportQuality = AnnotatedExportQuality.STABLE
 
+    fun applyRecommendedRecordingDefaults(settings: UserSettings): UserSettings =
+        settings.copy(
+            annotatedExportQuality = defaultExportQuality.name,
+            startupCountdownSeconds = defaultCountdownSeconds,
+            maxStorageMb = defaultStorageMb,
+            hasCompletedPreferencesOnboarding = true,
+        )
+
     fun resolveExportQuality(raw: String): AnnotatedExportQuality =
         AnnotatedExportQuality.entries.firstOrNull { it.name == raw } ?: defaultExportQuality
 

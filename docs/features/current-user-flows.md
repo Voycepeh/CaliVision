@@ -19,6 +19,15 @@ This document captures the current end-to-end app workflows and route surfaces.
 
 Home is the primary entry point. Users can start sessions, open drill workflows, open uploads, inspect history, and access calibration/settings.
 
+### First-launch recording preferences onboarding
+
+- On true first launch, Home shows a compact welcome dialog.
+- The dialog offers two paths:
+  - **Use recommended settings**: applies centralized recording/export defaults and completes onboarding.
+  - **Open recording settings**: routes directly to the existing Settings screen and completes onboarding.
+- The old duplicate first-launch settings form (export quality/countdown/storage controls inside onboarding) is removed.
+- Recording/export preference editing now lives only in **Settings**.
+
 ## 2) Manage Drills -> Drill Studio
 
 1. Open `manage-drills`.

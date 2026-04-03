@@ -3,6 +3,7 @@
 ```mermaid
 flowchart TD
     HOME[Home / Drill Hub]
+    WELCOME[First-launch Welcome Dialog]
     START[Start Drill]
     LIVE[Live Session]
     SHORT[Session Too Short]
@@ -16,6 +17,10 @@ flowchart TD
     UPLOAD[Upload / Reference Training]
     CAL[Calibration / Profiles]
     SETTINGS[Settings]
+
+    HOME --> WELCOME
+    WELCOME -->|Use recommended settings| HOME
+    WELCOME -->|Open recording settings| SETTINGS
 
     HOME --> START --> LIVE
     LIVE --> RESULTS

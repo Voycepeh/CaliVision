@@ -31,14 +31,12 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -49,11 +47,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.inversioncoach.app.model.AnnotatedExportQuality
 import com.inversioncoach.app.model.AppSettingsPolicy
 import com.inversioncoach.app.model.SessionRecord
 import com.inversioncoach.app.model.UserSettings
-import com.inversioncoach.app.model.effectiveExportQuality
 import com.inversioncoach.app.storage.ServiceLocator
 import com.inversioncoach.app.storage.repository.UserProfileStatus
 import com.inversioncoach.app.ui.common.computeSessionDurationMs
@@ -82,11 +78,15 @@ fun HomeScreen(
 
     val sessions by repository.observeSessions().collectAsState(initial = emptyList())
     val profileStatuses by repository.observeProfileStatuses().collectAsState(initial = emptyList())
-    val settings by repository.observeSettings().collectAsState(initial = UserSettings())
-    var showPreferencesOnboarding by remember { mutableStateOf(false) }
+    val settings by repository.observeSettings().collectAsState<UserSettings?>(initial = null)
+    var onboardingGate by remember { mutableStateOf(FirstLaunchOnboardingGate.Loading) }
 
-    LaunchedEffect(settings.hasCompletedPreferencesOnboarding) {
-        showPreferencesOnboarding = !settings.hasCompletedPreferencesOnboarding
+    LaunchedEffect(settings?.hasCompletedPreferencesOnboarding) {
+        onboardingGate = when {
+            settings == null -> FirstLaunchOnboardingGate.Loading
+            settings?.hasCompletedPreferencesOnboarding == true -> FirstLaunchOnboardingGate.SkipOnboarding
+            else -> FirstLaunchOnboardingGate.ShowOnboarding
+        }
     }
 
     ScaffoldedScreen(title = "CaliVision") { padding ->
@@ -118,33 +118,25 @@ fun HomeScreen(
             },
         )
 
-        if (showPreferencesOnboarding) {
-            PreferencesOnboardingDialog(
-                settings = settings,
-                onConfirm = { quality, countdownSeconds, storageGb ->
+        if (onboardingGate == FirstLaunchOnboardingGate.ShowOnboarding) {
+            FirstLaunchWelcomeDialog(
+                onUseRecommendedSettings = {
+                    val currentSettings = settings ?: return@FirstLaunchWelcomeDialog
                     scope.launch {
-                        repository.saveSettings(
-                            settings.copy(
-                                annotatedExportQuality = quality.name,
-                                startupCountdownSeconds = countdownSeconds,
-                                maxStorageMb = AppSettingsPolicy.storageGbToMb(storageGb),
-                                hasCompletedPreferencesOnboarding = true,
-                            ),
-                        )
-                        showPreferencesOnboarding = false
+                        repository.saveSettings(AppSettingsPolicy.applyRecommendedRecordingDefaults(currentSettings))
+                        onboardingGate = FirstLaunchOnboardingGate.SkipOnboarding
                     }
                 },
-                onUseDefaults = {
+                onOpenRecordingSettings = {
+                    val currentSettings = settings ?: return@FirstLaunchWelcomeDialog
                     scope.launch {
                         repository.saveSettings(
-                            settings.copy(
-                                annotatedExportQuality = AppSettingsPolicy.defaultExportQuality.name,
-                                startupCountdownSeconds = AppSettingsPolicy.defaultCountdownSeconds,
-                                maxStorageMb = AppSettingsPolicy.defaultStorageMb,
+                            currentSettings.copy(
                                 hasCompletedPreferencesOnboarding = true,
                             ),
                         )
-                        showPreferencesOnboarding = false
+                        onboardingGate = FirstLaunchOnboardingGate.SkipOnboarding
+                        onSettings()
                     }
                 },
             )
@@ -153,81 +145,33 @@ fun HomeScreen(
 }
 
 @Composable
-private fun PreferencesOnboardingDialog(
-    settings: UserSettings,
-    onConfirm: (AnnotatedExportQuality, Int, Int) -> Unit,
-    onUseDefaults: () -> Unit,
+private fun FirstLaunchWelcomeDialog(
+    onUseRecommendedSettings: () -> Unit,
+    onOpenRecordingSettings: () -> Unit,
 ) {
-    var quality by remember(settings.annotatedExportQuality) {
-        mutableStateOf(
-            settings.effectiveExportQuality(),
-        )
-    }
-    var countdown by remember(settings.startupCountdownSeconds) {
-        mutableIntStateOf(
-            settings.startupCountdownSeconds.takeIf { it in AppSettingsPolicy.countdownOptionsSeconds }
-                ?: AppSettingsPolicy.defaultCountdownSeconds,
-        )
-    }
-    var storageGb by remember(settings.maxStorageMb) {
-        mutableIntStateOf(AppSettingsPolicy.storageMbToGb(settings.maxStorageMb))
-    }
-
     AlertDialog(
-        onDismissRequest = onUseDefaults,
-        title = { Text("Set up your recording preferences") },
+        onDismissRequest = {},
+        title = { Text("Welcome to CaliVision") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Choose your default video export quality, countdown, and storage limit. This only changes exported video output quality and file size. You can change these anytime later in Settings.")
-                Text("Annotated video export quality", fontWeight = FontWeight.SemiBold)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { quality = AnnotatedExportQuality.STABLE }) { Text("Stable") }
-                    OutlinedButton(onClick = { quality = AnnotatedExportQuality.HIGH_QUALITY }) { Text("High Quality") }
-                }
-                Text("Current: ${if (quality == AnnotatedExportQuality.STABLE) "Stable" else "High Quality"}")
-                Text(
-                    if (quality == AnnotatedExportQuality.STABLE) {
-                        "Stable: 720p export, faster processing, and smaller files."
-                    } else {
-                        "High Quality: 1080p export, sharper output, and larger files."
-                    },
-                )
-                Text("Countdown before recording", fontWeight = FontWeight.SemiBold)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AppSettingsPolicy.countdownOptionsSeconds.forEach { seconds ->
-                        OutlinedButton(onClick = { countdown = seconds }) { Text("$seconds seconds") }
-                    }
-                }
-                Text("Current: $countdown seconds")
-                Text("Storage space limit", fontWeight = FontWeight.SemiBold)
-                OutlinedTextField(
-                    value = storageGb.toString(),
-                    onValueChange = { raw ->
-                        raw.toIntOrNull()?.let {
-                            storageGb = it.coerceIn(AppSettingsPolicy.minStorageGb, AppSettingsPolicy.maxStorageGb)
-                        }
-                    },
-                    label = { Text("GB") },
-                    singleLine = true,
-                )
-                Text("Current: $storageGb GB")
-            }
+            Text("Choose your recording setup. You can use recommended settings now or change everything in Settings.")
         },
         confirmButton = {
-            Button(onClick = {
-                onConfirm(
-                    quality,
-                    countdown,
-                    storageGb.coerceIn(AppSettingsPolicy.minStorageGb, AppSettingsPolicy.maxStorageGb),
-                )
-            }) {
-                Text("Save preferences")
+            Button(onClick = onUseRecommendedSettings) {
+                Text("Use recommended settings")
             }
         },
         dismissButton = {
-            OutlinedButton(onClick = onUseDefaults) { Text("Use recommended settings") }
+            OutlinedButton(onClick = onOpenRecordingSettings) {
+                Text("Open recording settings")
+            }
         },
     )
+}
+
+private enum class FirstLaunchOnboardingGate {
+    Loading,
+    ShowOnboarding,
+    SkipOnboarding,
 }
 
 @Composable
