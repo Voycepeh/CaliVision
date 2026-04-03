@@ -128,6 +128,29 @@ class UploadedVideoAnalysisTest {
         assertEquals(2, completion.estimatedTotalFrames)
     }
 
+    @Test
+    fun analyzerMergesSamplingTelemetryFromFrameSource() {
+        val profile = ExistingDrillToProfileAdapter().fromDrill(DrillType.FREESTYLE)
+        val source = object : VideoPoseFrameSource, UploadSamplingTelemetryProvider {
+            override fun decode(videoUri: Uri): Sequence<PoseFrame> = sequence {
+                yield(frame(0, 0.9f))
+            }
+
+            override fun samplingTelemetry(): Map<String, Long> = mapOf(
+                "adaptive_candidate_frames" to 42L,
+                "adaptive_sampled_frames" to 9L,
+            )
+        }
+
+        val result = UploadedVideoAnalyzer(source).analyze(
+            videoUri = Uri.parse("file:///tmp/telemetry.mp4"),
+            profile = profile,
+        )
+
+        assertEquals(42L, result.telemetry["adaptive_candidate_frames"])
+        assertEquals(9L, result.telemetry["adaptive_sampled_frames"])
+    }
+
     private fun frame(ts: Long, confidence: Float): PoseFrame = PoseFrame(
         timestampMs = ts,
         confidence = confidence,

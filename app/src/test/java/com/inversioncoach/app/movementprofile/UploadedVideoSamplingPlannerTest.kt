@@ -6,6 +6,25 @@ import org.junit.Test
 
 class UploadedVideoSamplingPlannerTest {
     @Test
+    fun plannerIsDeterministicForSameSignalSequence() {
+        val inputs = listOf(
+            signal(0, visualDiff = 0.0),
+            signal(84, visualDiff = 0.03),
+            signal(168, visualDiff = 0.29),
+            signal(252, visualDiff = 0.02),
+            signal(336, visualDiff = 0.01),
+            signal(420, visualDiff = 0.01),
+        )
+        val plannerA = UploadedVideoSamplingPlanner(movementType = MovementType.REP)
+        val plannerB = UploadedVideoSamplingPlanner(movementType = MovementType.REP)
+
+        val decisionsA = inputs.map { plannerA.decide(it) }
+        val decisionsB = inputs.map { plannerB.decide(it) }
+
+        assertEquals(decisionsA, decisionsB)
+    }
+
+    @Test
     fun stableHoldBecomesSparserThanLegacyFixed() {
         val planner = UploadedVideoSamplingPlanner(
             config = AdaptiveSamplingConfig(enabled = true, legacyFixedFps = 6),
@@ -77,6 +96,20 @@ class UploadedVideoSamplingPlannerTest {
         assertEquals(SamplingMode.HOLD_STEADY, hold.mode)
         assertEquals(SamplingMode.SPARSE, rep.mode)
         assertTrue(hold.nextIntervalMs > rep.nextIntervalMs)
+    }
+
+    @Test
+    fun signalReliabilityRecoveryExitsLegacyPath() {
+        val planner = UploadedVideoSamplingPlanner(
+            config = AdaptiveSamplingConfig(enabled = true, legacyFixedFps = 6, fallbackToLegacyOnSignalLoss = true),
+            movementType = MovementType.REP,
+        )
+
+        val unreliable = planner.decide(signal(0, visualDiff = 0.0, reliable = false))
+        val reliable = planner.decide(signal(250, visualDiff = 0.22, reliable = true))
+
+        assertEquals(SamplingMode.LEGACY_FIXED, unreliable.mode)
+        assertEquals(SamplingMode.BURST, reliable.mode)
     }
 
     private fun signal(
