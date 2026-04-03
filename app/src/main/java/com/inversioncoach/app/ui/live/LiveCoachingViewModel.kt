@@ -1026,14 +1026,14 @@ class LiveCoachingViewModel(
             }
             motionPipeline.setRepTemplate(activeMovementProfile?.repTemplate)
             val now = System.currentTimeMillis()
-            val startedAtMs = sessionActivatedAtMs.takeIf { it > 0L } ?: now
-            if (sessionStartedAtMs <= 0L) sessionStartedAtMs = startedAtMs
+            val startedAtMs = resolveSessionStartedAtMs(sessionActivatedAtMs, now)
+            sessionStartedAtMs = startedAtMs
             val newSessionId = repository.saveSession(
                 SessionRecord(
                     title = sessionTitle,
                     drillType = drillType,
                     sessionSource = com.inversioncoach.app.model.SessionSource.LIVE_COACHING,
-                    startedAtMs = sessionStartedAtMs,
+                    startedAtMs = startedAtMs,
                     completedAtMs = 0L,
                     overallScore = 0,
                     strongestArea = "pending",
@@ -2300,6 +2300,7 @@ internal data class FinalizeSourceReadiness(
 }
 
 internal fun captureSpanMs(startMs: Long, stopMs: Long): Long = (stopMs - startMs).coerceAtLeast(0L)
+internal fun resolveSessionStartedAtMs(sessionActivatedAtMs: Long, nowMs: Long): Long = sessionActivatedAtMs.takeIf { it > 0L } ?: nowMs
 
 internal fun persistedDurationWithinTolerance(
     captureSpanMs: Long,
