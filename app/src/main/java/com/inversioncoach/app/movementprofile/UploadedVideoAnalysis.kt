@@ -12,6 +12,7 @@ import kotlin.math.max
 import kotlin.math.roundToLong
 
 private const val UPLOAD_ANALYSIS_TAG = "UploadAnalysis"
+private const val EDGE_FRAME_SKIP_WINDOW = 2
 
 data class OverlayTimelinePoint(
     val timestampMs: Long,
@@ -131,6 +132,9 @@ class UploadedVideoAnalyzer(
             val timeline = mutableListOf<OverlayTimelinePoint>()
             val phaseTimeline = mutableListOf<Pair<Long, String>>()
             var dropped = 0
+            var edgeFramesSkipped = 0
+            var timestampCorrections = 0
+            var lastAcceptedTimestampMs = -1L
             progressObserver?.onProgress(
                 AnalysisProgressEvent(
                     stage = "analysis_started",
@@ -150,7 +154,22 @@ class UploadedVideoAnalyzer(
                         "analysis_sample frameIndex=$index totalHint=$resolvedTotalFrames timestampMs=${frame.timestampMs} dropped=$dropped",
                     )
                 }
+                val nearEdge = index < EDGE_FRAME_SKIP_WINDOW || index >= (sourceFrames.size - EDGE_FRAME_SKIP_WINDOW).coerceAtLeast(0)
                 if (frame.confidence <= 0f || frame.joints.isEmpty()) {
+                    if (nearEdge) {
+                        edgeFramesSkipped += 1
+                        progressObserver?.onProgress(
+                            AnalysisProgressEvent(
+                                stage = "analysis_edge_frame_skipped",
+                                processedFrames = index + 1,
+                                estimatedTotalFrames = resolvedTotalFrames,
+                                droppedFrames = dropped,
+                                timestampMs = frame.timestampMs,
+                                detail = "Skipped low-confidence edge frame",
+                            ),
+                        )
+                        continue
+                    }
                     dropped += 1
                     progressObserver?.onProgress(
                         AnalysisProgressEvent(
@@ -164,15 +183,22 @@ class UploadedVideoAnalyzer(
                 } else {
                     val postProcessMs: Long
                     val alignment: Float
+                    val sanitizedTimestampMs = if (frame.timestampMs <= lastAcceptedTimestampMs) {
+                        timestampCorrections += 1
+                        lastAcceptedTimestampMs + 1L
+                    } else {
+                        frame.timestampMs
+                    }
+                    lastAcceptedTimestampMs = sanitizedTimestampMs
                     val normalized = poseFrameNormalizer.normalize(frame)
                     val angleFrame = angleEngine.compute(normalized)
                     val postStart = System.nanoTime()
                     alignment = alignmentScorer.score(normalized, profile.alignmentRules)
                     val phase = phaseDetector.update(angleFrame, alignment >= 0.65f)
                     postProcessMs = ((System.nanoTime() - postStart) / 1_000_000.0).roundToLong()
-                    phaseTimeline += frame.timestampMs to phase.name
+                    phaseTimeline += sanitizedTimestampMs to phase.name
                     timeline += OverlayTimelinePoint(
-                        timestampMs = frame.timestampMs,
+                        timestampMs = sanitizedTimestampMs,
                         // Overlay rendering must stay in canonical source-frame normalized space.
                         // The normalized pose frame is only for movement metrics/phase scoring.
                         landmarks = frame.joints.map { it.name to (it.x to it.y) },
@@ -236,6 +262,8 @@ class UploadedVideoAnalyzer(
                     "analysis_time_ms" to analysisDuration,
                     "total_frames_processed" to processedFrames.toLong(),
                     "frames_dropped" to dropped.toLong(),
+                    "edge_frames_skipped" to edgeFramesSkipped.toLong(),
+                    "timestamp_corrections" to timestampCorrections.toLong(),
                     "candidate_phase_count" to phaseTimeline.map { it.second }.distinct().size.toLong(),
                     "calibration_profile_version" to (calibrationProfileVersion?.toLong() ?: -1L),
                 ) + (frameSource as? UploadSamplingTelemetryProvider)?.samplingTelemetry().orEmpty(),

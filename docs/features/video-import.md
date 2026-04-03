@@ -13,12 +13,20 @@ Video Import supports offline review and reference-training preparation from upl
 ## Key behavior
 
 - Upload analysis is parallel in intent to live coaching but uses imported timing/media sources.
+- Imported media now runs through a dedicated ingest-normalization stage before pose analysis/export.
+  - Canonical target contract: portrait pixels, SDR signaling, 8-bit-safe pipeline assumptions, single video track for analysis, stable analysis FPS.
+  - Source variants (rotation metadata, HEVC/H.265, HDR/10-bit signaling, extra metadata tracks) trigger normalization attempt instead of immediate failure.
+  - If canonical transcode is unavailable, pipeline continues with best-effort normalized metadata and records exact failure stage in diagnostics.
 - Uploaded frame selection now uses adaptive sampling (default on) instead of fixed cadence.
   - Sparse steady-state targets: ~4 FPS for generic/rep uploads and ~3-4 FPS for hold drills.
   - Burst windows: temporarily ~10-12 FPS when motion/pose confidence changes.
   - Guardrails: first segment, last segment, and rolling-window refresh are always sampled.
   - Safety fallback: if adaptive signals are unavailable, the pipeline falls back to legacy fixed cadence.
 - Output persists to session/replay/history surfaces.
+- Edge-frame bootstrap tolerates brief start/end occlusion; low-confidence boundary frames are skipped so short occlusions do not invalidate an otherwise usable upload.
+- Picker intake is `content://`-safe: read permission is persisted when available and source media is copied into app-owned storage before metadata/decode/analyze.
+- Upload processing treats the copied app-owned URI as the canonical analysis source for retries/reopens; provider URI permission is intake-only.
+- Failures in intake/decode/analyze/export are contained into terminal failed states with explicit diagnostics/failure reasons so hydration/history/results remain safe for incomplete uploads.
 - Reference-template creation is optional, drill-linked, and comparison-oriented.
 
 ## Integration points

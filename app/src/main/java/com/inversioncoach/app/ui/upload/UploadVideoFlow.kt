@@ -100,18 +100,21 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.coroutineContext
 import java.util.UUID
+import java.io.File
 
 private const val TAG = "UploadVideoFlow"
 private const val ANALYSIS_PROGRESS_UPDATE_FRAME_INTERVAL = 1
 private const val ANALYSIS_PROGRESS_UPDATE_MS = 100L
 private const val UPLOADED_ANALYSIS_SAMPLE_FPS = 6
 private const val ENABLE_ADAPTIVE_UPLOAD_SAMPLING = true
+private const val DEFAULT_UPLOAD_FRAME_RATE = 30
 
 enum class UploadStage(val label: String) {
     IDLE("Idle"),
     VIDEO_SELECTED("Video selected"),
     IMPORTING_RAW_VIDEO("Importing raw video"),
     RAW_IMPORT_COMPLETE("Raw import complete"),
+    NORMALIZING_INPUT("Normalizing input"),
     PREPARING_ANALYSIS("Preparing analysis"),
     ANALYZING_VIDEO("Analyzing frames"),
     RENDERING_OVERLAY("Rendering overlay"),
@@ -211,6 +214,9 @@ class DefaultUploadVideoAnalysisRunner(
         )
     },
     private val analyzerFactory: (VideoPoseFrameSource) -> UploadedVideoAnalyzer = { UploadedVideoAnalyzer(it) },
+    private val inputNormalizerFactory: (Context) -> UploadVideoInputNormalizer = { appContext ->
+        DefaultUploadVideoInputNormalizer(appContext)
+    },
     private val exportPipelineFactory: () -> AnnotatedExportPipeline = {
         AnnotatedExportPipeline(repository, AnnotatedVideoCompositor(context.applicationContext))
     },
@@ -220,6 +226,7 @@ class DefaultUploadVideoAnalysisRunner(
         val width: Int,
         val height: Int,
         val rotationDegrees: Int,
+        val frameRate: Int,
     )
 
     private data class AnalysisStagePresentation(
@@ -313,6 +320,7 @@ class DefaultUploadVideoAnalysisRunner(
         )
 
         var persistedRawUri: String? = null
+        var workingVideoUri: String? = null
         var sourceDurationMs: Long = 0L
         var currentStage = UploadStage.IMPORTING_RAW_VIDEO
         var processingAttemptId: String? = null
@@ -353,8 +361,25 @@ class DefaultUploadVideoAnalysisRunner(
                 metrics = mapOf("rawUri" to persistedRawUri),
             )
 
-            val metadata = extractMetadata(Uri.parse(persistedRawUri))
+            val rawUri = Uri.parse(persistedRawUri)
+            val metadata = extractMetadata(rawUri)
             sourceDurationMs = metadata.durationMs.coerceAtLeast(0L)
+            currentStage = UploadStage.NORMALIZING_INPUT
+            repository.updateUploadPipelineProgress(
+                sessionId = sessionId,
+                stageLabel = "Normalizing input",
+                processedFrames = 0,
+                totalFrames = 0,
+                detail = "Preparing canonical uploaded video format",
+            )
+            onProgress(UploadProgress(currentStage, 0.18f, detail = "Normalizing uploaded input"))
+            val normalization = inputNormalizerFactory(context.applicationContext).normalize(rawUri)
+            workingVideoUri = normalization.workingUri.toString()
+            val workingMetadata = metadata.copy(
+                width = normalization.canonical.width,
+                height = normalization.canonical.height,
+                rotationDegrees = normalization.canonical.rotationDegrees,
+            )
             repository.updateMediaPipelineState(sessionId) { session ->
                 session.copy(
                     completedAtMs = startedAt + sourceDurationMs,
@@ -371,6 +396,19 @@ class DefaultUploadVideoAnalysisRunner(
                             "sourceDurationMs" to sourceDurationMs.toString(),
                             "sourceWidth" to metadata.width.toString(),
                             "sourceHeight" to metadata.height.toString(),
+                            "sourceFrameRate" to metadata.frameRate.toString(),
+                            "sourceRotationDegrees" to metadata.rotationDegrees.toString(),
+                            "sourceVideoNormalizationRequired" to normalization.normalizationRequired.toString(),
+                            "sourceVideoNormalizationAttempted" to normalization.normalizationAttempted.toString(),
+                            "sourceVideoNormalizationSucceeded" to normalization.normalizationSucceeded.toString(),
+                            "sourceVideoNormalizationReasons" to normalization.reasons.sorted().joinToString(","),
+                            "normalizedWidth" to workingMetadata.width.toString(),
+                            "normalizedHeight" to workingMetadata.height.toString(),
+                            "normalizedRotationDegrees" to workingMetadata.rotationDegrees.toString(),
+                            "normalizedFrameRate" to normalization.canonical.frameRate.toString(),
+                            "normalizedVideoMime" to normalization.canonical.videoMime,
+                            "normalizedDynamicRange" to normalization.canonical.dynamicRange,
+                            "normalizedBitDepth" to normalization.canonical.bitDepth.toString(),
                         ),
                     ),
                 )
@@ -384,11 +422,31 @@ class DefaultUploadVideoAnalysisRunner(
                     "durationMs" to metadata.durationMs.toString(),
                     "width" to metadata.width.toString(),
                     "height" to metadata.height.toString(),
+                    "frameRate" to metadata.frameRate.toString(),
+                    "rotationDegrees" to metadata.rotationDegrees.toString(),
+                    "normalizationRequired" to normalization.normalizationRequired.toString(),
+                    "normalizationAttempted" to normalization.normalizationAttempted.toString(),
+                    "normalizationSucceeded" to normalization.normalizationSucceeded.toString(),
+                    "normalizedWidth" to normalization.canonical.width.toString(),
+                    "normalizedHeight" to normalization.canonical.height.toString(),
+                    "normalizedFps" to normalization.canonical.frameRate.toString(),
+                    "normalizedVideoMime" to normalization.canonical.videoMime,
+                    "normalizationFailureStage" to (normalization.failureStage ?: ""),
                 ),
             )
-            log("metadata durationMs=${metadata.durationMs} width=${metadata.width} height=${metadata.height}")
+            log(
+                "metadata durationMs=${metadata.durationMs} width=${metadata.width} height=${metadata.height} rotation=${metadata.rotationDegrees} " +
+                    "fps=${metadata.frameRate} " +
+                    "normalizationRequired=${normalization.normalizationRequired} attempted=${normalization.normalizationAttempted} " +
+                    "succeeded=${normalization.normalizationSucceeded} reasons=${normalization.reasons.sorted().joinToString(",")}",
+            )
             currentStage = UploadStage.RAW_IMPORT_COMPLETE
             logStage("RAW_IMPORTED", "rawUri=$persistedRawUri durationMs=$sourceDurationMs width=${metadata.width} height=${metadata.height}")
+            logStage(
+                "INPUT_NORMALIZED",
+                "workingUri=$workingVideoUri normalizedWidth=${workingMetadata.width} normalizedHeight=${workingMetadata.height} " +
+                    "normalizedRotation=${workingMetadata.rotationDegrees} normalizedFps=${normalization.canonical.frameRate} reasons=${normalization.reasons.sorted().joinToString(",")}",
+            )
 
             val baseProfile = drillDefinition?.let { buildMovementProfileFromDrill(it) } ?: ExistingDrillToProfileAdapter().fromDrill(drillType)
             val profile = baseProfile.copy(
@@ -505,7 +563,7 @@ class DefaultUploadVideoAnalysisRunner(
                 }
             }
             val analysis = analyzer.analyze(
-                Uri.parse(persistedRawUri),
+                Uri.parse(workingVideoUri ?: requireNotNull(persistedRawUri)),
                 profile,
                 drillMovementProfile = resolvedCalibrationProfile,
                 progressObserver = AnalysisProgressObserver { event ->
@@ -638,7 +696,7 @@ class DefaultUploadVideoAnalysisRunner(
                     message = "No overlay samples detected in uploaded video",
                     errorCode = AnnotatedExportFailureReason.OVERLAY_CAPTURE_EMPTY.name,
                 )
-                error("No body landmarks detected. Try another video with full-body side view.")
+                error("ZERO_POSE_OUTPUT: No body landmarks detected. Try another video with full-body side view.")
             }
             log("analysis_complete overlayFrames=${analysis.overlayTimeline.size} dropped=${analysis.droppedFrames} elapsedMs=$analysisDurationMs")
             SessionDiagnostics.record(
@@ -812,9 +870,9 @@ class DefaultUploadVideoAnalysisRunner(
                     showIdealLine = true,
                     showCenterOfGravity = true,
                     mirrorMode = false,
-                    sourceWidth = metadata.width,
-                    sourceHeight = metadata.height,
-                    sourceRotationDegrees = metadata.rotationDegrees,
+                    sourceWidth = workingMetadata.width,
+                    sourceHeight = workingMetadata.height,
+                    sourceRotationDegrees = workingMetadata.rotationDegrees,
                     scaleMode = PoseScaleMode.FIT,
                 )
             }
@@ -917,7 +975,7 @@ class DefaultUploadVideoAnalysisRunner(
             )
             val export = exportPipelineFactory().export(
                 sessionId = sessionId,
-                rawVideoUri = persistedRawUri,
+                rawVideoUri = workingVideoUri ?: requireNotNull(persistedRawUri),
                 drillType = drillType,
                 drillCameraSide = drillDefinition?.let(::toDrillCameraSide) ?: DrillCameraSide.LEFT,
                 overlayTimeline = overlayTimeline,
@@ -1147,6 +1205,9 @@ class DefaultUploadVideoAnalysisRunner(
                 ownerId = ownerToken,
             )
             val mappedFailure = when {
+                error.message?.contains("ZERO_POSE_OUTPUT", ignoreCase = true) == true -> "ZERO_POSE_OUTPUT"
+                error.message?.contains("zero_decoded_frames", ignoreCase = true) == true -> "ZERO_DECODED_FRAMES"
+                error.message?.contains("missing_duration", ignoreCase = true) == true -> "SOURCE_METADATA_INVALID"
                 error.message?.contains("No enum constant", ignoreCase = true) == true -> "INPUT_SCHEMA_MISMATCH"
                 error.message?.contains("LEFT_EYE_INNER", ignoreCase = true) == true -> "UNSUPPORTED_LANDMARK_ID"
                 else -> "UPLOAD_OVERLAY_GENERATION_FAILED"
@@ -1201,15 +1262,33 @@ class DefaultUploadVideoAnalysisRunner(
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(context, uri)
-            UploadSourceMetadata(
-                durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L,
-                width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0,
-                height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0,
-                rotationDegrees = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0,
+            sanitizeUploadSourceMetadata(
+                UploadSourceMetadata(
+                    durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L,
+                    width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0,
+                    height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0,
+                    rotationDegrees = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0,
+                    frameRate = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)?.toFloatOrNull()?.toInt() ?: 0,
+                ),
             )
         } finally {
             runCatching { retriever.release() }
         }
+    }
+
+    private fun sanitizeUploadSourceMetadata(raw: UploadSourceMetadata): UploadSourceMetadata {
+        val safeDurationMs = raw.durationMs.coerceAtLeast(1L)
+        val safeWidth = raw.width.coerceAtLeast(1)
+        val safeHeight = raw.height.coerceAtLeast(1)
+        val safeRotation = ((raw.rotationDegrees % 360) + 360) % 360
+        val safeFps = sanitizeUploadFrameRate(raw.frameRate)
+        return UploadSourceMetadata(
+            durationMs = safeDurationMs,
+            width = safeWidth,
+            height = safeHeight,
+            rotationDegrees = safeRotation,
+            frameRate = safeFps,
+        )
     }
 
     private fun mergeMetricsJson(base: String, updates: Map<String, String>): String {
@@ -1331,6 +1410,9 @@ class UploadVideoViewModel(
     private val pendingDrillName: String? = null,
     private val queueCoordinator: UploadQueueCoordinator? = null,
     private val customRunner: UploadVideoAnalysisRunner? = null,
+    private val resolveCanonicalUploadUri: suspend (Uri) -> Uri = { uri ->
+        canonicalizeUploadUriForAnalysis(appContext, uri)
+    },
     private val resolveDrillTrackingMode: suspend (String) -> UploadTrackingMode? = { drillId ->
         repository?.getDrill(drillId)?.movementMode?.toUploadTrackingMode()
     },
@@ -1505,9 +1587,23 @@ class UploadVideoViewModel(
         }
         if (queueCoordinator != null) {
             viewModelScope.launch {
+                val canonicalUri = runCatching { resolveCanonicalUploadUri(uri) }
+                    .onFailure { error ->
+                        Log.e(TAG, "upload_intake_copy_failed uri=$uri", error)
+                        _state.update {
+                            it.copy(
+                                stage = UploadStage.FAILED,
+                                currentProcessingStage = UploadStage.FAILED,
+                                stageText = "Upload intake failed",
+                                errorMessage = error.message ?: "Unable to prepare selected video for upload.",
+                                canCancel = false,
+                            )
+                        }
+                    }
+                    .getOrNull() ?: return@launch
                 when (
                     queueCoordinator.enqueue(
-                        sourceUri = uri.toString(),
+                        sourceUri = canonicalUri.toString(),
                         trackingMode = trackingMode.name,
                         selectedDrillId = selectedDrillId,
                         selectedReferenceTemplateId = selectedReferenceTemplateId,
@@ -1518,7 +1614,7 @@ class UploadVideoViewModel(
                 ) {
                     is EnqueueResult.Enqueued -> _state.update {
                         it.copy(
-                            selectedVideoUri = uri,
+                            selectedVideoUri = canonicalUri,
                             stage = UploadStage.PREPARING_ANALYSIS,
                             currentProcessingStage = UploadStage.PREPARING_ANALYSIS,
                             stageText = "Upload queued for background processing.",
@@ -1540,9 +1636,13 @@ class UploadVideoViewModel(
             return
         }
         runningJob = viewModelScope.launch(Dispatchers.Default) {
+            val canonicalUri = runCatching { resolveCanonicalUploadUri(uri) }
+                .onFailure { error -> Log.e(TAG, "upload_intake_copy_failed uri=$uri", error) }
+                .getOrElse { throw IllegalStateException("UPLOAD_INTAKE_COPY_FAILED: ${it.message}", it) }
+            val usedCopiedLocalSource = canonicalUri.toString() != uri.toString()
             _state.update {
                 it.copy(
-                    selectedVideoUri = uri,
+                    selectedVideoUri = canonicalUri,
                     stage = UploadStage.VIDEO_SELECTED,
                     currentProcessingStage = UploadStage.VIDEO_SELECTED,
                     stageText = UploadStage.VIDEO_SELECTED.label,
@@ -1561,8 +1661,14 @@ class UploadVideoViewModel(
             }
             runCatching {
                 val ownerToken = UUID.randomUUID().toString()
+                val intakeLog = "upload_intake originalUri=$uri localUri=$canonicalUri usedLocal=$usedCopiedLocalSource"
+                _state.update { current ->
+                    current.copy(
+                        technicalLog = if (current.technicalLog.isBlank()) intakeLog else "${current.technicalLog}\n$intakeLog",
+                    )
+                }
                 UploadAnalysisOrchestrator(runner).execute(
-                    uri = uri,
+                    uri = canonicalUri,
                     ownerToken = ownerToken,
                     trackingMode = trackingMode,
                     selectedDrillId = selectedDrillId,
@@ -1733,6 +1839,35 @@ internal fun estimateTimelineSampleIntervalMs(
     return (deltas.sum() / deltas.size).coerceAtLeast(1L)
 }
 
+internal fun sanitizeUploadFrameRate(rawFps: Int): Int = rawFps.takeIf { it in 1..120 } ?: DEFAULT_UPLOAD_FRAME_RATE
+
+internal fun canonicalizeUploadUriForAnalysis(context: Context?, sourceUri: Uri): Uri {
+    if (context == null) return sourceUri
+    if (isAppOwnedUploadUri(context, sourceUri)) return sourceUri
+    val intakeDir = File(context.cacheDir, "upload_intake").apply { mkdirs() }
+    val extension = sourceUri.lastPathSegment?.substringAfterLast('.', "").orEmpty().ifBlank { "mp4" }
+    val target = File(intakeDir, "upload_intake_${System.currentTimeMillis()}.$extension")
+    val input = context.contentResolver.openInputStream(sourceUri)
+        ?: error("UPLOAD_INTAKE_COPY_FAILED: unreadable_source_uri")
+    input.use { inStream ->
+        target.outputStream().use { outStream ->
+            inStream.copyTo(outStream)
+        }
+    }
+    return Uri.fromFile(target)
+}
+
+internal fun isAppOwnedUploadUri(context: Context, uri: Uri): Boolean {
+    if (uri.scheme != "file") return false
+    val path = uri.path ?: return false
+    val file = runCatching { File(path).canonicalFile }.getOrNull() ?: return false
+    val filesRoot = runCatching { context.filesDir.canonicalFile }.getOrNull()
+    val cacheRoot = runCatching { context.cacheDir.canonicalFile }.getOrNull()
+    return listOfNotNull(filesRoot, cacheRoot).any { root ->
+        file.path == root.path || file.path.startsWith("${root.path}${File.separator}")
+    }
+}
+
 internal fun deriveUploadStage(session: SessionRecord): UploadStage = when {
     session.uploadJobStatus == UploadJobStatus.STALLED -> UploadStage.FAILED
     session.uploadJobStatus == UploadJobStatus.CANCELLED -> UploadStage.CANCELLED
@@ -1770,6 +1905,7 @@ private fun UploadTrackingMode.displayLabel(): String = when (this) {
 }
 
 internal fun shouldPersistReadPermission(uri: Uri): Boolean = uri.scheme == "content"
+internal fun isSupportedUploadUri(uri: Uri): Boolean = uri.scheme in setOf("content", "file")
 
 private fun persistReadPermissionIfSupported(context: Context, uri: Uri) {
     if (!shouldPersistReadPermission(uri)) return
@@ -1822,6 +1958,11 @@ fun UploadVideoScreen(
             Log.w(TAG, "picker_failure reason=no_selection")
             return@rememberLauncherForActivityResult
         }
+        if (!isSupportedUploadUri(uri)) {
+            Log.w(TAG, "picker_failure reason=unsupported_scheme uri=$uri")
+            viewModel.onInvalidSelection("The selected URI is not supported.")
+            return@rememberLauncherForActivityResult
+        }
         val type = context.contentResolver.getType(uri).orEmpty()
         if (!type.startsWith("video/")) {
             Log.w(TAG, "picker_failure reason=invalid_mime uri=$uri mime=$type")
@@ -1834,6 +1975,7 @@ fun UploadVideoScreen(
 
     val inFlightStages = setOf(
         UploadStage.IMPORTING_RAW_VIDEO,
+        UploadStage.NORMALIZING_INPUT,
         UploadStage.PREPARING_ANALYSIS,
         UploadStage.ANALYZING_VIDEO,
         UploadStage.RENDERING_OVERLAY,

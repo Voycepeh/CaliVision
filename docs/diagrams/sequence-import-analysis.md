@@ -5,6 +5,7 @@ sequenceDiagram
     actor User
     participant UI as UploadVideoScreen
     participant VM as UploadVideoViewModel
+    participant Normalize as UploadVideoInputNormalizer
     participant Analyzer as UploadedVideoAnalyzer
     participant Coordinator as UploadedVideoAnalysisCoordinator
     participant Export as AnnotatedExportPipeline
@@ -13,6 +14,8 @@ sequenceDiagram
 
     User->>UI: Select video + drill context
     UI->>VM: Start upload analysis
+    VM->>Normalize: Inspect + normalize input media
+    Normalize-->>VM: Working media uri + canonical specs
     VM->>Analyzer: Analyze sampled frames
     Analyzer-->>VM: Metrics + timeline + candidate
     VM->>Coordinator: Persist candidate analysis

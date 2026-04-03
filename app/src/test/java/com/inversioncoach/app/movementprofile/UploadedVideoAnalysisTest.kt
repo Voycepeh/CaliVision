@@ -78,7 +78,46 @@ class UploadedVideoAnalysisTest {
         val result = UploadedVideoAnalyzer(source).analyze(Uri.parse("file:///tmp/empty.mp4"), profile)
 
         assertTrue(result.overlayTimeline.isEmpty())
-        assertEquals(2, result.droppedFrames)
+        assertEquals(0, result.droppedFrames)
+        assertEquals(2L, result.telemetry["edge_frames_skipped"])
+    }
+
+    @Test
+    fun analyzeSkipsOccludedEdgeFramesWithoutInvalidatingSession() {
+        val profile = ExistingDrillToProfileAdapter().fromDrill(DrillType.FREESTYLE)
+        val source = object : VideoPoseFrameSource {
+            override fun decode(videoUri: Uri): Sequence<PoseFrame> = sequence {
+                yield(frame(0, 0f))
+                yield(frame(33, 0f))
+                yield(frame(66, 0.92f))
+                yield(frame(99, 0.94f))
+                yield(frame(132, 0f))
+            }
+        }
+
+        val result = UploadedVideoAnalyzer(source).analyze(Uri.parse("file:///tmp/occlusion.mp4"), profile)
+
+        assertEquals(2, result.overlayTimeline.size)
+        assertEquals(0, result.droppedFrames)
+        assertEquals(3L, result.telemetry["edge_frames_skipped"])
+    }
+
+    @Test
+    fun analyzeCorrectsNonMonotonicTimestamps() {
+        val profile = ExistingDrillToProfileAdapter().fromDrill(DrillType.FREESTYLE)
+        val source = object : VideoPoseFrameSource {
+            override fun decode(videoUri: Uri): Sequence<PoseFrame> = sequence {
+                yield(frame(100, 0.9f))
+                yield(frame(100, 0.9f))
+                yield(frame(99, 0.9f))
+            }
+        }
+
+        val result = UploadedVideoAnalyzer(source).analyze(Uri.parse("file:///tmp/timestamps.mp4"), profile)
+        val timestamps = result.overlayTimeline.map { it.timestampMs }
+
+        assertTrue(timestamps.zipWithNext().all { (a, b) -> b > a })
+        assertEquals(2L, result.telemetry["timestamp_corrections"])
     }
 
     @Test

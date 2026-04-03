@@ -203,6 +203,61 @@ class UploadVideoViewModelTest {
     }
 
     @Test
+    fun analyzeUsesCanonicalLocalCopyInsteadOfOriginalPickerUri() = runTest(dispatcher) {
+        kotlinx.coroutines.Dispatchers.setMain(dispatcher)
+        var receivedUri: Uri? = null
+        val runner = object : UploadVideoAnalysisRunner {
+            override suspend fun run(
+                uri: Uri,
+                ownerToken: String,
+                trackingMode: UploadTrackingMode,
+                selectedDrillId: String?,
+                selectedReferenceTemplateId: String?,
+                isReferenceUpload: Boolean,
+                createDrillFromReferenceUpload: Boolean,
+                pendingDrillName: String?,
+                onSessionCreated: (Long) -> Unit,
+                onProgress: (UploadProgress) -> Unit,
+                onLog: (String) -> Unit,
+            ): UploadFlowResult {
+                receivedUri = uri
+                onSessionCreated(123L)
+                return UploadFlowResult(
+                    sessionId = 123L,
+                    replayUri = uri.toString(),
+                    rawReady = true,
+                    annotatedReady = false,
+                    finalStage = UploadStage.COMPLETED_RAW_ONLY,
+                )
+            }
+        }
+        val originalUri = Uri.parse("content://picker/video/42")
+        val canonicalUri = Uri.parse("file:///data/user/0/com.inversioncoach.app/cache/upload_intake/copy.mp4")
+        val viewModel = UploadVideoViewModel(
+            appContext = null,
+            repository = null,
+            selectedDrillId = null,
+            selectedReferenceTemplateId = null,
+            isReferenceUpload = false,
+            createDrillFromReferenceUpload = false,
+            queueCoordinator = null,
+            customRunner = runner,
+            resolveCanonicalUploadUri = { canonicalUri },
+        )
+        viewModel.onTrackingModeSelected(UploadTrackingMode.HOLD_BASED)
+
+        viewModel.analyze(originalUri)
+        advanceUntilIdle()
+
+        assertEquals(canonicalUri, receivedUri)
+        assertEquals(canonicalUri, viewModel.state.value.selectedVideoUri)
+        assertTrue(viewModel.state.value.technicalLog.contains("originalUri=$originalUri"))
+        assertTrue(viewModel.state.value.technicalLog.contains("localUri=$canonicalUri"))
+        assertTrue(viewModel.state.value.technicalLog.contains("usedLocal=true"))
+        kotlinx.coroutines.Dispatchers.resetMain()
+    }
+
+    @Test
     fun invalidUriShowsFailureMessage() = runTest(dispatcher) {
         kotlinx.coroutines.Dispatchers.setMain(dispatcher)
         val viewModel = UploadVideoViewModel(object : UploadVideoAnalysisRunner {
@@ -228,6 +283,35 @@ class UploadVideoViewModelTest {
         val state = viewModel.state.value
         assertEquals(UploadStage.FAILED, state.stage)
         assertTrue(state.errorMessage?.contains("Unreadable") == true)
+        kotlinx.coroutines.Dispatchers.resetMain()
+    }
+
+    @Test
+    fun zeroDecodedFramesFailureIsContainedInFailedState() = runTest(dispatcher) {
+        kotlinx.coroutines.Dispatchers.setMain(dispatcher)
+        val viewModel = UploadVideoViewModel(object : UploadVideoAnalysisRunner {
+            override suspend fun run(
+                uri: Uri,
+                ownerToken: String,
+                trackingMode: UploadTrackingMode,
+                selectedDrillId: String?,
+                selectedReferenceTemplateId: String?,
+                isReferenceUpload: Boolean,
+                createDrillFromReferenceUpload: Boolean,
+                pendingDrillName: String?,
+                onSessionCreated: (Long) -> Unit,
+                onProgress: (UploadProgress) -> Unit,
+                onLog: (String) -> Unit,
+            ): UploadFlowResult = throw IllegalStateException("zero_decoded_frames")
+        })
+        viewModel.onTrackingModeSelected(UploadTrackingMode.HOLD_BASED)
+
+        viewModel.analyze(Uri.parse("content://broken"))
+        advanceUntilIdle()
+
+        val state = viewModel.state.value
+        assertEquals(UploadStage.FAILED, state.stage)
+        assertTrue(state.errorMessage?.contains("zero_decoded_frames", ignoreCase = true) == true)
         kotlinx.coroutines.Dispatchers.resetMain()
     }
 
