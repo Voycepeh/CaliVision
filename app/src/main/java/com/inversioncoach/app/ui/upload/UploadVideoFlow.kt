@@ -62,6 +62,7 @@ import com.inversioncoach.app.movementprofile.MovementProfileExtractor
 import com.inversioncoach.app.movementprofile.UploadedVideoAnalyzer
 import com.inversioncoach.app.movementprofile.VideoPoseFrameSource
 import com.inversioncoach.app.movementprofile.ReferenceTemplateDefinition
+import com.inversioncoach.app.movementprofile.ReferenceTemplateRecordCodec
 import com.inversioncoach.app.movementprofile.MovementProfile
 import com.inversioncoach.app.movementprofile.MovementType
 import com.inversioncoach.app.movementprofile.CameraViewConstraint
@@ -718,7 +719,7 @@ class DefaultUploadVideoAnalysisRunner(
             } else {
                 val selectedTemplateRecord = selectedReferenceTemplateId?.let { repository.getReferenceTemplate(it) }
                 if (selectedTemplateRecord != null) {
-                    val referenceProfileId = selectedTemplateRecord.sourceProfileIdsJson.split('|').firstOrNull().orEmpty()
+                    val referenceProfileId = ReferenceTemplateRecordCodec.sourceProfileIds(selectedTemplateRecord).firstOrNull().orEmpty()
                     val referenceProfile = repository.getMovementProfile(referenceProfileId)
                     if (referenceProfile != null) {
                         val comparison = MovementComparisonEngine().compareStoredProfiles(
@@ -1226,53 +1227,12 @@ class DefaultUploadVideoAnalysisRunner(
         else -> DrillCameraSide.LEFT
     }
 
-    private fun templateDefinitionFromRecord(record: com.inversioncoach.app.model.ReferenceTemplateRecord): ReferenceTemplateDefinition? {
-        return runCatching {
-            val checkpoint = JSONObject(record.checkpointJson)
-            val tolerance = JSONObject(record.toleranceJson)
-            val phase = checkpoint.optJSONObject("phaseTimingsMs") ?: JSONObject()
-            val alignment = tolerance.optJSONObject("alignmentTargets")
-                ?: tolerance.optJSONObject("featureMeans")
-                ?: JSONObject()
-            val stability = tolerance.optJSONObject("stabilityTargets")
-                ?: tolerance.optJSONObject("stabilityJitter")
-                ?: JSONObject()
-
-            ReferenceTemplateDefinition(
-                id = record.id,
-                templateName = record.displayName,
-                drillId = record.drillId,
-                description = record.displayName,
-                phaseTimingMs = jsonLongMap(phase),
-                alignmentTargets = jsonFloatMap(alignment),
-                stabilityTargets = jsonFloatMap(stability),
-                assetPath = "",
-            )
-        }.getOrNull()
-    }
+    private fun templateDefinitionFromRecord(record: com.inversioncoach.app.model.ReferenceTemplateRecord): ReferenceTemplateDefinition? =
+        ReferenceTemplateRecordCodec.toDefinition(record)
 
     private suspend fun templatesAreEmptyForDrill(repository: SessionRepository, drillId: String): Boolean =
         repository.listTemplatesForDrill(drillId).first().isEmpty()
 
-    private fun jsonLongMap(obj: JSONObject): Map<String, Long> {
-        val out = linkedMapOf<String, Long>()
-        val keys = obj.keys()
-        while (keys.hasNext()) {
-            val key = keys.next()
-            out[key] = obj.optLong(key)
-        }
-        return out
-    }
-
-    private fun jsonFloatMap(obj: JSONObject): Map<String, Float> {
-        val out = linkedMapOf<String, Float>()
-        val keys = obj.keys()
-        while (keys.hasNext()) {
-            val key = keys.next()
-            out[key] = obj.optDouble(key, 0.0).toFloat()
-        }
-        return out
-    }
 }
 
 internal fun validateSelectedDrillForUpload(
