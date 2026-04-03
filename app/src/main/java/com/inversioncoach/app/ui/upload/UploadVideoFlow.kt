@@ -113,6 +113,7 @@ enum class UploadStage(val label: String) {
     VIDEO_SELECTED("Video selected"),
     IMPORTING_RAW_VIDEO("Importing raw video"),
     RAW_IMPORT_COMPLETE("Raw import complete"),
+    NORMALIZING_INPUT("Normalizing input"),
     PREPARING_ANALYSIS("Preparing analysis"),
     ANALYZING_VIDEO("Analyzing frames"),
     RENDERING_OVERLAY("Rendering overlay"),
@@ -213,6 +214,9 @@ class DefaultUploadVideoAnalysisRunner(
         )
     },
     private val analyzerFactory: (VideoPoseFrameSource) -> UploadedVideoAnalyzer = { UploadedVideoAnalyzer(it) },
+    private val inputNormalizerFactory: (Context) -> UploadVideoInputNormalizer = { appContext ->
+        DefaultUploadVideoInputNormalizer(appContext)
+    },
     private val exportPipelineFactory: () -> AnnotatedExportPipeline = {
         AnnotatedExportPipeline(repository, AnnotatedVideoCompositor(context.applicationContext))
     },
@@ -319,6 +323,7 @@ class DefaultUploadVideoAnalysisRunner(
         )
 
         var persistedRawUri: String? = null
+        var workingVideoUri: String? = null
         var sourceDurationMs: Long = 0L
         var currentStage = UploadStage.IMPORTING_RAW_VIDEO
 
@@ -358,8 +363,25 @@ class DefaultUploadVideoAnalysisRunner(
                 metrics = mapOf("rawUri" to persistedRawUri),
             )
 
-            val metadata = extractMetadata(Uri.parse(persistedRawUri))
+            val rawUri = Uri.parse(persistedRawUri)
+            val metadata = extractMetadata(rawUri)
             sourceDurationMs = metadata.durationMs.coerceAtLeast(0L)
+            currentStage = UploadStage.NORMALIZING_INPUT
+            repository.updateUploadPipelineProgress(
+                sessionId = sessionId,
+                stageLabel = "Normalizing input",
+                processedFrames = 0,
+                totalFrames = 0,
+                detail = "Preparing canonical uploaded video format",
+            )
+            onProgress(UploadProgress(currentStage, 0.18f, detail = "Normalizing uploaded input"))
+            val normalization = inputNormalizerFactory(context.applicationContext).normalize(rawUri)
+            workingVideoUri = normalization.workingUri.toString()
+            val workingMetadata = metadata.copy(
+                width = normalization.canonical.width,
+                height = normalization.canonical.height,
+                rotationDegrees = normalization.canonical.rotationDegrees,
+            )
             repository.updateMediaPipelineState(sessionId) { session ->
                 session.copy(
                     completedAtMs = startedAt + sourceDurationMs,
@@ -376,6 +398,18 @@ class DefaultUploadVideoAnalysisRunner(
                             "sourceDurationMs" to sourceDurationMs.toString(),
                             "sourceWidth" to metadata.width.toString(),
                             "sourceHeight" to metadata.height.toString(),
+                            "sourceRotationDegrees" to metadata.rotationDegrees.toString(),
+                            "sourceVideoNormalizationRequired" to normalization.normalizationRequired.toString(),
+                            "sourceVideoNormalizationAttempted" to normalization.normalizationAttempted.toString(),
+                            "sourceVideoNormalizationSucceeded" to normalization.normalizationSucceeded.toString(),
+                            "sourceVideoNormalizationReasons" to normalization.reasons.sorted().joinToString(","),
+                            "normalizedWidth" to workingMetadata.width.toString(),
+                            "normalizedHeight" to workingMetadata.height.toString(),
+                            "normalizedRotationDegrees" to workingMetadata.rotationDegrees.toString(),
+                            "normalizedFrameRate" to normalization.canonical.frameRate.toString(),
+                            "normalizedVideoMime" to normalization.canonical.videoMime,
+                            "normalizedDynamicRange" to normalization.canonical.dynamicRange,
+                            "normalizedBitDepth" to normalization.canonical.bitDepth.toString(),
                         ),
                     ),
                 )
@@ -389,11 +423,29 @@ class DefaultUploadVideoAnalysisRunner(
                     "durationMs" to metadata.durationMs.toString(),
                     "width" to metadata.width.toString(),
                     "height" to metadata.height.toString(),
+                    "rotationDegrees" to metadata.rotationDegrees.toString(),
+                    "normalizationRequired" to normalization.normalizationRequired.toString(),
+                    "normalizationAttempted" to normalization.normalizationAttempted.toString(),
+                    "normalizationSucceeded" to normalization.normalizationSucceeded.toString(),
+                    "normalizedWidth" to normalization.canonical.width.toString(),
+                    "normalizedHeight" to normalization.canonical.height.toString(),
+                    "normalizedFps" to normalization.canonical.frameRate.toString(),
+                    "normalizedVideoMime" to normalization.canonical.videoMime,
+                    "normalizationFailureStage" to (normalization.failureStage ?: ""),
                 ),
             )
-            log("metadata durationMs=${metadata.durationMs} width=${metadata.width} height=${metadata.height}")
+            log(
+                "metadata durationMs=${metadata.durationMs} width=${metadata.width} height=${metadata.height} rotation=${metadata.rotationDegrees} " +
+                    "normalizationRequired=${normalization.normalizationRequired} attempted=${normalization.normalizationAttempted} " +
+                    "succeeded=${normalization.normalizationSucceeded} reasons=${normalization.reasons.sorted().joinToString(",")}",
+            )
             currentStage = UploadStage.RAW_IMPORT_COMPLETE
             logStage("RAW_IMPORTED", "rawUri=$persistedRawUri durationMs=$sourceDurationMs width=${metadata.width} height=${metadata.height}")
+            logStage(
+                "INPUT_NORMALIZED",
+                "workingUri=$workingVideoUri normalizedWidth=${workingMetadata.width} normalizedHeight=${workingMetadata.height} " +
+                    "normalizedRotation=${workingMetadata.rotationDegrees} normalizedFps=${normalization.canonical.frameRate} reasons=${normalization.reasons.sorted().joinToString(",")}",
+            )
 
             val baseProfile = drillDefinition?.let { buildMovementProfileFromDrill(it) } ?: ExistingDrillToProfileAdapter().fromDrill(drillType)
             val profile = baseProfile.copy(
@@ -495,7 +547,7 @@ class DefaultUploadVideoAnalysisRunner(
                 }
             }
             val analysis = analyzer.analyze(
-                Uri.parse(persistedRawUri),
+                Uri.parse(workingVideoUri ?: requireNotNull(persistedRawUri)),
                 profile,
                 drillMovementProfile = resolvedCalibrationProfile,
                 progressObserver = AnalysisProgressObserver { event ->
@@ -799,9 +851,9 @@ class DefaultUploadVideoAnalysisRunner(
                     showIdealLine = true,
                     showCenterOfGravity = true,
                     mirrorMode = false,
-                    sourceWidth = metadata.width,
-                    sourceHeight = metadata.height,
-                    sourceRotationDegrees = metadata.rotationDegrees,
+                    sourceWidth = workingMetadata.width,
+                    sourceHeight = workingMetadata.height,
+                    sourceRotationDegrees = workingMetadata.rotationDegrees,
                     scaleMode = PoseScaleMode.FIT,
                 )
             }
@@ -892,7 +944,7 @@ class DefaultUploadVideoAnalysisRunner(
             )
             val export = exportPipelineFactory().export(
                 sessionId = sessionId,
-                rawVideoUri = persistedRawUri,
+                rawVideoUri = workingVideoUri ?: requireNotNull(persistedRawUri),
                 drillType = drillType,
                 drillCameraSide = drillDefinition?.let(::toDrillCameraSide) ?: DrillCameraSide.LEFT,
                 overlayTimeline = overlayTimeline,

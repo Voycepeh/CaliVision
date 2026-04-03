@@ -93,13 +93,16 @@ sequenceDiagram
     actor User
     participant Upload as Upload Video UI
     participant VM as UploadVideoViewModel
+    participant Normalize as UploadVideoInputNormalizer
     participant Analyzer as UploadedVideoAnalyzer
     participant Export as AnnotatedExportPipeline
     participant Resolver as SessionMediaResolver
 
     User->>Upload: Select video + drill context
     Upload->>VM: Start analysis
-    VM->>Analyzer: Analyze sampled frames
+    VM->>Normalize: Build canonical working asset/spec
+    Normalize-->>VM: Normalized media + format diagnostics
+    VM->>Analyzer: Analyze sampled frames from normalized media
     Analyzer-->>VM: Metrics + timeline + template candidate
     VM->>Export: Export annotated replay
     Export-->>VM: Success/failure
