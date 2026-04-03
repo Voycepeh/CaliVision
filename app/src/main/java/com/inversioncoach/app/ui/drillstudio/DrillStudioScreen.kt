@@ -570,7 +570,6 @@ private fun PoseCanvas(
             ),
             highlightedJoint = activeJoint,
             showBackground = false,
-        )
         ) {
             referenceImage?.let { image ->
                 drawImage(image)
