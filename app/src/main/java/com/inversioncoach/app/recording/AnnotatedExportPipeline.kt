@@ -305,6 +305,7 @@ class AnnotatedExportPipeline(
             telemetry: AnnotatedExportTelemetry?,
         ): ExportResult {
             updateExportStatus(sessionId, AnnotatedExportStatus.ANNOTATED_FAILED)
+            // Keep a single reason-driven failure log here so diagnostics always match the actual terminal cause.
             Log.w(TAG, "export_failure sessionId=$sessionId reason=$reason")
             return ExportResult(
                 failureReason = reason,
