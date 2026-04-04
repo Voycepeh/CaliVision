@@ -1,6 +1,9 @@
 package com.inversioncoach.app.ui.drillstudio
 
+import android.Manifest
+import android.content.Context
 import android.net.Uri
+import android.content.pm.PackageManager
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -13,17 +16,23 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
@@ -38,7 +47,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
@@ -47,7 +58,11 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import com.inversioncoach.app.calibration.UserBodyProfile
 import com.inversioncoach.app.drills.catalog.CameraView
 import com.inversioncoach.app.drills.catalog.CatalogMovementType
@@ -63,8 +78,6 @@ import com.inversioncoach.app.storage.ServiceLocator
 import com.inversioncoach.app.ui.components.DropdownOption
 import com.inversioncoach.app.ui.components.MultiSelectChipsField
 import com.inversioncoach.app.ui.components.OverlaySkeletonPreviewDefaults
-import com.inversioncoach.app.ui.components.OverlaySkeletonPreview
-import com.inversioncoach.app.ui.components.OverlaySkeletonPreviewStyle
 import com.inversioncoach.app.ui.components.ReliableDropdownField
 import com.inversioncoach.app.ui.components.ScaffoldedScreen
 import com.inversioncoach.app.ui.components.SeededSkeletonPreview
@@ -73,6 +86,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 private val baseJointColor = Color(0xFF7CF0A9)
 
@@ -212,6 +226,8 @@ private fun DrillStudioEditor(
     }
     var detectionStatus by remember(selectedPhaseId) { mutableStateOf<String?>(null) }
     var workingImageUri by remember(selectedPhaseId) { mutableStateOf<Uri?>(null) }
+    var showImageSourceDialog by remember { mutableStateOf(false) }
+    var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
     val scope = rememberCoroutineScope()
     val detector = remember { DrillStudioImagePoseDetector() }
     val imageStore = remember { DrillStudioImageStore(context.applicationContext) }
@@ -226,6 +242,35 @@ private fun DrillStudioEditor(
                 }
                 .onFailure { detectionStatus = "Failed to persist image: ${it.message}" }
         }
+    }
+    val takePhotoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+        val capturedUri = pendingCameraUri
+        pendingCameraUri = null
+        if (!success || capturedUri == null) {
+            detectionStatus = "Photo capture cancelled"
+            return@rememberLauncherForActivityResult
+        }
+        scope.launch {
+            runCatching { imageStore.persistCapturedImage(capturedUri) }
+                .onSuccess { stableUri ->
+                    workingImageUri = Uri.parse(stableUri)
+                    onAttachReferenceImage(selectedPhaseId, stableUri)
+                    detectionStatus = "Reference image attached"
+                }
+                .onFailure { detectionStatus = "Failed to persist photo: ${it.message}" }
+        }
+    }
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (!granted) {
+            detectionStatus = "Camera permission denied"
+            return@rememberLauncherForActivityResult
+        }
+        val outputUri = createCameraCaptureUri(context) ?: run {
+            detectionStatus = "Camera unavailable"
+            return@rememberLauncherForActivityResult
+        }
+        pendingCameraUri = outputUri
+        takePhotoLauncher.launch(outputUri)
     }
     val orderedPhases = draft.phases.sortedBy { it.order }
     val selectedPhaseTemplate = orderedPhases.firstOrNull { it.id == selectedPhaseId }
@@ -369,7 +414,7 @@ private fun DrillStudioEditor(
                 val guides = currentPose.authoring?.guides ?: PhaseBoundaryGuides()
                 val imageUri = workingImageUri ?: currentPose.authoring?.sourceImageUri?.let(Uri::parse)
                 val referenceImage = rememberReferenceImageBitmap(imageUri)
-                PoseCanvas(
+                PoseAuthoringViewport(
                     phasePose = currentPose,
                     bodyProfile = bodyProfile,
                     referenceImage = referenceImage,
@@ -384,8 +429,11 @@ private fun DrillStudioEditor(
                     style = MaterialTheme.typography.bodySmall,
                 )
                 detectionStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { imagePicker.launch(arrayOf("image/*")) }) { Text("Upload image") }
+                PoseActionRow {
+                    Button(onClick = { showImageSourceDialog = true }) { Text("Add reference image") }
+                    OutlinedButton(onClick = { onClearReferenceImage(currentPose.phaseId); workingImageUri = null }) { Text("Clear image") }
+                }
+                PoseActionRow {
                     Button(onClick = {
                         val uri = imageUri ?: return@Button
                         scope.launch {
@@ -398,40 +446,66 @@ private fun DrillStudioEditor(
                                 .onFailure { detectionStatus = "Pose detection failed: ${it.message}" }
                         }
                     }, enabled = imageUri != null) { Text("Detect pose") }
+                    OutlinedButton(onClick = { onResetImageDetection(currentPose.phaseId) }) { Text("Reset detection") }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { onCopyPreviousPose(currentPose.phaseId) }) { Text("Copy previous") }
-                    Button(onClick = { onMirrorPose(currentPose.phaseId) }) { Text("Mirror") }
-                    Button(onClick = { onResetPose(currentPose.phaseId) }) { Text("Reset") }
+                PoseActionRow {
+                    OutlinedButton(onClick = { onCopyPreviousPose(currentPose.phaseId) }) { Text("Copy previous") }
+                    OutlinedButton(onClick = { onMirrorPose(currentPose.phaseId) }) { Text("Mirror") }
+                    OutlinedButton(onClick = { onResetPose(currentPose.phaseId) }) { Text("Reset") }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { onResetImageDetection(currentPose.phaseId) }) { Text("Reset detection") }
-                    Button(onClick = { onClearReferenceImage(currentPose.phaseId); workingImageUri = null }) { Text("Clear image") }
-                    Button(onClick = { onSavePhasePose(currentPose.phaseId) }) { Text("Save phase pose") }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { selectedJoint?.let { onResetJointCorrection(currentPose.phaseId, it) } }, enabled = selectedJoint != null) {
+                PoseActionRow {
+                    OutlinedButton(
+                        onClick = { selectedJoint?.let { onResetJointCorrection(currentPose.phaseId, it) } },
+                        enabled = selectedJoint != null,
+                    ) {
                         Text("Reset selected joint")
                     }
-                    Button(onClick = { onResetAllCorrections(currentPose.phaseId) }) { Text("Reset all corrections") }
+                    OutlinedButton(onClick = { onResetAllCorrections(currentPose.phaseId) }) { Text("Reset all corrections") }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Frame")
-                    Switch(checked = guides.showFrameGuides, onCheckedChange = {
-                        onUpdatePhaseGuides(currentPose.phaseId, guides.copy(showFrameGuides = it))
-                    })
-                    Text("Floor")
-                    Switch(checked = guides.showFloorLine, onCheckedChange = {
-                        onUpdatePhaseGuides(currentPose.phaseId, guides.copy(showFloorLine = it))
-                    })
-                    Text("Wall")
-                    Switch(checked = guides.showWallLine, onCheckedChange = {
-                        onUpdatePhaseGuides(currentPose.phaseId, guides.copy(showWallLine = it))
-                    })
-                    Text("Bar")
-                    Switch(checked = guides.showBarLine, onCheckedChange = {
-                        onUpdatePhaseGuides(currentPose.phaseId, guides.copy(showBarLine = it))
-                    })
+                PoseActionRow {
+                    Button(onClick = { onSavePhasePose(currentPose.phaseId) }, modifier = Modifier.fillMaxWidth()) { Text("Save phase pose") }
+                }
+                PoseGuideToggles(guides = guides) { updated -> onUpdatePhaseGuides(currentPose.phaseId, updated) }
+                if (showImageSourceDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showImageSourceDialog = false },
+                        title = { Text("Add reference image") },
+                        text = { Text("Choose how to add a phase reference image.") },
+                        confirmButton = {
+                            Button(onClick = {
+                                showImageSourceDialog = false
+                                if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                                    val outputUri = createCameraCaptureUri(context)
+                                    if (outputUri != null) {
+                                        pendingCameraUri = outputUri
+                                        runCatching { takePhotoLauncher.launch(outputUri) }
+                                            .onFailure { detectionStatus = "Camera app unavailable" }
+                                    } else {
+                                        detectionStatus = "Camera unavailable"
+                                    }
+                                } else {
+                                    cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                                }
+                            }) {
+                                Text("Take photo")
+                            }
+                        },
+                        dismissButton = {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(onClick = {
+                                    showImageSourceDialog = false
+                                    runCatching { imagePicker.launch(arrayOf("image/*")) }
+                                        .onFailure { detectionStatus = "Image picker unavailable" }
+                                }) {
+                                    Text("Choose from device")
+                                }
+                                Text(
+                                    "Cancel",
+                                    modifier = Modifier.padding(top = 12.dp).clickable { showImageSourceDialog = false },
+                                )
+                            }
+                        },
+                    )
                 }
             }
         }
@@ -524,7 +598,7 @@ private fun AxisEditor(
 }
 
 @Composable
-private fun PoseCanvas(
+private fun PoseAuthoringViewport(
     phasePose: PhasePoseTemplate,
     bodyProfile: UserBodyProfile?,
     referenceImage: ImageBitmap?,
@@ -532,19 +606,22 @@ private fun PoseCanvas(
     onJointMoved: (String, JointPoint) -> Unit,
 ) {
     var activeJoint by remember(phasePose.phaseId) { mutableStateOf<String?>(null) }
+    val viewportAspectRatio = SeededSkeletonPreviewDefaults.PORTRAIT_ASPECT_RATIO
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .aspectRatio(viewportAspectRatio)
+            .clip(RoundedCornerShape(14.dp))
             .background(MaterialTheme.colorScheme.surface),
     ) {
-        OverlaySkeletonPreview(
-            joints = phasePose.joints,
+        Canvas(
             modifier = Modifier
-                .fillMaxWidth()
-                .pointerInput(phasePose.phaseId, phasePose.joints) {
+                .fillMaxSize()
+                .pointerInput(phasePose.phaseId, phasePose.joints, referenceImage) {
                     detectDragGestures(
                         onDragStart = { start ->
-                            val touch = JointPoint(start.x / size.width, start.y / size.height)
+                            val imageBounds = resolveImageBounds(size, referenceImage)
+                            val touch = toNormalizedPoint(start, imageBounds)
                             activeJoint = DrillStudioPoseUtils.nearestJointWithinRadius(
                                 joints = phasePose.joints,
                                 touch = touch,
@@ -553,12 +630,12 @@ private fun PoseCanvas(
                         },
                         onDrag = { change, _ ->
                             val joint = activeJoint ?: return@detectDragGestures
-                            val x = (change.position.x / size.width).coerceIn(0f, 1f)
-                            val y = (change.position.y / size.height).coerceIn(0f, 1f)
+                            val imageBounds = resolveImageBounds(size, referenceImage)
+                            val normalized = toNormalizedPoint(change.position, imageBounds)
                             val constrained = DrillStudioPoseUtils.applyAnatomicalGuardrails(
                                 pose = phasePose.joints,
                                 joint = joint,
-                                target = JointPoint(x, y),
+                                target = normalized,
                                 bodyProfile = bodyProfile,
                             )
                             onJointMoved(joint, constrained)
@@ -567,16 +644,14 @@ private fun PoseCanvas(
                         onDragCancel = { activeJoint = null },
                     )
                 },
-            style = OverlaySkeletonPreviewStyle(
-                aspectRatio = SeededSkeletonPreviewDefaults.PORTRAIT_ASPECT_RATIO,
-                contentPaddingFraction = 0f,
-                styleScaleMultiplier = 1f,
-            ),
-            highlightedJoint = activeJoint,
-            showBackground = false,
         ) {
-            referenceImage?.let { image ->
-                drawImage(image)
+            val imageBounds = resolveImageBounds(size, referenceImage)
+            if (referenceImage != null) {
+                drawImage(
+                    image = referenceImage,
+                    dstOffset = Offset(imageBounds.left, imageBounds.top).toIntOffset(),
+                    dstSize = Size(imageBounds.width, imageBounds.height).toIntSize(),
+                )
             }
             if (guides.showFrameGuides) {
                 drawRect(color = Color(0x44FFFFFF), style = Stroke(width = 2f))
@@ -608,8 +683,8 @@ private fun PoseCanvas(
                 if (a != null && b != null) {
                     drawLine(
                         color = baseJointColor,
-                        start = Offset(a.x * size.width, a.y * size.height),
-                        end = Offset(b.x * size.width, b.y * size.height),
+                        start = imageBounds.normalizedToCanvas(a),
+                        end = imageBounds.normalizedToCanvas(b),
                         strokeWidth = 4f,
                         cap = StrokeCap.Round,
                     )
@@ -620,12 +695,48 @@ private fun PoseCanvas(
                 drawCircle(
                     color = style.color,
                     radius = style.radius,
-                    center = Offset(point.x * size.width, point.y * size.height),
+                    center = imageBounds.normalizedToCanvas(point),
                     style = Stroke(width = 3f),
                 )
             }
         }
     }
+}
+
+@Composable
+private fun PoseActionRow(content: @Composable RowScope.() -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        content = content,
+    )
+}
+
+@Composable
+private fun PoseGuideToggles(
+    guides: PhaseBoundaryGuides,
+    onGuidesUpdated: (PhaseBoundaryGuides) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Boundary guides", style = MaterialTheme.typography.bodySmall)
+        PoseActionRow {
+            PoseToggle("Frame", guides.showFrameGuides) { onGuidesUpdated(guides.copy(showFrameGuides = it)) }
+            PoseToggle("Floor", guides.showFloorLine) { onGuidesUpdated(guides.copy(showFloorLine = it)) }
+        }
+        PoseActionRow {
+            PoseToggle("Wall", guides.showWallLine) { onGuidesUpdated(guides.copy(showWallLine = it)) }
+            PoseToggle("Bar", guides.showBarLine) { onGuidesUpdated(guides.copy(showBarLine = it)) }
+        }
+    }
+}
+
+@Composable
+private fun RowScope.PoseToggle(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(label)
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+    Spacer(modifier = Modifier.width(4.dp))
 }
 
 @Composable
@@ -688,6 +799,66 @@ private fun canonicalStudioBones(): List<Pair<String, String>> {
         val to = overlayToStudioAliases[end] ?: return@mapNotNull null
         from to to
     }
+}
+
+private data class ImageBounds(
+    val left: Float,
+    val top: Float,
+    val width: Float,
+    val height: Float,
+) {
+    fun normalizedToCanvas(point: JointPoint): Offset {
+        return Offset(
+            x = left + (point.x.coerceIn(0f, 1f) * width),
+            y = top + (point.y.coerceIn(0f, 1f) * height),
+        )
+    }
+}
+
+private fun resolveImageBounds(canvasSize: Size, referenceImage: ImageBitmap?): ImageBounds {
+    if (referenceImage == null || referenceImage.width <= 0 || referenceImage.height <= 0) {
+        return ImageBounds(0f, 0f, canvasSize.width, canvasSize.height)
+    }
+    val imageAspect = referenceImage.width.toFloat() / referenceImage.height.toFloat()
+    val canvasAspect = if (canvasSize.height == 0f) 1f else canvasSize.width / canvasSize.height
+    return if (imageAspect > canvasAspect) {
+        val height = canvasSize.width / imageAspect
+        ImageBounds(
+            left = 0f,
+            top = (canvasSize.height - height) / 2f,
+            width = canvasSize.width,
+            height = height,
+        )
+    } else {
+        val width = canvasSize.height * imageAspect
+        ImageBounds(
+            left = (canvasSize.width - width) / 2f,
+            top = 0f,
+            width = width,
+            height = canvasSize.height,
+        )
+    }
+}
+
+private fun toNormalizedPoint(position: Offset, bounds: ImageBounds): JointPoint {
+    val normalizedX = ((position.x - bounds.left) / bounds.width).coerceIn(0f, 1f)
+    val normalizedY = ((position.y - bounds.top) / bounds.height).coerceIn(0f, 1f)
+    return JointPoint(normalizedX, normalizedY)
+}
+
+private fun Offset.toIntOffset(): IntOffset = IntOffset(x.roundToInt(), y.roundToInt())
+
+private fun Size.toIntSize(): IntSize = IntSize(width.roundToInt(), height.roundToInt())
+
+private fun createCameraCaptureUri(context: Context): Uri? {
+    return runCatching {
+        val file = kotlin.io.path.createTempFile(
+            directory = context.cacheDir.toPath(),
+            prefix = "drill_studio_capture_",
+            suffix = ".jpg",
+        ).toFile()
+        FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    }.getOrNull()
 }
 
 private fun String.pretty(): String = lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }
