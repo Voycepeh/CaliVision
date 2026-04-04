@@ -186,44 +186,41 @@ class UploadedVideoAnalyzer(
                         ),
                     )
                     return
-                } else {
-                    val postProcessMs: Long
-                    val alignment: Float
-                    val sanitizedTimestampMs = if (frame.timestampMs <= lastAcceptedTimestampMs) {
-                        timestampCorrections += 1
-                        lastAcceptedTimestampMs + 1L
-                    } else {
-                        frame.timestampMs
-                    }
-                    lastAcceptedTimestampMs = sanitizedTimestampMs
-                    val normalized = poseFrameNormalizer.normalize(frame)
-                    val angleFrame = angleEngine.compute(normalized)
-                    val postStart = System.nanoTime()
-                    alignment = alignmentScorer.score(normalized, profile.alignmentRules)
-                    val phase = phaseDetector.update(angleFrame, alignment >= 0.65f)
-                    postProcessMs = ((System.nanoTime() - postStart) / 1_000_000.0).roundToLong()
-                    postProcessMsTotal += postProcessMs
-                    phaseTimeline += sanitizedTimestampMs to phase.name
-                    timeline += OverlayTimelinePoint(
-                        timestampMs = sanitizedTimestampMs,
-                        // Overlay rendering must stay in canonical source-frame normalized space.
-                        // The normalized pose frame is only for movement metrics/phase scoring.
-                        landmarks = frame.joints.map { it.name to (it.x to it.y) },
-                        metrics = mapOf("alignment_score" to alignment, "trunk_lean" to angleFrame.trunkLeanDeg),
-                        phaseId = phase.name,
-                        confidence = frame.confidence,
-                    )
-                    progressObserver?.onProgress(
-                        AnalysisProgressEvent(
-                            stage = "analysis_frame_processed",
-                            processedFrames = index + 1,
-                            estimatedTotalFrames = resolvedTotalFrames,
-                            droppedFrames = dropped,
-                            timestampMs = frame.timestampMs,
-                            detail = "postProcessMs=$postProcessMs",
-                        ),
-                    )
                 }
+                val sanitizedTimestampMs = if (frame.timestampMs <= lastAcceptedTimestampMs) {
+                    timestampCorrections += 1
+                    lastAcceptedTimestampMs + 1L
+                } else {
+                    frame.timestampMs
+                }
+                lastAcceptedTimestampMs = sanitizedTimestampMs
+                val normalized = poseFrameNormalizer.normalize(frame)
+                val angleFrame = angleEngine.compute(normalized)
+                val postStart = System.nanoTime()
+                val alignment = alignmentScorer.score(normalized, profile.alignmentRules)
+                val phase = phaseDetector.update(angleFrame, alignment >= 0.65f)
+                val postProcessMs = ((System.nanoTime() - postStart) / 1_000_000.0).roundToLong()
+                postProcessMsTotal += postProcessMs
+                phaseTimeline += sanitizedTimestampMs to phase.name
+                timeline += OverlayTimelinePoint(
+                    timestampMs = sanitizedTimestampMs,
+                    // Overlay rendering must stay in canonical source-frame normalized space.
+                    // The normalized pose frame is only for movement metrics/phase scoring.
+                    landmarks = frame.joints.map { it.name to (it.x to it.y) },
+                    metrics = mapOf("alignment_score" to alignment, "trunk_lean" to angleFrame.trunkLeanDeg),
+                    phaseId = phase.name,
+                    confidence = frame.confidence,
+                )
+                progressObserver?.onProgress(
+                    AnalysisProgressEvent(
+                        stage = "analysis_frame_processed",
+                        processedFrames = index + 1,
+                        estimatedTotalFrames = resolvedTotalFrames,
+                        droppedFrames = dropped,
+                        timestampMs = frame.timestampMs,
+                        detail = "postProcessMs=$postProcessMs",
+                    ),
+                )
                 val elapsedMs = ((System.nanoTime() - frameStart) / 1_000_000.0).roundToLong()
                 if (index % 4 == 0) {
                     val processed = index + 1
