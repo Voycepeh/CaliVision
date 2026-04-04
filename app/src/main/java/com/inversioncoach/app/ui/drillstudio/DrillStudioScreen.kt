@@ -14,15 +14,14 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
@@ -37,6 +36,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -55,6 +55,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -430,8 +431,11 @@ private fun DrillStudioEditor(
                 )
                 detectionStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
                 PoseActionRow {
-                    Button(onClick = { showImageSourceDialog = true }) { Text("Add reference image") }
-                    OutlinedButton(onClick = { onClearReferenceImage(currentPose.phaseId); workingImageUri = null }) { Text("Clear image") }
+                    Button(onClick = { showImageSourceDialog = true }, modifier = Modifier.heightIn(min = 44.dp)) { Text("Add reference image") }
+                    OutlinedButton(
+                        onClick = { onClearReferenceImage(currentPose.phaseId); workingImageUri = null },
+                        modifier = Modifier.heightIn(min = 44.dp),
+                    ) { Text("Clear image") }
                 }
                 PoseActionRow {
                     Button(onClick = {
@@ -445,25 +449,29 @@ private fun DrillStudioEditor(
                                 }
                                 .onFailure { detectionStatus = "Pose detection failed: ${it.message}" }
                         }
-                    }, enabled = imageUri != null) { Text("Detect pose") }
-                    OutlinedButton(onClick = { onResetImageDetection(currentPose.phaseId) }) { Text("Reset detection") }
+                    }, enabled = imageUri != null, modifier = Modifier.heightIn(min = 44.dp)) { Text("Detect pose") }
+                    OutlinedButton(onClick = { onResetImageDetection(currentPose.phaseId) }, modifier = Modifier.heightIn(min = 44.dp)) { Text("Reset detection") }
                 }
                 PoseActionRow {
-                    OutlinedButton(onClick = { onCopyPreviousPose(currentPose.phaseId) }) { Text("Copy previous") }
-                    OutlinedButton(onClick = { onMirrorPose(currentPose.phaseId) }) { Text("Mirror") }
-                    OutlinedButton(onClick = { onResetPose(currentPose.phaseId) }) { Text("Reset") }
+                    OutlinedButton(onClick = { onCopyPreviousPose(currentPose.phaseId) }, modifier = Modifier.heightIn(min = 44.dp)) { Text("Copy previous") }
+                    OutlinedButton(onClick = { onMirrorPose(currentPose.phaseId) }, modifier = Modifier.heightIn(min = 44.dp)) { Text("Mirror") }
+                    OutlinedButton(onClick = { onResetPose(currentPose.phaseId) }, modifier = Modifier.heightIn(min = 44.dp)) { Text("Reset") }
                 }
                 PoseActionRow {
                     OutlinedButton(
                         onClick = { selectedJoint?.let { onResetJointCorrection(currentPose.phaseId, it) } },
                         enabled = selectedJoint != null,
+                        modifier = Modifier.heightIn(min = 44.dp),
                     ) {
                         Text("Reset selected joint")
                     }
-                    OutlinedButton(onClick = { onResetAllCorrections(currentPose.phaseId) }) { Text("Reset all corrections") }
+                    OutlinedButton(
+                        onClick = { onResetAllCorrections(currentPose.phaseId) },
+                        modifier = Modifier.heightIn(min = 44.dp),
+                    ) { Text("Reset all corrections") }
                 }
                 PoseActionRow {
-                    Button(onClick = { onSavePhasePose(currentPose.phaseId) }, modifier = Modifier.fillMaxWidth()) { Text("Save phase pose") }
+                    Button(onClick = { onSavePhasePose(currentPose.phaseId) }, modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)) { Text("Save phase pose") }
                 }
                 PoseGuideToggles(guides = guides) { updated -> onUpdatePhaseGuides(currentPose.phaseId, updated) }
                 if (showImageSourceDialog) {
@@ -499,10 +507,7 @@ private fun DrillStudioEditor(
                                 }) {
                                     Text("Choose from device")
                                 }
-                                Text(
-                                    "Cancel",
-                                    modifier = Modifier.padding(top = 12.dp).clickable { showImageSourceDialog = false },
-                                )
+                                TextButton(onClick = { showImageSourceDialog = false }) { Text("Cancel") }
                             }
                         },
                     )
@@ -653,29 +658,60 @@ private fun PoseAuthoringViewport(
                     dstSize = Size(imageBounds.width, imageBounds.height).toIntSize(),
                 )
             }
-            if (guides.showFrameGuides) {
-                drawRect(color = Color(0x44FFFFFF), style = Stroke(width = 2f))
-                val corner = 24f
-                drawLine(Color(0x99FFFFFF), Offset(0f, 0f), Offset(corner, 0f), 2f)
-                drawLine(Color(0x99FFFFFF), Offset(0f, 0f), Offset(0f, corner), 2f)
-                drawLine(Color(0x99FFFFFF), Offset(size.width, 0f), Offset(size.width - corner, 0f), 2f)
-                drawLine(Color(0x99FFFFFF), Offset(size.width, 0f), Offset(size.width, corner), 2f)
-                drawLine(Color(0x99FFFFFF), Offset(0f, size.height), Offset(corner, size.height), 2f)
-                drawLine(Color(0x99FFFFFF), Offset(0f, size.height), Offset(0f, size.height - corner), 2f)
-                drawLine(Color(0x99FFFFFF), Offset(size.width, size.height), Offset(size.width - corner, size.height), 2f)
-                drawLine(Color(0x99FFFFFF), Offset(size.width, size.height), Offset(size.width, size.height - corner), 2f)
-            }
-            if (guides.showFloorLine) {
-                val y = guides.floorLineY.coerceIn(0f, 1f) * size.height
-                drawLine(Color(0xAA4FC3F7), Offset(0f, y), Offset(size.width, y), strokeWidth = 2f)
-            }
-            if (guides.showWallLine) {
-                val x = guides.wallLineX.coerceIn(0f, 1f) * size.width
-                drawLine(Color(0xAAF48FB1), Offset(x, 0f), Offset(x, size.height), strokeWidth = 2f)
-            }
-            if (guides.showBarLine) {
-                val y = guides.barLineY.coerceIn(0f, 1f) * size.height
-                drawLine(Color(0xAAFFE082), Offset(0f, y), Offset(size.width, y), strokeWidth = 2f)
+            clipRect(
+                left = imageBounds.left,
+                top = imageBounds.top,
+                right = imageBounds.left + imageBounds.width,
+                bottom = imageBounds.top + imageBounds.height,
+            ) {
+                if (guides.showFrameGuides) {
+                    drawRect(
+                        color = Color(0x44FFFFFF),
+                        topLeft = Offset(imageBounds.left, imageBounds.top),
+                        size = Size(imageBounds.width, imageBounds.height),
+                        style = Stroke(width = 2f),
+                    )
+                    val corner = 24f
+                    val left = imageBounds.left
+                    val right = imageBounds.left + imageBounds.width
+                    val top = imageBounds.top
+                    val bottom = imageBounds.top + imageBounds.height
+                    drawLine(Color(0x99FFFFFF), Offset(left, top), Offset(left + corner, top), 2f)
+                    drawLine(Color(0x99FFFFFF), Offset(left, top), Offset(left, top + corner), 2f)
+                    drawLine(Color(0x99FFFFFF), Offset(right, top), Offset(right - corner, top), 2f)
+                    drawLine(Color(0x99FFFFFF), Offset(right, top), Offset(right, top + corner), 2f)
+                    drawLine(Color(0x99FFFFFF), Offset(left, bottom), Offset(left + corner, bottom), 2f)
+                    drawLine(Color(0x99FFFFFF), Offset(left, bottom), Offset(left, bottom - corner), 2f)
+                    drawLine(Color(0x99FFFFFF), Offset(right, bottom), Offset(right - corner, bottom), 2f)
+                    drawLine(Color(0x99FFFFFF), Offset(right, bottom), Offset(right, bottom - corner), 2f)
+                }
+                if (guides.showFloorLine) {
+                    val y = imageBounds.top + (guides.floorLineY.coerceIn(0f, 1f) * imageBounds.height)
+                    drawLine(
+                        Color(0xAA4FC3F7),
+                        Offset(imageBounds.left, y),
+                        Offset(imageBounds.left + imageBounds.width, y),
+                        strokeWidth = 2f,
+                    )
+                }
+                if (guides.showWallLine) {
+                    val x = imageBounds.left + (guides.wallLineX.coerceIn(0f, 1f) * imageBounds.width)
+                    drawLine(
+                        Color(0xAAF48FB1),
+                        Offset(x, imageBounds.top),
+                        Offset(x, imageBounds.top + imageBounds.height),
+                        strokeWidth = 2f,
+                    )
+                }
+                if (guides.showBarLine) {
+                    val y = imageBounds.top + (guides.barLineY.coerceIn(0f, 1f) * imageBounds.height)
+                    drawLine(
+                        Color(0xAAFFE082),
+                        Offset(imageBounds.left, y),
+                        Offset(imageBounds.left + imageBounds.width, y),
+                        strokeWidth = 2f,
+                    )
+                }
             }
             canonicalStudioBones().forEach { (start, end) ->
                 val a = phasePose.joints[start]
@@ -703,13 +739,18 @@ private fun PoseAuthoringViewport(
     }
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun PoseActionRow(content: @Composable RowScope.() -> Unit) {
-    Row(
+private fun PoseActionRow(content: @Composable () -> Unit) {
+    FlowRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        content = content,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        maxItemsInEachRow = 2,
     )
+    {
+        content()
+    }
 }
 
 @Composable
@@ -731,12 +772,11 @@ private fun PoseGuideToggles(
 }
 
 @Composable
-private fun RowScope.PoseToggle(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+private fun PoseToggle(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(label)
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
-    Spacer(modifier = Modifier.width(4.dp))
 }
 
 @Composable
