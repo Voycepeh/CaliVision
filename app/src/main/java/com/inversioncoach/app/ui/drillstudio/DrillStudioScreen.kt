@@ -41,7 +41,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -58,11 +57,9 @@ import com.inversioncoach.app.drills.catalog.DrillTemplate
 import com.inversioncoach.app.drills.catalog.JointPoint
 import com.inversioncoach.app.drills.catalog.PhaseBoundaryGuides
 import com.inversioncoach.app.drills.catalog.PhasePoseTemplate
-import com.inversioncoach.app.overlay.jointStyle
 import com.inversioncoach.app.storage.ServiceLocator
 import com.inversioncoach.app.ui.components.DropdownOption
 import com.inversioncoach.app.ui.components.MultiSelectChipsField
-import com.inversioncoach.app.ui.components.OverlaySkeletonPreviewDefaults
 import com.inversioncoach.app.ui.components.OverlaySkeletonPreview
 import com.inversioncoach.app.ui.components.OverlaySkeletonPreviewStyle
 import com.inversioncoach.app.ui.components.ReliableDropdownField
@@ -74,7 +71,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val baseJointColor = Color(0xFF7CF0A9)
+private val drillStudioSkeletonPolicy = SeededSkeletonPreviewDefaults.DefaultPolicy
 
 @Composable
 fun DrillStudioScreen(
@@ -568,9 +565,9 @@ private fun PoseCanvas(
                     )
                 },
             style = OverlaySkeletonPreviewStyle(
-                aspectRatio = SeededSkeletonPreviewDefaults.PORTRAIT_ASPECT_RATIO,
-                contentPaddingFraction = 0f,
-                styleScaleMultiplier = 1f,
+                aspectRatio = drillStudioSkeletonPolicy.aspectRatio,
+                contentPaddingFraction = drillStudioSkeletonPolicy.contentPaddingFraction,
+                styleScaleMultiplier = drillStudioSkeletonPolicy.styleScaleMultiplier,
             ),
             highlightedJoint = activeJoint,
             showBackground = false,
@@ -602,28 +599,6 @@ private fun PoseCanvas(
                 val y = guides.barLineY.coerceIn(0f, 1f) * size.height
                 drawLine(Color(0xAAFFE082), Offset(0f, y), Offset(size.width, y), strokeWidth = 2f)
             }
-            canonicalStudioBones().forEach { (start, end) ->
-                val a = phasePose.joints[start]
-                val b = phasePose.joints[end]
-                if (a != null && b != null) {
-                    drawLine(
-                        color = baseJointColor,
-                        start = Offset(a.x * size.width, a.y * size.height),
-                        end = Offset(b.x * size.width, b.y * size.height),
-                        strokeWidth = 4f,
-                        cap = StrokeCap.Round,
-                    )
-                }
-            }
-            phasePose.joints.forEach { (name, point) ->
-                val style = jointStyle(name, baseJointColor, 6f)
-                drawCircle(
-                    color = style.color,
-                    radius = style.radius,
-                    center = Offset(point.x * size.width, point.y * size.height),
-                    style = Stroke(width = 3f),
-                )
-            }
         }
     }
 }
@@ -649,6 +624,7 @@ private fun PreviewCard(drill: DrillTemplate, progress: Float) {
     SeededSkeletonPreview(
         template = drill.skeletonTemplate,
         progress = progress,
+        policy = drillStudioSkeletonPolicy,
     )
 }
 
@@ -666,28 +642,5 @@ private fun SectionCard(title: String, content: @Composable () -> Unit) {
     }
 }
 
-
-private fun canonicalStudioBones(): List<Pair<String, String>> {
-    val overlayToStudioAliases = mapOf(
-        "nose" to "head",
-        "left_shoulder" to "shoulder_left",
-        "right_shoulder" to "shoulder_right",
-        "left_elbow" to "elbow_left",
-        "right_elbow" to "elbow_right",
-        "left_wrist" to "wrist_left",
-        "right_wrist" to "wrist_right",
-        "left_hip" to "hip_left",
-        "right_hip" to "hip_right",
-        "left_knee" to "knee_left",
-        "right_knee" to "knee_right",
-        "left_ankle" to "ankle_left",
-        "right_ankle" to "ankle_right",
-    )
-    return OverlaySkeletonPreviewDefaults.canonicalBones.mapNotNull { (start, end) ->
-        val from = overlayToStudioAliases[start] ?: return@mapNotNull null
-        val to = overlayToStudioAliases[end] ?: return@mapNotNull null
-        from to to
-    }
-}
 
 private fun String.pretty(): String = lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }
