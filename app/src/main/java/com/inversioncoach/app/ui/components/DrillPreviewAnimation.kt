@@ -40,6 +40,6 @@ fun DrillPreviewAnimation(
     OverlaySkeletonPreview(
         joints = pose,
         modifier = modifier,
-        style = OverlaySkeletonPreviewDefaults.DefaultStyle,
+        policy = SkeletonPreviewPolicies.motionPreview,
     )
 }

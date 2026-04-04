@@ -24,21 +24,7 @@ import com.inversioncoach.app.overlay.OverlayRenderModel
 import com.inversioncoach.app.overlay.OverlayRenderTarget
 import com.inversioncoach.app.pose.PoseScaleMode
 
-data class OverlaySkeletonPreviewStyle(
-    val aspectRatio: Float,
-    val policy: SkeletonRenderPolicy,
-    val styleScaleMultiplier: Float,
-)
-
 object OverlaySkeletonPreviewDefaults {
-    const val PORTRAIT_ASPECT_RATIO: Float = 3f / 4f
-
-    val DefaultStyle = OverlaySkeletonPreviewStyle(
-        aspectRatio = SkeletonRenderContract.SharedPolicy.aspectRatio,
-        policy = SkeletonRenderContract.SharedPolicy,
-        styleScaleMultiplier = SkeletonRenderContract.SharedPolicy.styleScaleMultiplier,
-    )
-
     private val jointAliases = mapOf(
         "head" to "nose",
         "shoulder_left" to "left_shoulder",
@@ -63,11 +49,15 @@ object OverlaySkeletonPreviewDefaults {
     fun normalizeJointName(name: String): String = jointAliases[name] ?: name
 }
 
+/**
+ * Cross-surface consistency guardrail:
+ * pass [SkeletonPreviewPolicies.*] unless introducing an explicitly reviewed global policy change.
+ */
 @Composable
 fun OverlaySkeletonPreview(
     joints: Map<String, JointPoint>,
     modifier: Modifier = Modifier,
-    style: OverlaySkeletonPreviewStyle = OverlaySkeletonPreviewDefaults.DefaultStyle,
+    policy: SkeletonRenderPolicy = SkeletonPreviewPolicies.canonical,
     resolveOverlayBounds: ((Size) -> Rect)? = null,
     highlightedJoint: String? = null,
     showBackground: Boolean = true,
@@ -100,7 +90,7 @@ fun OverlaySkeletonPreview(
     Canvas(
         modifier = modifier
             .fillMaxWidth()
-            .aspectRatio(style.aspectRatio)
+            .aspectRatio(policy.aspectRatio)
             .then(
                 if (showBackground) {
                     Modifier.background(Color(0x10101822), RoundedCornerShape(14.dp))
@@ -112,7 +102,7 @@ fun OverlaySkeletonPreview(
         overlayContent()
 
         val minDimension = minOf(size.width, size.height)
-        val contentRect = resolveOverlayBounds?.invoke(size) ?: SkeletonRenderContract.contentRect(size, style.policy)
+        val contentRect = resolveOverlayBounds?.invoke(size) ?: SkeletonRenderContract.contentRect(size, policy)
 
         OverlayFrameRenderer.drawAndroid(
             canvas = drawContext.canvas.nativeCanvas,
@@ -131,9 +121,9 @@ fun OverlaySkeletonPreview(
                 scaleMode = PoseScaleMode.FIT,
                 renderTarget = OverlayRenderTarget.LIVE_PREVIEW,
                 coordinateSpace = OverlayCoordinateSpace.UPRIGHT_NORMALIZED,
-                styleScaleMultiplier = style.styleScaleMultiplier,
-                jointRadiusScaleMultiplier = style.policy.jointRadiusScaleMultiplier,
-                strokeWidthScaleMultiplier = style.policy.strokeWidthScaleMultiplier,
+                styleScaleMultiplier = policy.styleScaleMultiplier,
+                jointRadiusScaleMultiplier = policy.jointRadiusScaleMultiplier,
+                strokeWidthScaleMultiplier = policy.strokeWidthScaleMultiplier,
             ),
         )
 

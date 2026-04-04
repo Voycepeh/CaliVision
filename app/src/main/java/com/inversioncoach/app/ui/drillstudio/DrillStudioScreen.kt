@@ -78,11 +78,10 @@ import com.inversioncoach.app.storage.ServiceLocator
 import com.inversioncoach.app.ui.components.DropdownOption
 import com.inversioncoach.app.ui.components.MultiSelectChipsField
 import com.inversioncoach.app.ui.components.OverlaySkeletonPreview
-import com.inversioncoach.app.ui.components.OverlaySkeletonPreviewStyle
 import com.inversioncoach.app.ui.components.ReliableDropdownField
 import com.inversioncoach.app.ui.components.ScaffoldedScreen
 import com.inversioncoach.app.ui.components.SeededSkeletonPreview
-import com.inversioncoach.app.ui.components.SeededSkeletonPreviewDefaults
+import com.inversioncoach.app.ui.components.SkeletonPreviewPolicies
 import com.inversioncoach.app.ui.components.SkeletonRenderContract
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
@@ -90,7 +89,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
-private val drillStudioSkeletonPolicy = SeededSkeletonPreviewDefaults.DefaultPolicy
+private val drillStudioSkeletonPolicy = SkeletonPreviewPolicies.poseAuthoring
 private const val CAMERA_CAPTURE_TAG = "DrillStudioCameraCapture"
 
 @Composable
@@ -643,18 +642,13 @@ private fun PoseAuthoringViewport(
             fallback = DrillStudioPosePresets.neutralUpright.joints,
         )
     }
-    val previewStyle = OverlaySkeletonPreviewStyle(
-        aspectRatio = drillStudioSkeletonPolicy.renderPolicy.aspectRatio,
-        policy = drillStudioSkeletonPolicy.renderPolicy,
-        styleScaleMultiplier = drillStudioSkeletonPolicy.renderPolicy.styleScaleMultiplier,
-    )
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(previewStyle.aspectRatio)
+            .aspectRatio(drillStudioSkeletonPolicy.aspectRatio)
             .clip(RoundedCornerShape(14.dp))
             .background(MaterialTheme.colorScheme.surface)
-            .pointerInput(phasePose.phaseId, phasePose.joints, referenceImage, drillStudioSkeletonPolicy.renderPolicy) {
+            .pointerInput(phasePose.phaseId, phasePose.joints, referenceImage, drillStudioSkeletonPolicy) {
                 detectDragGestures(
                     onDragStart = { start ->
                         val imageBounds = resolveImageBounds(size.toSize(), referenceImage)
@@ -684,7 +678,7 @@ private fun PoseAuthoringViewport(
     ) {
         OverlaySkeletonPreview(
             joints = renderPose,
-            style = previewStyle,
+            policy = drillStudioSkeletonPolicy,
             resolveOverlayBounds = { canvasSize ->
                 resolveImageBounds(canvasSize, referenceImage)
             },
@@ -837,7 +831,7 @@ private fun PreviewCard(drill: DrillTemplate, progress: Float) {
     SeededSkeletonPreview(
         template = drill.skeletonTemplate,
         progress = progress,
-        policy = drillStudioSkeletonPolicy,
+        policy = SkeletonPreviewPolicies.motionPreview,
     )
 }
 
@@ -862,7 +856,7 @@ private fun resolveImageBounds(canvasSize: Size, referenceImage: ImageBitmap?): 
         canvasSize = canvasSize,
         imageWidth = referenceImage?.width,
         imageHeight = referenceImage?.height,
-        policy = drillStudioSkeletonPolicy.renderPolicy,
+        policy = drillStudioSkeletonPolicy,
     )
     return ImageBounds(rect.left, rect.top, rect.width, rect.height)
 }

@@ -8,14 +8,11 @@ import org.junit.Test
 class SkeletonRenderContractTest {
 
     @Test
-    fun sharedPolicy_isUsedByOverlayAndSeededDefaults() {
-        assertEquals(SkeletonRenderContract.SharedPolicy, SeededSkeletonPreviewDefaults.DefaultPolicy.renderPolicy)
-        assertEquals(SkeletonRenderContract.SharedPolicy, OverlaySkeletonPreviewDefaults.DefaultStyle.policy)
-        assertEquals(
-            SkeletonRenderContract.SharedPolicy.styleScaleMultiplier,
-            OverlaySkeletonPreviewDefaults.DefaultStyle.styleScaleMultiplier,
-            0.0001f,
-        )
+    fun canonicalPolicy_isSharedAcrossPoseMotionAndChooseDrill() {
+        assertEquals(SkeletonRenderContract.SharedPolicy, SkeletonPreviewPolicies.canonical)
+        assertEquals(SkeletonPreviewPolicies.canonical, SkeletonPreviewPolicies.poseAuthoring)
+        assertEquals(SkeletonPreviewPolicies.canonical, SkeletonPreviewPolicies.motionPreview)
+        assertEquals(SkeletonPreviewPolicies.canonical, SkeletonPreviewPolicies.chooseDrillPreview)
     }
 
     @Test

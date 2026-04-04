@@ -12,21 +12,6 @@ import androidx.compose.ui.Modifier
 import com.inversioncoach.app.drills.catalog.SkeletonTemplate
 import com.inversioncoach.app.drills.catalog.StickFigureAnimator
 
-data class SeededSkeletonPreviewPolicy(
-    val renderPolicy: SkeletonRenderPolicy,
-)
-
-object SeededSkeletonPreviewDefaults {
-    const val PORTRAIT_ASPECT_RATIO: Float = OverlaySkeletonPreviewDefaults.PORTRAIT_ASPECT_RATIO
-
-    val DefaultPolicy = SeededSkeletonPreviewPolicy(
-        renderPolicy = SkeletonRenderContract.SharedPolicy,
-    )
-
-    fun normalizeJointNames(joints: Map<String, com.inversioncoach.app.drills.catalog.JointPoint>) =
-        OverlaySkeletonPreviewDefaults.normalizeJointNames(joints)
-}
-
 @Composable
 fun rememberSeededSkeletonPreviewProgress(
     template: SkeletonTemplate,
@@ -53,7 +38,7 @@ fun SeededSkeletonPreview(
     template: SkeletonTemplate,
     progress: Float,
     modifier: Modifier = Modifier,
-    policy: SeededSkeletonPreviewPolicy = SeededSkeletonPreviewDefaults.DefaultPolicy,
+    policy: SkeletonRenderPolicy = SkeletonPreviewPolicies.chooseDrillPreview,
 ) {
     val pose = remember(template, progress) {
         StickFigureAnimator.poseAt(template, progress)
@@ -61,10 +46,6 @@ fun SeededSkeletonPreview(
     OverlaySkeletonPreview(
         joints = pose,
         modifier = modifier,
-        style = OverlaySkeletonPreviewStyle(
-            aspectRatio = policy.renderPolicy.aspectRatio,
-            policy = policy.renderPolicy,
-            styleScaleMultiplier = policy.renderPolicy.styleScaleMultiplier,
-        ),
+        policy = policy,
     )
 }

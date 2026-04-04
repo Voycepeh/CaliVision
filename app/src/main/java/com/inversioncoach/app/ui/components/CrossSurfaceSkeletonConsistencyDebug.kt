@@ -39,7 +39,7 @@ fun CrossSurfaceSkeletonConsistencyDebug() {
         Text("Pose authoring (displayed image bounds)", style = MaterialTheme.typography.labelMedium)
         OverlaySkeletonPreview(
             joints = samplePose,
-            style = OverlaySkeletonPreviewDefaults.DefaultStyle,
+            policy = SkeletonPreviewPolicies.poseAuthoring,
             resolveOverlayBounds = { canvasSize ->
                 SkeletonRenderContract.displayedImageBounds(
                     canvasSize = canvasSize,
@@ -53,12 +53,12 @@ fun CrossSurfaceSkeletonConsistencyDebug() {
         )
 
         Text("Motion preview (content-rect bounds)", style = MaterialTheme.typography.labelMedium)
-        OverlaySkeletonPreview(joints = samplePose, style = OverlaySkeletonPreviewDefaults.DefaultStyle)
+        OverlaySkeletonPreview(joints = samplePose, policy = SkeletonPreviewPolicies.motionPreview)
 
         Text("Choose drill preview (content-rect bounds)", style = MaterialTheme.typography.labelMedium)
         OverlaySkeletonPreview(
             joints = samplePose,
-            style = OverlaySkeletonPreviewDefaults.DefaultStyle,
+            policy = SkeletonPreviewPolicies.chooseDrillPreview,
             modifier = Modifier.background(Color.Transparent),
         )
     }
