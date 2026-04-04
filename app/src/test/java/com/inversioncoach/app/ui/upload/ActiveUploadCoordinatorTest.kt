@@ -95,4 +95,36 @@ class ActiveUploadCoordinatorTest {
         advanceUntilIdle()
         assertEquals("Raw replay ready, annotated replay unavailable", coordinator.state.value.activeSession?.stageText)
     }
+
+    @Test
+    fun cancellationIsExposedAsCancelledNotFailure() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        val coordinator = ActiveUploadCoordinator(
+            scope = TestScope(dispatcher),
+            runner = object : UploadVideoAnalysisRunner {
+                override suspend fun run(
+                    uri: Uri,
+                    ownerToken: String,
+                    trackingMode: UploadTrackingMode,
+                    selectedDrillId: String?,
+                    selectedReferenceTemplateId: String?,
+                    isReferenceUpload: Boolean,
+                    createDrillFromReferenceUpload: Boolean,
+                    pendingDrillName: String?,
+                    onSessionCreated: (Long) -> Unit,
+                    onProgress: (UploadProgress) -> Unit,
+                    onLog: (String) -> Unit,
+                ): UploadFlowResult {
+                    onSessionCreated(7L)
+                    gate.await()
+                    return UploadFlowResult(7L, null, rawReady = false, annotatedReady = false, finalStage = UploadStage.FAILED)
+                }
+            },
+        )
+        val request = ActiveUploadRequest(Uri.parse("content://video"), UploadTrackingMode.HOLD_BASED, null, null, false, false, null)
+        coordinator.start(request)
+        coordinator.cancelActiveUpload()
+        advanceUntilIdle()
+        assertEquals(UploadStage.CANCELLED, coordinator.state.value.activeSession?.stage)
+    }
 }

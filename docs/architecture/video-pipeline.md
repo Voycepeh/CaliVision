@@ -32,6 +32,7 @@ The media pipeline is shared by live-session finalization and upload/reference a
 - Upload overlay timeline frames are keyed and rendered by presentation timestamps.
 - Timeline freeze/export uses the same timestamp basis for sampled frames, accepted overlays, and compositor resolution.
 - Upload diagnostics now log timing+density fields: source duration, estimated source frames, decoded/sampled counts, pose success, accepted overlays, density per second, first/last overlay timestamps, export fps/duration, and normalization mode.
+- Upload analysis now uses duration-aware sampling FPS (6fps default, 4fps for long videos, 3fps for very long videos) to prevent pathological slow analysis on lengthy uploads while preserving timeline monotonicity.
 - Low overlay density/coverage is treated as degraded (`OVERLAY_DENSITY_TOO_LOW`) and routed to raw fallback instead of healthy annotated success.
 - Current degraded thresholds:
   - minimum accepted overlays: `12`

@@ -1,6 +1,7 @@
 package com.inversioncoach.app.ui.upload
 
 import android.net.Uri
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -84,7 +85,7 @@ class ActiveUploadCoordinator(
         )
         _state.value = ActiveUploadCoordinatorState(activeSession = initial, blockedMessage = null)
         activeJob = scope.launch {
-            runCatching {
+            try {
                 runner.run(
                     uri = request.sourceUri,
                     ownerToken = ownerToken,
@@ -116,8 +117,7 @@ class ActiveUploadCoordinator(
                             it.copy(technicalLog = if (it.technicalLog.isBlank()) line else "${it.technicalLog}\n$line")
                         }
                     },
-                )
-            }.onSuccess { result ->
+                ).also { result ->
                 update(ownerToken) {
                     it.copy(
                         stage = result.finalStage,
@@ -135,7 +135,22 @@ class ActiveUploadCoordinator(
                         isTerminal = true,
                     )
                 }
-            }.onFailure { error ->
+                }
+            } catch (cancelled: CancellationException) {
+                update(ownerToken) {
+                    it.copy(
+                        stage = UploadStage.CANCELLED,
+                        stageText = "Analysis cancelled",
+                        errorMessage = null,
+                        analysisPhaseLabel = "",
+                        analysisProcessedFrames = 0,
+                        analysisTotalFrames = 0,
+                        analysisPhasePercent = null,
+                        isTerminal = true,
+                    )
+                }
+                throw cancelled
+            } catch (error: Throwable) {
                 update(ownerToken) {
                     it.copy(
                         stage = UploadStage.FAILED,

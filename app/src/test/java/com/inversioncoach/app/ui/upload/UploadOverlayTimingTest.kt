@@ -36,4 +36,14 @@ class UploadOverlayTimingTest {
 
         assertTrue(diagnostics.isDegraded)
     }
+
+    @Test
+    fun longUploadsUseLowerAnalysisSamplingFps() {
+        val fps = resolveUploadAnalysisSampleFps(
+            sourceDurationMs = 200_000L,
+            sourceFrameRate = 30,
+        )
+
+        assertEquals(3, fps)
+    }
 }

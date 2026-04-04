@@ -101,6 +101,7 @@ private const val TAG = "UploadVideoFlow"
 private const val ANALYSIS_PROGRESS_UPDATE_FRAME_INTERVAL = 1
 private const val ANALYSIS_PROGRESS_UPDATE_MS = 100L
 private const val UPLOADED_ANALYSIS_SAMPLE_FPS = 6
+private const val MIN_UPLOADED_ANALYSIS_SAMPLE_FPS = 3
 private const val ENABLE_ADAPTIVE_UPLOAD_SAMPLING = true
 private const val DEFAULT_UPLOAD_FRAME_RATE = 30
 private const val MIN_OVERLAY_DENSITY_PER_SECOND = 1.2f
@@ -496,7 +497,12 @@ class DefaultUploadVideoAnalysisRunner(
                 detail = "Preparing uploaded analysis",
             )
             onProgress(UploadProgress(currentStage, 0.2f, detail = "Preparing uploaded analysis"))
-            val frameSource = frameSourceFactory(context.applicationContext, UPLOADED_ANALYSIS_SAMPLE_FPS)
+            val resolvedSampleFps = resolveUploadAnalysisSampleFps(
+                sourceDurationMs = sourceDurationMs,
+                sourceFrameRate = metadata.frameRate,
+            )
+            log("analysis_sampling_config sourceDurationMs=$sourceDurationMs sourceFrameRate=${metadata.frameRate} sampleFps=$resolvedSampleFps")
+            val frameSource = frameSourceFactory(context.applicationContext, resolvedSampleFps)
             val analyzer = analyzerFactory(frameSource)
 
             SessionDiagnostics.record(
@@ -504,7 +510,7 @@ class DefaultUploadVideoAnalysisRunner(
                 stage = SessionDiagnostics.Stage.OVERLAY_CAPTURE,
                 status = SessionDiagnostics.Status.STARTED,
                 message = "Uploaded frame analysis started",
-                metrics = mapOf("analysisFps" to UPLOADED_ANALYSIS_SAMPLE_FPS.toString()),
+                metrics = mapOf("analysisFps" to resolvedSampleFps.toString()),
             )
             currentStage = UploadStage.ANALYZING_VIDEO
             logStage("ANALYZING_UPLOADED_VIDEO", "analysis_started=true")
@@ -902,7 +908,7 @@ class DefaultUploadVideoAnalysisRunner(
 
             val overlaySampleIntervalMs = estimateTimelineSampleIntervalMs(
                 timestampsMs = analysis.overlayTimeline.map { it.timestampMs },
-                fallbackFps = UPLOADED_ANALYSIS_SAMPLE_FPS,
+                fallbackFps = resolvedSampleFps,
             )
             val rawOverlayTimeline = OverlayTimeline(
                 startedAtMs = 0L,
@@ -1239,18 +1245,19 @@ class DefaultUploadVideoAnalysisRunner(
                 referenceTemplateId = templateId,
             )
         } catch (error: Throwable) {
+            val wasCancelled = error is kotlinx.coroutines.CancellationException
             SessionDiagnostics.record(
                 sessionId = sessionId,
                 stage = SessionDiagnostics.Stage.SESSION_FINALIZE,
-                status = SessionDiagnostics.Status.FAILED,
-                message = "Uploaded workflow failed",
+                status = if (wasCancelled) SessionDiagnostics.Status.CANCELLED else SessionDiagnostics.Status.FAILED,
+                message = if (wasCancelled) "Uploaded workflow cancelled" else "Uploaded workflow failed",
                 errorCode = error.message ?: AnnotatedExportFailureReason.UNKNOWN_EXCEPTION.name,
                 throwable = error,
             )
             repository.updateRawPersistStatus(sessionId, if (persistedRawUri.isNullOrBlank()) RawPersistStatus.FAILED else RawPersistStatus.SUCCEEDED)
             repository.updateAnnotatedExportStatus(
                 sessionId,
-                AnnotatedExportStatus.ANNOTATED_FAILED,
+                if (wasCancelled) AnnotatedExportStatus.CANCELLED else AnnotatedExportStatus.ANNOTATED_FAILED,
                 attemptId = processingAttemptId,
                 ownerType = "UPLOAD_PIPELINE",
                 ownerId = ownerToken,
@@ -1272,12 +1279,12 @@ class DefaultUploadVideoAnalysisRunner(
             )
             repository.updateAnnotatedExportProgress(
                 sessionId = sessionId,
-                stage = AnnotatedExportStage.FAILED,
+                stage = if (wasCancelled) AnnotatedExportStage.FAILED else AnnotatedExportStage.FAILED,
                 percent = 100,
                 etaSeconds = null,
                 elapsedMs = System.currentTimeMillis() - startedAt,
-                failureReason = mappedFailure,
-                failureDetail = "Upload workflow failed during ${currentStage.name}",
+                failureReason = if (wasCancelled) AnnotatedExportFailureReason.EXPORT_CANCELLED.name else mappedFailure,
+                failureDetail = if (wasCancelled) "Upload workflow cancelled during ${currentStage.name}" else "Upload workflow failed during ${currentStage.name}",
                 attemptId = processingAttemptId,
                 ownerType = "UPLOAD_PIPELINE",
                 ownerId = ownerToken,
@@ -1285,14 +1292,14 @@ class DefaultUploadVideoAnalysisRunner(
             repository.releaseProcessingAttempt(sessionId, processingAttemptId)
             repository.updateUploadPipelineProgress(
                 sessionId = sessionId,
-                stageLabel = "Failed",
-                detail = "Upload workflow failed",
+                stageLabel = if (wasCancelled) "Cancelled" else "Failed",
+                detail = if (wasCancelled) "Upload workflow cancelled" else "Upload workflow failed",
             )
             repository.markUploadJobTerminal(
                 sessionId = sessionId,
-                status = if (error is kotlinx.coroutines.CancellationException) UploadJobStatus.CANCELLED else UploadJobStatus.FAILED,
-                outcome = if (error is kotlinx.coroutines.CancellationException) "cancelled" else "failed",
-                failureReason = error.message ?: mappedFailure,
+                status = if (wasCancelled) UploadJobStatus.CANCELLED else UploadJobStatus.FAILED,
+                outcome = if (wasCancelled) "cancelled" else "failed",
+                failureReason = if (wasCancelled) AnnotatedExportFailureReason.EXPORT_CANCELLED.name else (error.message ?: mappedFailure),
             )
             repository.updateMediaPipelineState(sessionId) { session ->
                 session.copy(
@@ -1300,10 +1307,10 @@ class DefaultUploadVideoAnalysisRunner(
                     bestPlayableUri = persistedRawUri,
                     rawVideoUri = persistedRawUri ?: session.rawVideoUri,
                     annotatedVideoUri = null,
-                    limitingFactor = "Upload processing failed",
+                    limitingFactor = if (wasCancelled) "Upload cancelled" else "Upload processing failed",
                 )
             }
-            logStage("FAILED", "reason=${error.message ?: mappedFailure}")
+            logStage(if (wasCancelled) "CANCELLED" else "FAILED", "reason=${error.message ?: mappedFailure}")
             SessionDiagnostics.persistReport(sessionId, repository.observeSession(sessionId).first(), repository)
             throw error
         }
@@ -1704,8 +1711,8 @@ class UploadVideoViewModel(
         Log.i(TAG, "upload_cancel requested sessionId=${_state.value.sessionId ?: -1}")
         _state.value.sessionId?.let { sessionId ->
             viewModelScope.launch {
-                repository?.adminUpdateAnnotatedExportStatus(sessionId, AnnotatedExportStatus.ANNOTATED_FAILED)
-                repository?.adminUpdateAnnotatedExportFailureReason(sessionId, "EXPORT_CANCELLED")
+                repository?.adminUpdateAnnotatedExportStatus(sessionId, AnnotatedExportStatus.CANCELLED)
+                repository?.adminUpdateAnnotatedExportFailureReason(sessionId, AnnotatedExportFailureReason.EXPORT_CANCELLED.name)
                 repository?.markUploadJobTerminal(
                     sessionId = sessionId,
                     status = UploadJobStatus.CANCELLED,
@@ -1753,6 +1760,19 @@ internal fun estimateTimelineSampleIntervalMs(
 }
 
 internal fun sanitizeUploadFrameRate(rawFps: Int): Int = rawFps.takeIf { it in 1..120 } ?: DEFAULT_UPLOAD_FRAME_RATE
+
+internal fun resolveUploadAnalysisSampleFps(
+    sourceDurationMs: Long,
+    sourceFrameRate: Int,
+): Int {
+    val boundedSourceFps = sanitizeUploadFrameRate(sourceFrameRate)
+    val durationAdjusted = when {
+        sourceDurationMs >= 180_000L -> MIN_UPLOADED_ANALYSIS_SAMPLE_FPS
+        sourceDurationMs >= 90_000L -> 4
+        else -> UPLOADED_ANALYSIS_SAMPLE_FPS
+    }
+    return durationAdjusted.coerceAtMost(boundedSourceFps).coerceIn(MIN_UPLOADED_ANALYSIS_SAMPLE_FPS, UPLOADED_ANALYSIS_SAMPLE_FPS)
+}
 
 internal fun assessOverlayCoverage(
     sourceDurationMs: Long,
