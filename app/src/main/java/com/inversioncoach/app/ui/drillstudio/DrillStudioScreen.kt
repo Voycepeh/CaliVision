@@ -53,6 +53,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.pointer.pointerInput
@@ -623,7 +624,7 @@ private fun PoseAuthoringViewport(
                 .pointerInput(phasePose.phaseId, phasePose.joints, referenceImage) {
                     detectDragGestures(
                         onDragStart = { start ->
-                            val imageBounds = resolveImageBounds(size, referenceImage)
+                            val imageBounds = resolveImageBounds(size.toSize(), referenceImage)
                             val touch = toNormalizedPoint(start, imageBounds)
                             activeJoint = DrillStudioPoseUtils.nearestJointWithinRadius(
                                 joints = phasePose.joints,
@@ -633,7 +634,7 @@ private fun PoseAuthoringViewport(
                         },
                         onDrag = { change, _ ->
                             val joint = activeJoint ?: return@detectDragGestures
-                            val imageBounds = resolveImageBounds(size, referenceImage)
+                            val imageBounds = resolveImageBounds(size.toSize(), referenceImage)
                             val normalized = toNormalizedPoint(change.position, imageBounds)
                             val constrained = DrillStudioPoseUtils.applyAnatomicalGuardrails(
                                 pose = phasePose.joints,
@@ -647,20 +648,14 @@ private fun PoseAuthoringViewport(
                         onDragCancel = { activeJoint = null },
                     )
                 },
-            style = OverlaySkeletonPreviewStyle(
-                aspectRatio = drillStudioSkeletonPolicy.aspectRatio,
-                contentPaddingFraction = drillStudioSkeletonPolicy.contentPaddingFraction,
-                styleScaleMultiplier = drillStudioSkeletonPolicy.styleScaleMultiplier,
-            ),
-            highlightedJoint = activeJoint,
-            showBackground = false,
         ) {
             val imageBounds = resolveImageBounds(size, referenceImage)
+            val baseJointColor = Color(0xFFFFB300)
             if (referenceImage != null) {
                 drawImage(
                     image = referenceImage,
                     dstOffset = Offset(imageBounds.left, imageBounds.top).toIntOffset(),
-                    dstSize = Size(imageBounds.width, imageBounds.height).toIntSize(),
+                    dstSize = IntSize(imageBounds.width.roundToInt(), imageBounds.height.roundToInt()),
                 )
             }
             clipRect(
@@ -732,7 +727,7 @@ private fun PoseAuthoringViewport(
                 }
             }
             phasePose.joints.forEach { (name, point) ->
-                val style = jointStyle(name, baseJointColor, 6f)
+                val style = previewJointStyle(name = name, baseColor = baseJointColor, baseRadius = 6f, highlightedJoint = activeJoint)
                 drawCircle(
                     color = style.color,
                     radius = style.radius,
@@ -861,6 +856,24 @@ private data class ImageBounds(
     }
 }
 
+private data class JointPreviewStyle(
+    val color: Color,
+    val radius: Float,
+)
+
+private fun previewJointStyle(
+    name: String,
+    baseColor: Color,
+    baseRadius: Float,
+    highlightedJoint: String?,
+): JointPreviewStyle {
+    return if (highlightedJoint == name) {
+        JointPreviewStyle(color = Color(0xFFFF5252), radius = baseRadius + 2f)
+    } else {
+        JointPreviewStyle(color = baseColor, radius = baseRadius)
+    }
+}
+
 private fun resolveImageBounds(canvasSize: Size, referenceImage: ImageBitmap?): ImageBounds {
     if (referenceImage == null || referenceImage.width <= 0 || referenceImage.height <= 0) {
         return ImageBounds(0f, 0f, canvasSize.width, canvasSize.height)
@@ -894,7 +907,7 @@ private fun toNormalizedPoint(position: Offset, bounds: ImageBounds): JointPoint
 
 private fun Offset.toIntOffset(): IntOffset = IntOffset(x.roundToInt(), y.roundToInt())
 
-private fun Size.toIntSize(): IntSize = IntSize(width.roundToInt(), height.roundToInt())
+private fun IntSize.toSize(): Size = Size(width.toFloat(), height.toFloat())
 
 private fun createCameraCaptureUri(context: Context): Uri? {
     return runCatching {
