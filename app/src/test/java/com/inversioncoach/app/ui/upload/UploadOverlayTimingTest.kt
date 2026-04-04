@@ -1,6 +1,7 @@
 package com.inversioncoach.app.ui.upload
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class UploadOverlayTimingTest {
@@ -22,5 +23,17 @@ class UploadOverlayTimingTest {
         )
 
         assertEquals(200L, interval)
+    }
+
+    @Test
+    fun overlayCoverageMarksDegradedForSparseTimelines() {
+        val diagnostics = assessOverlayCoverage(
+            sourceDurationMs = 10_000L,
+            acceptedOverlayCount = 4,
+            firstOverlayTimestampMs = 0L,
+            lastOverlayTimestampMs = 2_000L,
+        )
+
+        assertTrue(diagnostics.isDegraded)
     }
 }
