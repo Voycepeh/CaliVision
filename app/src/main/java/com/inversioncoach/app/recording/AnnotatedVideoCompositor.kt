@@ -41,6 +41,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import kotlin.math.roundToInt
+import kotlin.system.measureTimeMillis
 
 private const val TAG = "AnnotatedVideoCompositor"
 private const val FIRST_FRAME_DECODE_TIMEOUT_MS = 2_500L
@@ -257,13 +258,20 @@ class AnnotatedVideoCompositor(
                                 telemetry.decodedFrameCount += 1
                                 if (telemetry.firstFrameDecodedAtMs == null) telemetry.firstFrameDecodedAtMs = System.currentTimeMillis()
                                 val presentationTimeMs = decoderInfo.presentationTimeUs / 1000L
-                                val overlay = resolver.overlayAt(presentationTimeMs)
+                                var overlay: AnnotatedOverlayFrame? = null
+                                telemetry.overlayResolveElapsedMs += measureTimeMillis {
+                                    overlay = resolver.overlayAt(presentationTimeMs)
+                                }
                                 if (overlay != null) telemetry.overlayFramesConsumed += 1
                                 val instruction = buildRenderInstruction(overlay, drillType, drillCameraSide)
-                                val result = glCompositorInstance.renderFrame(decoderInfo.presentationTimeUs, instruction, FRAME_SYNC_TIMEOUT_MS)
-                                telemetry.frameAvailableWaitMs += result.frameWaitMs
-                                telemetry.compositorRenderMs += result.renderMs
-                                if (!result.rendered) {
+                                var result: RenderSubmissionResult? = null
+                                telemetry.renderElapsedMs += measureTimeMillis {
+                                    result = glCompositorInstance.renderFrame(decoderInfo.presentationTimeUs, instruction, FRAME_SYNC_TIMEOUT_MS)
+                                }
+                                val renderResult = result ?: continue
+                                telemetry.frameAvailableWaitMs += renderResult.frameWaitMs
+                                telemetry.compositorRenderMs += renderResult.renderMs
+                                if (!renderResult.rendered) {
                                     telemetry.droppedFrameCount += 1
                                 } else {
                                     if (telemetry.firstFrameSubmittedToEncoderAtMs == null) {
