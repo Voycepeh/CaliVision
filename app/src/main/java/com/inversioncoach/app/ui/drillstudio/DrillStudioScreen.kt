@@ -609,6 +609,12 @@ private fun PoseAuthoringViewport(
     onJointMoved: (String, JointPoint) -> Unit,
 ) {
     var activeJoint by remember(phasePose.phaseId) { mutableStateOf<String?>(null) }
+    val renderPose = remember(phasePose.joints) {
+        DrillStudioPoseUtils.renderPoseWithFallback(
+            joints = phasePose.joints,
+            fallback = DrillStudioPosePresets.neutralUpright.joints,
+        )
+    }
     val previewStyle = OverlaySkeletonPreviewStyle(
         aspectRatio = drillStudioSkeletonPolicy.aspectRatio,
         contentPaddingFraction = drillStudioSkeletonPolicy.contentPaddingFraction,
@@ -627,7 +633,7 @@ private fun PoseAuthoringViewport(
                         val imageBounds = resolveImageBounds(size.toSize(), referenceImage, contentRect)
                         val touch = toNormalizedPoint(start, imageBounds)
                         activeJoint = DrillStudioPoseUtils.nearestJointWithinRadius(
-                            joints = phasePose.joints,
+                            joints = renderPose,
                             touch = touch,
                             hitRadius = 0.08f,
                         )
@@ -638,7 +644,7 @@ private fun PoseAuthoringViewport(
                         val imageBounds = resolveImageBounds(size.toSize(), referenceImage, contentRect)
                         val normalized = toNormalizedPoint(change.position, imageBounds)
                         val constrained = DrillStudioPoseUtils.applyAnatomicalGuardrails(
-                            pose = phasePose.joints,
+                            pose = renderPose,
                             joint = joint,
                             target = normalized,
                             bodyProfile = bodyProfile,
@@ -651,7 +657,7 @@ private fun PoseAuthoringViewport(
             },
     ) {
         OverlaySkeletonPreview(
-            joints = phasePose.joints,
+            joints = renderPose,
             style = previewStyle,
             highlightedJoint = activeJoint,
             showBackground = false,

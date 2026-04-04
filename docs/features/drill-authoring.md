@@ -23,6 +23,7 @@ When users reopen an existing drill, the editor should:
 - Drill Studio motion preview is the visual source of truth for authored drill skeleton presentation.
 - Drill Studio motion preview, drill catalog/start cards, and pose authoring all use one shared portrait skeleton preview renderer path and styling contract (joint aliases, connection layout, sizing/fit, colors, and joint treatment).
 - Authoring-specific affordances (joint drag hit testing and selected-joint highlight) are layered on top of that shared renderer; only the active joint gets special highlight treatment.
+- Pose authoring keeps the full readable skeleton visible even when a phase pose map is sparse by combining authored joints with a canonical fallback pose before rendering.
 
 ## Simplification direction
 
