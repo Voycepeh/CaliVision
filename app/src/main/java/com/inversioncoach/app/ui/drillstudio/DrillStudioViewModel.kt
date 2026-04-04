@@ -564,10 +564,10 @@ class DrillStudioViewModel(
                 }
             }
         val normalizedKeyframes = when {
+            phasePoses.isNotEmpty() -> phasePosesToKeyframes(phasePoses)
             explicitKeyframes.isNotEmpty() -> explicitKeyframes.map { frame ->
                 frame.copy(joints = DrillStudioPoseUtils.normalizeJointNames(frame.joints))
             }
-            phasePoses.isNotEmpty() -> phasePosesToKeyframes(phasePoses)
             else -> listOf(SkeletonKeyframeTemplate(0f, defaultJoints()), SkeletonKeyframeTemplate(1f, defaultJoints()))
         }
         Log.d(

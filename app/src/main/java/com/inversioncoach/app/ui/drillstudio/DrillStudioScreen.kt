@@ -217,7 +217,7 @@ private fun DrillStudioEditor(
 ) {
     val context = LocalContext.current
     val phasePoses = draft.skeletonTemplate.phasePoses
-    var selectedPhaseId by remember(draft.id, phasePoses) {
+    var selectedPhaseId by remember(draft.id) {
         mutableStateOf(phasePoses.firstOrNull()?.phaseId ?: draft.phases.first().id)
     }
     var previewProgress by remember(draft.id) { mutableFloatStateOf(0f) }
@@ -227,7 +227,6 @@ private fun DrillStudioEditor(
         mutableStateOf(phasePoses.firstOrNull { it.phaseId == selectedPhaseId }?.joints?.keys?.firstOrNull())
     }
     var detectionStatus by remember(selectedPhaseId) { mutableStateOf<String?>(null) }
-    var workingImageUri by remember(selectedPhaseId) { mutableStateOf<Uri?>(null) }
     var showImageSourceDialog by remember { mutableStateOf(false) }
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
     val scope = rememberCoroutineScope()
@@ -238,7 +237,6 @@ private fun DrillStudioEditor(
         scope.launch {
             runCatching { imageStore.persistPickedImage(uri) }
                 .onSuccess { stableUri ->
-                    workingImageUri = Uri.parse(stableUri)
                     onAttachReferenceImage(selectedPhaseId, stableUri)
                     detectionStatus = "Reference image attached"
                 }
@@ -258,7 +256,6 @@ private fun DrillStudioEditor(
             runCatching { imageStore.persistCapturedImage(capturedUri) }
                 .onSuccess { stableUri ->
                     Log.d(CAMERA_CAPTURE_TAG, "Capture persisted and attached for phase=$selectedPhaseId uri=$stableUri")
-                    workingImageUri = Uri.parse(stableUri)
                     onAttachReferenceImage(selectedPhaseId, stableUri)
                     detectionStatus = "Reference image attached"
                 }
@@ -304,13 +301,18 @@ private fun DrillStudioEditor(
     }
     val orderedPhases = draft.phases.sortedBy { it.order }
     val selectedPhaseTemplate = orderedPhases.firstOrNull { it.id == selectedPhaseId }
+    var previousOrderedPhaseIds by remember(draft.id) {
+        mutableStateOf(orderedPhases.map { it.id })
+    }
 
     LaunchedEffect(orderedPhases.map { it.id }, selectedPhaseId) {
-        selectedPhaseId = DrillStudioPhaseEditor.recoverSelectionAfterDelete(
-            remainingPhaseIds = orderedPhases.map { it.id },
-            availablePosePhaseIds = phasePoses.map { it.phaseId },
-            previousSelectedPhaseId = selectedPhaseId,
+        val orderedPhaseIds = orderedPhases.map { it.id }
+        selectedPhaseId = stabilizeSelectedPhaseSelection(
+            previousOrderedPhaseIds = previousOrderedPhaseIds,
+            nextOrderedPhaseIds = orderedPhaseIds,
+            currentSelectedPhaseId = selectedPhaseId,
         ) ?: selectedPhaseId
+        previousOrderedPhaseIds = orderedPhaseIds
         val hasPoseForSelection = phasePoses.any { it.phaseId == selectedPhaseId }
         Log.d(
             "DrillStudioHydration",
@@ -442,7 +444,7 @@ private fun DrillStudioEditor(
             SectionCard(title = "Pose authoring") {
                 Text("Editing pose for: ${selectedPhaseTemplate?.label ?: currentPose.name}")
                 val guides = currentPose.authoring?.guides ?: PhaseBoundaryGuides()
-                val imageUri = workingImageUri ?: currentPose.authoring?.sourceImageUri?.let(Uri::parse)
+                val imageUri = currentPose.authoring?.sourceImageUri?.let(Uri::parse)
                 val referenceImage = rememberReferenceImageBitmap(imageUri)
                 PoseAuthoringViewport(
                     phasePose = currentPose,
@@ -463,7 +465,7 @@ private fun DrillStudioEditor(
                     PoseActionRow(maxItemsInEachRow = 2) {
                         Button(onClick = { showImageSourceDialog = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)) { Text("Add reference image") }
                         OutlinedButton(
-                            onClick = { onClearReferenceImage(currentPose.phaseId); workingImageUri = null },
+                            onClick = { onClearReferenceImage(currentPose.phaseId) },
                             modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
                         ) { Text("Clear image") }
                     }
@@ -920,3 +922,20 @@ private fun launchCameraCapture(
 }
 
 private fun String.pretty(): String = lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }
+
+internal fun stabilizeSelectedPhaseSelection(
+    previousOrderedPhaseIds: List<String>,
+    nextOrderedPhaseIds: List<String>,
+    currentSelectedPhaseId: String?,
+): String? {
+    if (nextOrderedPhaseIds.isEmpty()) return null
+    val selected = currentSelectedPhaseId.orEmpty()
+    if (selected.isNotBlank() && selected in nextOrderedPhaseIds) return selected
+    if (previousOrderedPhaseIds.isEmpty()) return nextOrderedPhaseIds.first()
+
+    val previousIndex = previousOrderedPhaseIds.indexOf(selected)
+    val fallbackIndex = if (previousIndex < 0) 0 else previousIndex.coerceAtMost(nextOrderedPhaseIds.lastIndex)
+    return nextOrderedPhaseIds.getOrNull(fallbackIndex)
+        ?: nextOrderedPhaseIds.getOrNull((fallbackIndex - 1).coerceAtLeast(0))
+        ?: nextOrderedPhaseIds.first()
+}
