@@ -7,6 +7,7 @@ sequenceDiagram
     participant VM as UploadVideoViewModel
     participant Coord as ActiveUploadCoordinator
     participant Normalize as UploadVideoInputNormalizer
+    participant Sample as SamplingPolicy
     participant Analyzer as UploadedVideoAnalyzer
     participant Export as AnnotatedExportPipeline
     participant Resolver as SessionMediaResolver
@@ -17,8 +18,10 @@ sequenceDiagram
     VM->>Coord: Start or block single active upload
     Coord->>Normalize: Inspect + normalize input media
     Normalize-->>Coord: Working media uri + canonical specs
-    Coord->>Analyzer: Analyze sampled frames
-    Analyzer-->>Coord: Metrics + timeline + candidate
+    Coord->>Sample: Resolve targetAnalysisFps + candidateDecodeFps
+    Sample-->>Coord: Bounded upload sampling policy
+    Coord->>Analyzer: Decode/sample -> ML pose -> timeline postprocess
+    Analyzer-->>Coord: Metrics + timeline + stage timings
     Coord->>Repo: Persist candidate analysis
 
     opt Reference training enabled

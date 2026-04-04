@@ -7,6 +7,7 @@ class OverlayTimelineResolver(
     private val toleranceMs: Long = DEFAULT_OVERLAY_TOLERANCE_MS,
 ) {
     private val samples = frames.sortedBy { it.timestampMs }
+    private val smoothedByName = samples.map { sample -> sample.smoothedLandmarks.associateBy { it.name } }
     private var lowerIndex = 0
 
     fun overlayAt(targetTimestampMs: Long): AnnotatedOverlayFrame? {
@@ -30,7 +31,7 @@ class OverlayTimelineResolver(
         }
         val span = (next.timestampMs - previous.timestampMs).toFloat().coerceAtLeast(1f)
         val t = ((targetTimestampMs - previous.timestampMs).toFloat() / span).coerceIn(0f, 1f)
-        return interpolate(previous, next, t)
+        return interpolate(previous, next, lowerIndex, lowerIndex + 1, t)
     }
 
     private fun findFloorIndex(targetTimestampMs: Long): Int {
@@ -51,23 +52,35 @@ class OverlayTimelineResolver(
         return floor
     }
 
-    private fun interpolate(previous: AnnotatedOverlayFrame, next: AnnotatedOverlayFrame, t: Float): AnnotatedOverlayFrame {
-        val prevByName = previous.smoothedLandmarks.associateBy { it.name }
-        val nextByName = next.smoothedLandmarks.associateBy { it.name }
-        val names = (prevByName.keys + nextByName.keys).sorted()
-        val interpolated = names.mapNotNull { name ->
+    private fun interpolate(
+        previous: AnnotatedOverlayFrame,
+        next: AnnotatedOverlayFrame,
+        previousIndex: Int,
+        nextIndex: Int,
+        t: Float,
+    ): AnnotatedOverlayFrame {
+        if (t <= 0.01f) return previous
+        if (t >= 0.99f) return next
+        val prevByName = smoothedByName.getOrNull(previousIndex).orEmpty()
+        val nextByName = smoothedByName.getOrNull(nextIndex).orEmpty()
+        val names = HashSet<String>(prevByName.size + nextByName.size).apply {
+            addAll(prevByName.keys)
+            addAll(nextByName.keys)
+        }
+        val interpolated = ArrayList<JointPoint>(names.size)
+        names.forEach { name ->
             val a = prevByName[name]
             val b = nextByName[name]
             when {
-                a != null && b != null -> JointPoint(
+                a != null && b != null -> interpolated += JointPoint(
                     name = name,
                     x = lerp(a.x, b.x, t),
                     y = lerp(a.y, b.y, t),
                     z = lerp(a.z, b.z, t),
                     visibility = lerp(a.visibility, b.visibility, t),
                 )
-                a != null -> a
-                else -> b
+                a != null -> interpolated += a
+                b != null -> interpolated += b
             }
         }
         return previous.copy(

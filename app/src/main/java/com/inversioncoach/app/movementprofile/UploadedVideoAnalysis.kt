@@ -8,6 +8,7 @@ import java.io.File
 import java.io.ObjectInputStream
 import java.io.ObjectOutputStream
 import java.io.Serializable
+import java.util.ArrayDeque
 import kotlin.math.max
 import kotlin.math.roundToLong
 
@@ -103,7 +104,8 @@ class UploadedVideoAnalyzer(
         progressObserver: AnalysisProgressObserver? = null,
     ): UploadedVideoAnalysisResult {
         try {
-            val decodeStart = System.currentTimeMillis()
+            val totalStart = System.currentTimeMillis()
+            val decodeStart = totalStart
             Log.i(UPLOAD_ANALYSIS_TAG, "analysis_loop_start uri=$videoUri")
             progressObserver?.onProgress(AnalysisProgressEvent(stage = "decode_start", detail = "Sampling uploaded video frames"))
             var estimatedTotalFrames = 0
@@ -118,12 +120,7 @@ class UploadedVideoAnalyzer(
                 request = VideoDecodeRequest(
                     movementType = profile.movementType,
                 ),
-            ).toList()
-            val resolvedTotalFrames = if (estimatedTotalFrames > 0) {
-                estimatedTotalFrames
-            } else {
-                sourceFrames.size
-            }
+            )
             val decodeDuration = System.currentTimeMillis() - decodeStart
 
             val analysisStart = System.currentTimeMillis()
@@ -135,26 +132,34 @@ class UploadedVideoAnalyzer(
             var edgeFramesSkipped = 0
             var timestampCorrections = 0
             var lastAcceptedTimestampMs = -1L
+            var poseDetectionMs = 0L
+            var postProcessMsTotal = 0L
             progressObserver?.onProgress(
                 AnalysisProgressEvent(
                     stage = "analysis_started",
                     processedFrames = 0,
-                    estimatedTotalFrames = resolvedTotalFrames,
+                    estimatedTotalFrames = estimatedTotalFrames.takeIf { it > 0 },
                     droppedFrames = 0,
-                    detail = "Starting post-processing on decoded frames",
+                    detail = "Starting post-processing on uploaded frames",
                 )
             )
             var processedFrames = 0
-            for ((index, frame) in sourceFrames.withIndex()) {
-                processedFrames = index + 1
+            val pendingFrames = ArrayDeque<Pair<Int, PoseFrame>>()
+            fun processFrame(index: Int, frame: PoseFrame, forceEdgeSkip: Boolean) {
+                processedFrames = max(processedFrames, index + 1)
                 val frameStart = System.nanoTime()
+                if (frame.inferenceTimeMs > 0) {
+                    poseDetectionMs += frame.inferenceTimeMs
+                }
+                val resolvedTotalFrames = estimatedTotalFrames.takeIf { it > 0 } ?: processedFrames
                 if (index % 2 == 0) {
                     Log.i(
                         UPLOAD_ANALYSIS_TAG,
                         "analysis_sample frameIndex=$index totalHint=$resolvedTotalFrames timestampMs=${frame.timestampMs} dropped=$dropped",
                     )
                 }
-                val nearEdge = index < EDGE_FRAME_SKIP_WINDOW || index >= (sourceFrames.size - EDGE_FRAME_SKIP_WINDOW).coerceAtLeast(0)
+                val nearStartEdge = index < EDGE_FRAME_SKIP_WINDOW
+                val nearEdge = forceEdgeSkip || nearStartEdge
                 if (frame.confidence <= 0f || frame.joints.isEmpty()) {
                     if (nearEdge) {
                         edgeFramesSkipped += 1
@@ -196,6 +201,7 @@ class UploadedVideoAnalyzer(
                     alignment = alignmentScorer.score(normalized, profile.alignmentRules)
                     val phase = phaseDetector.update(angleFrame, alignment >= 0.65f)
                     postProcessMs = ((System.nanoTime() - postStart) / 1_000_000.0).roundToLong()
+                    postProcessMsTotal += postProcessMs
                     phaseTimeline += sanitizedTimestampMs to phase.name
                     timeline += OverlayTimelinePoint(
                         timestampMs = sanitizedTimestampMs,
@@ -229,7 +235,20 @@ class UploadedVideoAnalyzer(
                     )
                 }
             }
+            sourceFrames.withIndex().forEach { (index, frame) ->
+                pendingFrames.addLast(index to frame)
+                if (pendingFrames.size > EDGE_FRAME_SKIP_WINDOW) {
+                    val (safeIndex, safeFrame) = pendingFrames.removeFirst()
+                    processFrame(safeIndex, safeFrame, forceEdgeSkip = false)
+                }
+            }
+            while (pendingFrames.isNotEmpty()) {
+                val (edgeIndex, edgeFrame) = pendingFrames.removeFirst()
+                processFrame(edgeIndex, edgeFrame, forceEdgeSkip = true)
+            }
+            val resolvedTotalFrames = estimatedTotalFrames.takeIf { it > 0 } ?: processedFrames
             val analysisDuration = System.currentTimeMillis() - analysisStart
+            val postProcessDuration = postProcessMsTotal
             val view = inferView(profile)
             val template = MovementTemplateCandidateGenerator().generate(
                 sessionId = "upload-${System.currentTimeMillis()}",
@@ -241,7 +260,8 @@ class UploadedVideoAnalyzer(
             )
             Log.i(
                 UPLOAD_ANALYSIS_TAG,
-                "decodeMs=$decodeDuration analyzeMs=$analysisDuration total=$processedFrames dropped=$dropped view=$view phases=${phaseTimeline.size} candidate=${template.status} calibrationVersion=${calibrationProfileVersion ?: -1}",
+                "timing_diagnostics decode_ms=$decodeDuration pose_detection_ms=$poseDetectionMs postprocess_ms=$postProcessDuration total_ms=${System.currentTimeMillis() - totalStart} " +
+                    "frames=$processedFrames dropped=$dropped view=$view phases=${phaseTimeline.size} candidate=${template.status} calibrationVersion=${calibrationProfileVersion ?: -1}",
             )
             progressObserver?.onProgress(
                 AnalysisProgressEvent(
@@ -258,7 +278,9 @@ class UploadedVideoAnalyzer(
                 overlayTimeline = timeline,
                 droppedFrames = dropped,
                 telemetry = mapOf(
-                    "decode_time_ms" to decodeDuration,
+                    "decode_ms" to decodeDuration,
+                    "pose_detection_ms" to poseDetectionMs,
+                    "postprocess_ms" to postProcessDuration,
                     "analysis_time_ms" to analysisDuration,
                     "total_frames_processed" to processedFrames.toLong(),
                     "frames_dropped" to dropped.toLong(),
@@ -266,6 +288,7 @@ class UploadedVideoAnalyzer(
                     "timestamp_corrections" to timestampCorrections.toLong(),
                     "candidate_phase_count" to phaseTimeline.map { it.second }.distinct().size.toLong(),
                     "calibration_profile_version" to (calibrationProfileVersion?.toLong() ?: -1L),
+                    "total_ms" to (System.currentTimeMillis() - totalStart),
                 ) + (frameSource as? UploadSamplingTelemetryProvider)?.samplingTelemetry().orEmpty(),
                 candidate = template,
             )

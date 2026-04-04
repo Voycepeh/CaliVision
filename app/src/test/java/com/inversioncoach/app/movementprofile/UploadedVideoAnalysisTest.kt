@@ -212,6 +212,27 @@ class UploadedVideoAnalysisTest {
         assertEquals(9L, result.telemetry["adaptive_sampled_frames"])
     }
 
+    @Test
+    fun analyzerEmitsStageTimingTelemetry() {
+        val profile = ExistingDrillToProfileAdapter().fromDrill(DrillType.FREESTYLE)
+        val source = object : VideoPoseFrameSource {
+            override fun decode(videoUri: Uri): Sequence<PoseFrame> = sequence {
+                yield(frame(0, 0.9f).copy(inferenceTimeMs = 12L))
+                yield(frame(100, 0.9f).copy(inferenceTimeMs = 11L))
+            }
+        }
+
+        val result = UploadedVideoAnalyzer(source).analyze(
+            videoUri = Uri.parse("file:///tmp/timing-telemetry.mp4"),
+            profile = profile,
+        )
+
+        assertTrue((result.telemetry["decode_ms"] ?: -1L) >= 0L)
+        assertEquals(23L, result.telemetry["pose_detection_ms"])
+        assertTrue((result.telemetry["postprocess_ms"] ?: -1L) >= 0L)
+        assertTrue((result.telemetry["total_ms"] ?: -1L) >= (result.telemetry["decode_ms"] ?: 0L))
+    }
+
     private fun frame(ts: Long, confidence: Float): PoseFrame = PoseFrame(
         timestampMs = ts,
         confidence = confidence,

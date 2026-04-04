@@ -46,4 +46,15 @@ class UploadOverlayTimingTest {
 
         assertEquals(3, fps)
     }
+
+    @Test
+    fun samplingPolicyCapsCandidateDecodeRate() {
+        val policy = resolveUploadAnalysisSamplingPolicy(
+            sourceDurationMs = 20_000L,
+            sourceFrameRate = 60,
+        )
+
+        assertEquals(6, policy.analysisFps)
+        assertEquals(8, policy.candidateDecodeFps)
+    }
 }

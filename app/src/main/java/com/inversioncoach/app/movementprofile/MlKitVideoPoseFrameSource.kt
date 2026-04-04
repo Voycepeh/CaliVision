@@ -49,6 +49,8 @@ class MlKitVideoPoseFrameSource(
         val burstTriggerCounts: Map<BurstTriggerReason, Int>,
         val averageSelectedIntervalMs: Long,
         val maxSelectedIntervalMs: Long,
+        val decodeMs: Long,
+        val poseDetectionMs: Long,
     )
 
     private val boundedWorkerCount = workerCount.coerceIn(1, 2)
@@ -68,6 +70,8 @@ class MlKitVideoPoseFrameSource(
         burstTriggerCounts = emptyMap(),
         averageSelectedIntervalMs = 0L,
         maxSelectedIntervalMs = 0L,
+        decodeMs = 0L,
+        poseDetectionMs = 0L,
     )
         private set
 
@@ -88,6 +92,8 @@ class MlKitVideoPoseFrameSource(
         "adaptive_trigger_conf_drop" to (lastDecodeTelemetry.burstTriggerCounts[BurstTriggerReason.CONFIDENCE_DROP] ?: 0).toLong(),
         "adaptive_average_interval_ms" to lastDecodeTelemetry.averageSelectedIntervalMs,
         "adaptive_max_interval_ms" to lastDecodeTelemetry.maxSelectedIntervalMs,
+        "decode_ms" to lastDecodeTelemetry.decodeMs,
+        "pose_detection_ms" to lastDecodeTelemetry.poseDetectionMs,
     )
 
     override fun decode(videoUri: Uri): Sequence<PoseFrame> = decode(videoUri, observer = AnalysisProgressObserver { }, request = VideoDecodeRequest(movementType = null))
@@ -132,10 +138,13 @@ class MlKitVideoPoseFrameSource(
                 data class FramePacket(val index: Int, val timestampMs: Long, val bitmap: Bitmap)
                 val frameQueue = Channel<FramePacket>(capacity = queueCapacity.coerceAtLeast(2))
                 val resultQueue = Channel<Pair<Int, PoseFrame>>(capacity = queueCapacity.coerceAtLeast(2))
-                val orderedFrames = mutableMapOf<Int, PoseFrame>()
+                val orderedFrames = mutableListOf<PoseFrame>()
+                val pendingFrames = mutableMapOf<Int, PoseFrame>()
+                var nextExpectedIndex = 0
                 val modeCounts = mutableMapOf<SamplingMode, Int>()
                 val triggerCounts = mutableMapOf<BurstTriggerReason, Int>()
-                var selectedIntervals = mutableListOf<Long>()
+                var selectedIntervalCount = 0
+                var selectedIntervalSum = 0L
                 var maxSelectedInterval = 0L
                 var lastSelectedTs = -1L
                 val backlog = AtomicInteger(0)
@@ -262,7 +271,8 @@ class MlKitVideoPoseFrameSource(
                                         activeTicks += 1
                                         if (lastSelectedTs >= 0L) {
                                             val gap = timestampMs - lastSelectedTs
-                                            selectedIntervals += gap
+                                            selectedIntervalCount += 1
+                                            selectedIntervalSum += gap
                                             maxSelectedInterval = maxOf(maxSelectedInterval, gap)
                                         }
                                         lastSelectedTs = timestampMs
@@ -313,7 +323,12 @@ class MlKitVideoPoseFrameSource(
                     }
                     val collector = launch(Dispatchers.Default) {
                         for ((index, frame) in resultQueue) {
-                            orderedFrames[index] = frame
+                            pendingFrames[index] = frame
+                            while (true) {
+                                val next = pendingFrames.remove(nextExpectedIndex) ?: break
+                                orderedFrames += next
+                                nextExpectedIndex += 1
+                            }
                         }
                     }
 
@@ -323,14 +338,16 @@ class MlKitVideoPoseFrameSource(
                     collector.join()
                 }
 
-                frames += orderedFrames.toSortedMap().values
+                frames += orderedFrames
                 val avgDecodeMs = if (candidateFramesDecoded == 0) 0.0 else {
                     totalDecodeNanos.get().toDouble() / candidateFramesDecoded.toDouble() / 1_000_000.0
                 }
                 val avgInferenceMs = if (frames.isEmpty()) 0.0 else {
                     totalInferenceNanos.get().toDouble() / frames.size.toDouble() / 1_000_000.0
                 }
-                val averageSelectedInterval = if (selectedIntervals.isEmpty()) 0L else selectedIntervals.average().roundToLong()
+                val averageSelectedInterval = if (selectedIntervalCount == 0) 0L else {
+                    (selectedIntervalSum.toDouble() / selectedIntervalCount.toDouble()).roundToLong()
+                }
                 lastDecodeTelemetry = DecodeTelemetry(
                     candidateFrames = candidateFramesDecoded,
                     sampledFrames = frames.size,
@@ -346,6 +363,8 @@ class MlKitVideoPoseFrameSource(
                     burstTriggerCounts = triggerCounts.toMap(),
                     averageSelectedIntervalMs = averageSelectedInterval,
                     maxSelectedIntervalMs = maxSelectedInterval,
+                    decodeMs = (totalDecodeNanos.get() / 1_000_000.0).roundToLong(),
+                    poseDetectionMs = (totalInferenceNanos.get() / 1_000_000.0).roundToLong(),
                 )
                 observer.onProgress(
                     AnalysisProgressEvent(
@@ -448,24 +467,29 @@ class MlKitVideoPoseFrameSource(
 
     private fun bitmapLumaSignal(bitmap: Bitmap): Double? {
         return runCatching {
-            val targetWidth = 16
-            val targetHeight = 16
-            val sampleBitmap = Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
-            try {
-                val pixels = IntArray(targetWidth * targetHeight)
-                sampleBitmap.getPixels(pixels, 0, targetWidth, 0, 0, targetWidth, targetHeight)
-                if (pixels.isEmpty()) return@runCatching null
-                var total = 0.0
-                pixels.forEach { pixel ->
+            val sampleGrid = 16
+            val width = bitmap.width.coerceAtLeast(1)
+            val height = bitmap.height.coerceAtLeast(1)
+            val xStep = (width / sampleGrid).coerceAtLeast(1)
+            val yStep = (height / sampleGrid).coerceAtLeast(1)
+            var total = 0.0
+            var count = 0
+            var y = 0
+            while (y < height) {
+                var x = 0
+                while (x < width) {
+                    val pixel = bitmap.getPixel(x, y)
                     val r = (pixel shr 16) and 0xFF
                     val g = (pixel shr 8) and 0xFF
                     val b = pixel and 0xFF
                     total += (0.299 * r) + (0.587 * g) + (0.114 * b)
+                    count += 1
+                    x += xStep
                 }
-                (total / pixels.size.toDouble()) / 255.0
-            } finally {
-                if (sampleBitmap !== bitmap) sampleBitmap.recycle()
+                y += yStep
             }
+            if (count == 0) return@runCatching null
+            (total / count.toDouble()) / 255.0
         }.getOrNull()
     }
 

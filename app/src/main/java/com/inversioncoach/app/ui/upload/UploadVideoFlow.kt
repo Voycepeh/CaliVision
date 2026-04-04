@@ -100,8 +100,11 @@ import java.io.File
 private const val TAG = "UploadVideoFlow"
 private const val ANALYSIS_PROGRESS_UPDATE_FRAME_INTERVAL = 1
 private const val ANALYSIS_PROGRESS_UPDATE_MS = 100L
-private const val UPLOADED_ANALYSIS_SAMPLE_FPS = 6
-private const val MIN_UPLOADED_ANALYSIS_SAMPLE_FPS = 3
+private const val DEFAULT_UPLOAD_ANALYSIS_FPS = 6
+private const val MIN_UPLOAD_ANALYSIS_FPS = 3
+private const val MAX_UPLOAD_ANALYSIS_FPS = 6
+private const val UPLOAD_ANALYSIS_CANDIDATE_FPS_DELTA = 2
+private const val MAX_UPLOAD_ANALYSIS_CANDIDATE_FPS = 10
 private const val ENABLE_ADAPTIVE_UPLOAD_SAMPLING = true
 private const val DEFAULT_UPLOAD_FRAME_RATE = 30
 private const val MIN_OVERLAY_DENSITY_PER_SECOND = 1.2f
@@ -190,6 +193,11 @@ private data class OverlayCoverageDiagnostics(
     val warning: String? = null,
 )
 
+data class UploadAnalysisSamplingPolicy(
+    val analysisFps: Int,
+    val candidateDecodeFps: Int,
+)
+
 interface UploadVideoAnalysisRunner {
     suspend fun run(
         uri: Uri,
@@ -209,13 +217,14 @@ interface UploadVideoAnalysisRunner {
 class DefaultUploadVideoAnalysisRunner(
     private val context: Context,
     private val repository: SessionRepository,
-    private val frameSourceFactory: (Context, Int) -> VideoPoseFrameSource = { appContext, fps ->
+    private val frameSourceFactory: (Context, UploadAnalysisSamplingPolicy) -> VideoPoseFrameSource = { appContext, policy ->
         MlKitVideoPoseFrameSource(
             context = appContext,
-            sampleFps = fps,
+            sampleFps = policy.analysisFps,
             adaptiveConfig = com.inversioncoach.app.movementprofile.AdaptiveSamplingConfig(
                 enabled = ENABLE_ADAPTIVE_UPLOAD_SAMPLING,
-                legacyFixedFps = fps,
+                legacyFixedFps = policy.analysisFps,
+                candidateDecodeFps = policy.candidateDecodeFps,
             ),
         )
     },
@@ -330,6 +339,11 @@ class DefaultUploadVideoAnalysisRunner(
         var sourceDurationMs: Long = 0L
         var currentStage = UploadStage.IMPORTING_RAW_VIDEO
         var processingAttemptId: String? = null
+        var inputIntakeMs = 0L
+        var normalizationMs = 0L
+        var analysisMs = 0L
+        var postprocessMs = 0L
+        var exportMs = 0L
 
         fun log(message: String) {
             val line = "${System.currentTimeMillis()} | session=$sessionId | stage=${currentStage.name} | $message"
@@ -344,6 +358,7 @@ class DefaultUploadVideoAnalysisRunner(
         }
 
         try {
+            val inputIntakeStart = System.currentTimeMillis()
             SessionDiagnostics.record(
                 sessionId = sessionId,
                 stage = SessionDiagnostics.Stage.RAW_PERSIST,
@@ -366,6 +381,7 @@ class DefaultUploadVideoAnalysisRunner(
                 message = "Uploaded raw video persisted",
                 metrics = mapOf("rawUri" to persistedRawUri),
             )
+            inputIntakeMs = System.currentTimeMillis() - inputIntakeStart
 
             val rawUri = Uri.parse(persistedRawUri)
             val metadata = extractMetadata(rawUri)
@@ -379,7 +395,9 @@ class DefaultUploadVideoAnalysisRunner(
                 detail = "Preparing canonical uploaded video format",
             )
             onProgress(UploadProgress(currentStage, 0.18f, detail = "Normalizing uploaded input"))
+            val normalizationStart = System.currentTimeMillis()
             val normalization = inputNormalizerFactory(context.applicationContext).normalize(rawUri)
+            normalizationMs = System.currentTimeMillis() - normalizationStart
             workingVideoUri = normalization.workingUri.toString()
             val workingMetadata = metadata.copy(
                 width = normalization.canonical.width,
@@ -497,12 +515,15 @@ class DefaultUploadVideoAnalysisRunner(
                 detail = "Preparing uploaded analysis",
             )
             onProgress(UploadProgress(currentStage, 0.2f, detail = "Preparing uploaded analysis"))
-            val resolvedSampleFps = resolveUploadAnalysisSampleFps(
+            val samplingPolicy = resolveUploadAnalysisSamplingPolicy(
                 sourceDurationMs = sourceDurationMs,
                 sourceFrameRate = metadata.frameRate,
             )
-            log("analysis_sampling_config sourceDurationMs=$sourceDurationMs sourceFrameRate=${metadata.frameRate} sampleFps=$resolvedSampleFps")
-            val frameSource = frameSourceFactory(context.applicationContext, resolvedSampleFps)
+            log(
+                "analysis_sampling_config sourceDurationMs=$sourceDurationMs sourceFrameRate=${metadata.frameRate} " +
+                    "targetAnalysisFps=${samplingPolicy.analysisFps} candidateDecodeFps=${samplingPolicy.candidateDecodeFps}",
+            )
+            val frameSource = frameSourceFactory(context.applicationContext, samplingPolicy)
             val analyzer = analyzerFactory(frameSource)
 
             SessionDiagnostics.record(
@@ -510,7 +531,10 @@ class DefaultUploadVideoAnalysisRunner(
                 stage = SessionDiagnostics.Stage.OVERLAY_CAPTURE,
                 status = SessionDiagnostics.Status.STARTED,
                 message = "Uploaded frame analysis started",
-                metrics = mapOf("analysisFps" to resolvedSampleFps.toString()),
+                metrics = mapOf(
+                    "analysisFps" to samplingPolicy.analysisFps.toString(),
+                    "candidateDecodeFps" to samplingPolicy.candidateDecodeFps.toString(),
+                ),
             )
             currentStage = UploadStage.ANALYZING_VIDEO
             logStage("ANALYZING_UPLOADED_VIDEO", "analysis_started=true")
@@ -698,7 +722,8 @@ class DefaultUploadVideoAnalysisRunner(
                     }
                 },
             )
-            val analysisDurationMs = System.currentTimeMillis() - analysisStart
+            analysisMs = System.currentTimeMillis() - analysisStart
+            postprocessMs = analysis.telemetry["postprocess_ms"] ?: 0L
             if (analysis.overlayTimeline.isEmpty()) {
                 SessionDiagnostics.record(
                     sessionId = sessionId,
@@ -709,7 +734,7 @@ class DefaultUploadVideoAnalysisRunner(
                 )
                 error("ZERO_POSE_OUTPUT: No body landmarks detected. Try another video with full-body side view.")
             }
-            log("analysis_complete overlayFrames=${analysis.overlayTimeline.size} dropped=${analysis.droppedFrames} elapsedMs=$analysisDurationMs")
+            log("analysis_complete overlayFrames=${analysis.overlayTimeline.size} dropped=${analysis.droppedFrames} elapsedMs=$analysisMs")
             SessionDiagnostics.record(
                 sessionId = sessionId,
                 stage = SessionDiagnostics.Stage.OVERLAY_CAPTURE,
@@ -718,7 +743,7 @@ class DefaultUploadVideoAnalysisRunner(
                 metrics = mapOf(
                     "overlayFrameCount" to analysis.overlayTimeline.size.toString(),
                     "droppedFrames" to analysis.droppedFrames.toString(),
-                    "analysisDurationMs" to analysisDurationMs.toString(),
+                    "analysisDurationMs" to analysisMs.toString(),
                 ),
             )
             val extractor = MovementProfileExtractor()
@@ -908,7 +933,7 @@ class DefaultUploadVideoAnalysisRunner(
 
             val overlaySampleIntervalMs = estimateTimelineSampleIntervalMs(
                 timestampsMs = analysis.overlayTimeline.map { it.timestampMs },
-                fallbackFps = resolvedSampleFps,
+                fallbackFps = samplingPolicy.analysisFps,
             )
             val rawOverlayTimeline = OverlayTimeline(
                 startedAtMs = 0L,
@@ -938,7 +963,9 @@ class DefaultUploadVideoAnalysisRunner(
                     "sampledFrameCount=$sampledFrameCount poseSuccessCount=$poseSuccessCount overlayAcceptedCount=${frozenOverlaySnapshot.usableOverlayFrameCount} " +
                     "overlayDensityPerSecond=${"%.2f".format(overlayDiagnostics.densityPerSecond)} firstOverlayTimestampMs=${firstOverlayTimestampMs ?: -1L} " +
                     "lastOverlayTimestampMs=${lastOverlayTimestampMs ?: -1L} normalizationProducedNewAsset=${normalization.normalizationSucceeded} " +
-                    "normalizationUsesMetadataCompensation=${(!normalization.normalizationSucceeded && normalization.normalizationRequired)}",
+                    "normalizationUsesMetadataCompensation=${(!normalization.normalizationSucceeded && normalization.normalizationRequired)} " +
+                    "input_intake_ms=$inputIntakeMs normalization_ms=$normalizationMs decode_ms=${analysis.telemetry["decode_ms"] ?: 0L} " +
+                    "pose_detection_ms=${analysis.telemetry["pose_detection_ms"] ?: 0L} postprocess_ms=$postprocessMs export_ms=$exportMs total_ms=${System.currentTimeMillis() - startedAt}",
             )
             val overlayTimelineUri = repository.saveOverlayTimeline(sessionId, OverlayTimelineJson.encode(overlayTimeline))
             repository.updateMediaPipelineState(sessionId) { session ->
@@ -1009,6 +1036,7 @@ class DefaultUploadVideoAnalysisRunner(
                     "overlayTimelineUri" to overlayTimelineUri,
                 ),
             )
+            val exportStart = System.currentTimeMillis()
             val export = exportPipelineFactory().export(
                 sessionId = sessionId,
                 rawVideoUri = workingVideoUri ?: requireNotNull(persistedRawUri),
@@ -1028,7 +1056,13 @@ class DefaultUploadVideoAnalysisRunner(
                     onProgress(UploadProgress(UploadStage.EXPORTING_ANNOTATED_VIDEO, percent / 100f, detail = "Rendered $rendered/$total", lastTimestampMs = null))
                 },
             )
+            exportMs = System.currentTimeMillis() - exportStart
             log("export_done started=${export.started} failure=${export.failureReason.orEmpty()} uri=${export.persistedUri.orEmpty()}")
+            log(
+                "timing_diagnostics_stages input_intake_ms=$inputIntakeMs normalization_ms=$normalizationMs " +
+                    "decode_ms=${analysis.telemetry["decode_ms"] ?: 0L} pose_detection_ms=${analysis.telemetry["pose_detection_ms"] ?: 0L} " +
+                    "postprocess_ms=$postprocessMs export_ms=$exportMs total_ms=${System.currentTimeMillis() - startedAt}",
+            )
             val exportDurationMs = export.telemetry?.let { telemetry ->
                 (telemetry.exportCompletedAtMs ?: System.currentTimeMillis()) - telemetry.exportStartedAtMs
             } ?: 0L
@@ -1371,25 +1405,25 @@ class DefaultUploadVideoAnalysisRunner(
         totalFramesForUi: Int,
     ): AnalysisStagePresentation {
         val phaseLabel = when (stage) {
-            "decode_start" -> "Analyzing uploaded video"
-            "frame_sampled" -> "Sampling video frames"
-            "pose_detection_running" -> "Running pose detection"
-            "pose_detection_complete" -> "Pose detection complete"
-            "analysis_frame_processed" -> "Building timeline"
-            "analysis_complete" -> "Finalizing results..."
+            "decode_start" -> "Decode + frame sampling"
+            "frame_sampled" -> "Decode + frame sampling"
+            "pose_detection_running" -> "Pose detection (ML Kit)"
+            "pose_detection_complete" -> "Pose detection (ML Kit)"
+            "analysis_frame_processed" -> "Timeline post-processing"
+            "analysis_complete" -> "Post-processing complete"
             else -> "Analyzing movement"
         }
         val progressDetail = when (stage) {
-            "decode_start" -> "Analyzing uploaded video"
+            "decode_start" -> "Starting decode + frame sampling"
             "frame_sampled" -> if (estimatedTotal != null && boundedProcessed > 0) {
-                "Sampling uploaded frames: $boundedProcessed / $estimatedTotal"
+                "Decode + sample: $boundedProcessed / $estimatedTotal candidates"
             } else {
                 "Sampling uploaded frames"
             }
-            "pose_detection_running" -> "Running pose detection..."
-            "pose_detection_complete" -> "Pose detection complete"
-            "analysis_frame_processed" -> "Appending timeline samples"
-            "analysis_complete" -> "Finalizing results..."
+            "pose_detection_running" -> "Running ML Kit pose detection..."
+            "pose_detection_complete" -> "Pose sample processed"
+            "analysis_frame_processed" -> "Building overlay timeline"
+            "analysis_complete" -> "Finalizing analysis output..."
             else -> if (totalFramesForUi > 0 && analyzedFramesForUi > 0) {
                 "Analyzing movement: $analyzedFramesForUi / $totalFramesForUi frames"
             } else {
@@ -1761,18 +1795,43 @@ internal fun estimateTimelineSampleIntervalMs(
 
 internal fun sanitizeUploadFrameRate(rawFps: Int): Int = rawFps.takeIf { it in 1..120 } ?: DEFAULT_UPLOAD_FRAME_RATE
 
+internal fun resolveUploadAnalysisSamplingPolicy(
+    sourceDurationMs: Long,
+    sourceFrameRate: Int,
+): UploadAnalysisSamplingPolicy {
+    val boundedSourceFps = sanitizeUploadFrameRate(sourceFrameRate)
+    val analysisFps = when {
+        sourceDurationMs >= 180_000L -> MIN_UPLOAD_ANALYSIS_FPS
+        sourceDurationMs >= 90_000L -> 4
+        else -> DEFAULT_UPLOAD_ANALYSIS_FPS
+    }
+    val boundedAnalysisFps = analysisFps
+        .coerceAtMost(boundedSourceFps)
+        .coerceIn(MIN_UPLOAD_ANALYSIS_FPS, MAX_UPLOAD_ANALYSIS_FPS)
+    val candidateDecodeFps = (boundedAnalysisFps + UPLOAD_ANALYSIS_CANDIDATE_FPS_DELTA)
+        .coerceAtMost(boundedSourceFps)
+        .coerceIn(boundedAnalysisFps, MAX_UPLOAD_ANALYSIS_CANDIDATE_FPS)
+    return UploadAnalysisSamplingPolicy(
+        analysisFps = boundedAnalysisFps,
+        candidateDecodeFps = candidateDecodeFps,
+    )
+}
+
 internal fun resolveUploadAnalysisSampleFps(
     sourceDurationMs: Long,
     sourceFrameRate: Int,
-): Int {
-    val boundedSourceFps = sanitizeUploadFrameRate(sourceFrameRate)
-    val durationAdjusted = when {
-        sourceDurationMs >= 180_000L -> MIN_UPLOADED_ANALYSIS_SAMPLE_FPS
-        sourceDurationMs >= 90_000L -> 4
-        else -> UPLOADED_ANALYSIS_SAMPLE_FPS
-    }
-    return durationAdjusted.coerceAtMost(boundedSourceFps).coerceIn(MIN_UPLOADED_ANALYSIS_SAMPLE_FPS, UPLOADED_ANALYSIS_SAMPLE_FPS)
-}
+): Int = resolveUploadAnalysisSamplingPolicy(
+    sourceDurationMs = sourceDurationMs,
+    sourceFrameRate = sourceFrameRate,
+).analysisFps
+
+internal fun resolveUploadAnalysisCandidateDecodeFps(
+    sourceDurationMs: Long,
+    sourceFrameRate: Int,
+): Int = resolveUploadAnalysisSamplingPolicy(
+    sourceDurationMs = sourceDurationMs,
+    sourceFrameRate = sourceFrameRate,
+).candidateDecodeFps
 
 internal fun assessOverlayCoverage(
     sourceDurationMs: Long,
