@@ -2,6 +2,8 @@
 
 CaliVision is a drill-centric Android training app for calisthenics practice. It connects live coaching, upload analysis, drill authoring, and replay review in one workflow.
 
+It also can import drills that are created and labelled on the web studio version of this app https://github.com/Voycepeh/CaliVision-Studio
+
 ## Why I built CaliVision
 
 I built CaliVision because i want help in visualizing my handstand stack. I was already recording videos and replaying them manually.
