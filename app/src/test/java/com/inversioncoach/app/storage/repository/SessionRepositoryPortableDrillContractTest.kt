@@ -17,6 +17,8 @@ class SessionRepositoryPortableDrillContractTest {
             "archiveDrill",
             "deleteDrill",
             "getDrill",
+            "getRuntimeDrill",
+            "getActiveRuntimeDrills",
             "saveReferenceAsset",
             "saveMovementProfile",
             "saveCalibrationConfig",

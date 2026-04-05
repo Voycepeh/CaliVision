@@ -1,9 +1,7 @@
 package com.inversioncoach.app.ui.upload
 
-import com.inversioncoach.app.drills.DrillSourceType
 import com.inversioncoach.app.drills.DrillStatus
-import com.inversioncoach.app.drills.DrillCameraView
-import com.inversioncoach.app.model.DrillDefinitionRecord
+import com.inversioncoach.app.drills.runtime.RuntimeDrillDefinition
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -11,21 +9,15 @@ import org.junit.Test
 class UploadDrillReadinessGateTest {
     @Test
     fun rejectsDraftCustomDrill() {
-        val draft = DrillDefinitionRecord(
+        val draft = RuntimeDrillDefinition(
             id = "drill-1",
             name = "Draft Drill",
-            description = "",
             movementMode = "HOLD",
-            cameraView = DrillCameraView.LEFT,
-            phaseSchemaJson = "setup|hold",
-            keyJointsJson = "hips",
-            normalizationBasisJson = "hips",
-            cueConfigJson = "",
-            sourceType = DrillSourceType.USER_CREATED,
+            cameraView = "LEFT",
             status = DrillStatus.DRAFT,
-            version = 1,
-            createdAtMs = 0L,
-            updatedAtMs = 0L,
+            phases = listOf("setup", "hold"),
+            keyJoints = setOf("hips"),
+            normalizationBasis = "hips",
         )
 
         val error = validateSelectedDrillForUpload("drill-1", draft)
@@ -34,21 +26,15 @@ class UploadDrillReadinessGateTest {
 
     @Test
     fun acceptsReadyCustomDrill() {
-        val ready = DrillDefinitionRecord(
+        val ready = RuntimeDrillDefinition(
             id = "drill-1",
             name = "Ready Drill",
-            description = "",
             movementMode = "HOLD",
-            cameraView = DrillCameraView.LEFT,
-            phaseSchemaJson = "setup|hold",
-            keyJointsJson = "hips",
-            normalizationBasisJson = "hips",
-            cueConfigJson = "",
-            sourceType = DrillSourceType.USER_CREATED,
+            cameraView = "LEFT",
             status = DrillStatus.READY,
-            version = 1,
-            createdAtMs = 0L,
-            updatedAtMs = 0L,
+            phases = listOf("setup", "hold"),
+            keyJoints = setOf("hips"),
+            normalizationBasis = "hips",
         )
 
         val error = validateSelectedDrillForUpload("drill-1", ready)

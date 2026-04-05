@@ -6,6 +6,8 @@ flowchart LR
     LIVE[LiveCoachingViewModel]
     UPLOAD[UploadVideoViewModel]
     STUDIO[DrillStudioViewModel]
+    DRILLPKG[drillpackage/* contract + mapping]
+    RUNTIME[drills/runtime/*]
     DRILLS[drills/* domain]
     MOVE[movementprofile/* domain]
     POSEML[On-device Pose ML + landmarks]
@@ -28,6 +30,9 @@ flowchart LR
     UPLOAD --> RECORD
 
     STUDIO --> DRILLS
+    STUDIO --> DRILLPKG
+    DRILLPKG --> REPO
+    REPO --> RUNTIME
 
     DRILLS --> REPO
     MOVE --> REPO

@@ -1,9 +1,8 @@
 package com.inversioncoach.app.drills
 
-import com.inversioncoach.app.drills.catalog.CameraView
-import com.inversioncoach.app.drills.catalog.CatalogMovementType
 import com.inversioncoach.app.drills.catalog.DrillCatalog
-import com.inversioncoach.app.drills.catalog.DrillTemplate
+import com.inversioncoach.app.drillpackage.mapping.DrillCatalogPortableMapper
+import com.inversioncoach.app.drillpackage.model.PortableDrill
 import com.inversioncoach.app.model.CalibrationConfigRecord
 import com.inversioncoach.app.model.DrillDefinitionRecord
 import org.json.JSONArray
@@ -93,20 +92,20 @@ object DrillSeeder {
         val drillsById = catalog?.drills?.associateBy { it.id }.orEmpty()
         return seedMappings.mapNotNull { mapping ->
             val drill = drillsById[mapping.catalogId] ?: return@mapNotNull null
-            drill.toSeedCatalogEntry(mapping)
+            DrillCatalogPortableMapper.toPortableDrill(drill).toSeedCatalogEntry(mapping)
         }.ifEmpty {
             legacySeedCatalog
         }
     }
 
-    private fun DrillTemplate.toSeedCatalogEntry(mapping: SeedCatalogMapping): SeedCatalogEntry {
+    private fun PortableDrill.toSeedCatalogEntry(mapping: SeedCatalogMapping): SeedCatalogEntry {
         val legacyToken = mapping.legacyDrillType?.let { listOf("legacyDrillType:$it") }.orEmpty()
         val cueConfig = seededCueConfig(
             seedKey = mapping.seedId,
             values = listOf(
                 "seedSource:system",
                 "seedCatalogId:$id",
-                "comparisonMode:${comparisonMode.name}",
+                "comparisonMode:$comparisonMode",
                 "studioPayload:${encodeStudioPayload(this)}",
             ) + legacyToken,
         )
@@ -114,22 +113,22 @@ object DrillSeeder {
             id = mapping.seedId,
             name = title,
             description = description,
-            movementMode = if (movementType == CatalogMovementType.REP) DrillMovementMode.REP else DrillMovementMode.HOLD,
+            movementMode = if (movementType == "REP") DrillMovementMode.REP else DrillMovementMode.HOLD,
             cameraView = cameraView.toLegacyCameraView(),
             phaseSchemaJson = phases.sortedBy { it.order }.joinToString("|") { phase -> phase.id },
             keyJointsJson = keyJoints.joinToString("|"),
-            normalizationBasisJson = normalizationBasis.name,
+            normalizationBasisJson = normalizationBasis,
             cueConfigJson = cueConfig,
         )
     }
 
-    private fun encodeStudioPayload(drill: DrillTemplate): String {
+    private fun encodeStudioPayload(drill: PortableDrill): String {
         val json = JSONObject().apply {
             put("cameraView", drill.cameraView.name)
             put("supportedViews", JSONArray().apply { drill.supportedViews.forEach { put(it.name) } })
-            put("comparisonMode", drill.comparisonMode.name)
+            put("comparisonMode", drill.comparisonMode)
             put("keyJoints", JSONArray().apply { drill.keyJoints.forEach(::put) })
-            put("normalizationBasis", drill.normalizationBasis.name)
+            put("normalizationBasis", drill.normalizationBasis)
             put("phases", JSONArray().apply {
                 drill.phases.sortedBy { it.order }.forEach { phase ->
                     put(
@@ -137,46 +136,37 @@ object DrillSeeder {
                             put("id", phase.id)
                             put("label", phase.label)
                             put("order", phase.order)
-                            put("windowStart", phase.progressWindow.start)
-                            put("windowEnd", phase.progressWindow.end)
+                            put("windowStart", phase.windowStart)
+                            put("windowEnd", phase.windowEnd)
                         },
                     )
                 }
             })
             put("phasePoses", JSONArray().apply {
-                drill.skeletonTemplate.phasePoses.forEach { pose ->
+                drill.poses.forEach { pose ->
                     put(
                         JSONObject().apply {
                             put("phaseId", pose.phaseId)
                             put("name", pose.name)
                             put("holdDurationMs", pose.holdDurationMs)
                             put("transitionDurationMs", pose.transitionDurationMs)
+                            put("viewType", pose.viewType.name)
                             put("joints", JSONObject(pose.joints.mapValues { (_, p) -> JSONArray().put(p.x).put(p.y) }))
                         },
                     )
                 }
             })
-            put("keyframes", JSONArray().apply {
-                drill.skeletonTemplate.keyframes.forEach { frame ->
-                    put(
-                        JSONObject().apply {
-                            put("progress", frame.progress)
-                            put("joints", JSONObject(frame.joints.mapValues { (_, p) -> JSONArray().put(p.x).put(p.y) }))
-                        },
-                    )
-                }
-            })
-            put("metricThresholds", JSONObject(drill.calibration.metricThresholds))
-            put("fpsHint", drill.skeletonTemplate.framesPerSecond)
+            put("metricThresholds", JSONObject(drill.metricThresholds))
         }
         return Base64.getUrlEncoder().withoutPadding().encodeToString(json.toString().toByteArray())
     }
 
-    private fun CameraView.toLegacyCameraView(): String = when (this) {
-        CameraView.LEFT_PROFILE -> DrillCameraView.LEFT
-        CameraView.RIGHT_PROFILE -> DrillCameraView.RIGHT
-        CameraView.FRONT -> DrillCameraView.FRONT
-        CameraView.SIDE -> DrillCameraView.LEFT
+    private fun com.inversioncoach.app.drillpackage.model.PortableViewType.toLegacyCameraView(): String = when (this) {
+        com.inversioncoach.app.drillpackage.model.PortableViewType.LEFT_PROFILE -> DrillCameraView.LEFT
+        com.inversioncoach.app.drillpackage.model.PortableViewType.RIGHT_PROFILE -> DrillCameraView.RIGHT
+        com.inversioncoach.app.drillpackage.model.PortableViewType.FRONT -> DrillCameraView.FRONT
+        com.inversioncoach.app.drillpackage.model.PortableViewType.SIDE -> DrillCameraView.LEFT
+        com.inversioncoach.app.drillpackage.model.PortableViewType.ANY -> DrillCameraView.FREESTYLE
     }
 
     private fun shouldUpdateSeededRecord(
