@@ -41,6 +41,7 @@ import com.inversioncoach.app.model.AnnotatedExportStatus
 import com.inversioncoach.app.model.AnnotatedExportFailureReason
 import com.inversioncoach.app.media.SessionMediaOwnership
 import com.inversioncoach.app.drills.DrillStatus
+import com.inversioncoach.app.drills.runtime.RuntimeDrillDefinition
 import com.inversioncoach.app.drills.DrillCameraView
 import com.inversioncoach.app.drills.DrillMovementMode
 import com.inversioncoach.app.model.DrillType
@@ -264,7 +265,7 @@ class DefaultUploadVideoAnalysisRunner(
     ): UploadFlowResult = withContext(Dispatchers.IO) {
         val preset = repository.observeSettings().first().effectiveExportQuality().toExportPreset()
         val startedAt = System.currentTimeMillis()
-        val drillDefinition = selectedDrillId?.let { repository.getDrill(it) }
+        val drillDefinition = selectedDrillId?.let { repository.getRuntimeDrill(it) }
         validateSelectedDrillForUpload(selectedDrillId, drillDefinition)?.let { error(it) }
         val drillType = DrillType.FREESTYLE
         val resolvedCalibrationProfile: com.inversioncoach.app.calibration.DrillMovementProfile? = null
@@ -1472,8 +1473,8 @@ class DefaultUploadVideoAnalysisRunner(
         )
     }
 
-    private fun buildMovementProfileFromDrill(drill: com.inversioncoach.app.model.DrillDefinitionRecord): MovementProfile {
-        val phases = drill.phaseSchemaJson.split('|').filter { it.isNotBlank() }
+    private fun buildMovementProfileFromDrill(drill: RuntimeDrillDefinition): MovementProfile {
+        val phases = drill.phases
         val movementType = if (drill.movementMode == "REP") MovementType.REP else MovementType.HOLD
         val view = when (drill.cameraView) {
             DrillCameraView.FRONT -> CameraViewConstraint.FRONT
@@ -1481,7 +1482,7 @@ class DefaultUploadVideoAnalysisRunner(
             DrillCameraView.RIGHT -> CameraViewConstraint.SIDE_RIGHT
             DrillCameraView.BACK -> CameraViewConstraint.BACK
             DrillCameraView.FREESTYLE -> CameraViewConstraint.ANY
-            "SIDE" -> CameraViewConstraint.SIDE_LEFT
+            DrillCameraView.SIDE -> CameraViewConstraint.SIDE_LEFT
             else -> CameraViewConstraint.ANY
         }
         return MovementProfile(
@@ -1498,13 +1499,13 @@ class DefaultUploadVideoAnalysisRunner(
                 minConfidence = 0.35f,
                 requiredLandmarks = setOf("left_shoulder", "right_shoulder", "left_hip", "right_hip"),
                 minVisibleLandmarkCount = 3,
-                sideViewPrimary = drill.cameraView in setOf(DrillCameraView.LEFT, DrillCameraView.RIGHT, "SIDE"),
+                sideViewPrimary = drill.cameraView in setOf(DrillCameraView.LEFT, DrillCameraView.RIGHT, DrillCameraView.SIDE),
             ),
-            keyJoints = drill.keyJointsJson.split('|').filter { it.isNotBlank() }.toSet().ifEmpty { setOf("left_shoulder", "right_shoulder", "left_hip", "right_hip") },
+            keyJoints = drill.keyJoints.ifEmpty { setOf("left_shoulder", "right_shoulder", "left_hip", "right_hip") },
         )
     }
 
-    private fun toDrillCameraSide(drill: com.inversioncoach.app.model.DrillDefinitionRecord): DrillCameraSide = when (drill.cameraView) {
+    private fun toDrillCameraSide(drill: RuntimeDrillDefinition): DrillCameraSide = when (drill.cameraView) {
         DrillCameraView.RIGHT -> DrillCameraSide.RIGHT
         else -> DrillCameraSide.LEFT
     }
@@ -1518,7 +1519,7 @@ class DefaultUploadVideoAnalysisRunner(
 
 internal fun validateSelectedDrillForUpload(
     selectedDrillId: String?,
-    drillDefinition: com.inversioncoach.app.model.DrillDefinitionRecord?,
+    drillDefinition: RuntimeDrillDefinition?,
 ): String? {
     if (selectedDrillId == null) return null
     if (drillDefinition == null) return "Selected drill no longer exists. Please choose another drill."
@@ -1542,7 +1543,7 @@ class UploadVideoViewModel(
         canonicalizeUploadUriForAnalysis(appContext, uri)
     },
     private val resolveDrillTrackingMode: suspend (String) -> UploadTrackingMode? = { drillId ->
-        repository?.getDrill(drillId)?.movementMode?.toUploadTrackingMode()
+        repository?.getRuntimeDrill(drillId)?.movementMode?.toUploadTrackingMode()
     },
 ) : ViewModel() {
     private val _state = MutableStateFlow(

@@ -9,6 +9,11 @@ Use this index as the entry point for repo documentation.
 - [`../CONTRIBUTING.md`](../CONTRIBUTING.md): branch/PR and contributor expectations.
 - [`../TESTING.md`](../TESTING.md): build/test/manual validation guidance.
 
+## Interop
+
+- [`drill-package-contract.md`](drill-package-contract.md)
+- [`studio-android-compatibility.md`](studio-android-compatibility.md)
+
 ## Architecture
 
 - [`architecture/system-overview.md`](architecture/system-overview.md)

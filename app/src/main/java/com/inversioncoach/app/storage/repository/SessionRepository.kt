@@ -29,6 +29,8 @@ import com.inversioncoach.app.drills.DrillDefinitionValidator
 import com.inversioncoach.app.drills.DrillDefinitionResolver
 import com.inversioncoach.app.drills.DrillStatus
 import com.inversioncoach.app.drills.SelectableDrill
+import com.inversioncoach.app.drills.runtime.RuntimeDrillDefinition
+import com.inversioncoach.app.drills.runtime.RuntimeDrillMapper
 import com.inversioncoach.app.drills.toSelectableDrill
 import com.inversioncoach.app.drills.catalog.DrillTemplate
 import com.inversioncoach.app.drills.studio.ReferenceTemplateDraftSerializer
@@ -300,6 +302,8 @@ class SessionRepository(
 
     fun getAllDrills(): Flow<List<DrillDefinitionRecord>> = drillDefinitionDao.observeAll()
     fun getActiveDrills(): Flow<List<DrillDefinitionRecord>> = drillDefinitionDao.observeActive()
+    fun getActiveRuntimeDrills(): Flow<List<RuntimeDrillDefinition>> =
+        drillDefinitionDao.observeActive().map { drills -> drills.map(RuntimeDrillMapper::fromRecord) }
     fun observeDrillLibrary(): Flow<List<SelectableDrill>> =
         drillDefinitionDao.observeAll().map(::projectSelectableDrills)
 
@@ -316,6 +320,8 @@ class SessionRepository(
             drills.filter { drill -> drill.isReferenceEligible && !drill.isArchived }
         }
     suspend fun getDrill(drillId: String): DrillDefinitionRecord? = drillDefinitionDao.getById(drillId)
+    suspend fun getRuntimeDrill(drillId: String): RuntimeDrillDefinition? =
+        drillDefinitionDao.getById(drillId)?.let(RuntimeDrillMapper::fromRecord)
     suspend fun resolveDrillIdForLegacyType(drillType: DrillType): String? {
         val drills = drillDefinitionDao.observeAll().firstOrNull().orEmpty()
         return drills.firstOrNull { DrillDefinitionResolver.resolveLegacyDrillType(it) == drillType }?.id
