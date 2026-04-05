@@ -199,6 +199,21 @@ The reference-template workflow is being structured so scoring and comparison ca
 - Diagrams: [`docs/diagrams/`](docs/diagrams)
 - Drill package contract: [`docs/drill-package-contract.md`](docs/drill-package-contract.md)
 - Studio compatibility plan: [`docs/studio-android-compatibility.md`](docs/studio-android-compatibility.md)
+- Studio package spec (local IO): [`docs/package-spec.md`](docs/package-spec.md)
+- Studio Android compatibility update: [`docs/android-compatibility.md`](docs/android-compatibility.md)
+- Studio PR planning snapshot: [`docs/pr-plan.md`](docs/pr-plan.md)
+
+
+## Web Studio local package workflow (PR 2 foundation)
+
+A local-first web Studio scaffold now lives under `studio/` and focuses on package compatibility work:
+
+- Import local drill package JSON files.
+- Validate package structure with clear error/warning issues.
+- Preview package/drill/phase metadata in left/center/right panels.
+- Export current in-memory package state back to downloadable JSON.
+
+This stage intentionally excludes pose editing, MediaPipe, and cloud persistence.
 
 ## Running locally
 

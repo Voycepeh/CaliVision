@@ -74,3 +74,8 @@ Left/right laterality remains an Android-internal compatibility concern and is n
 ## Legacy persistence bridge
 
 Current legacy drill records cannot represent every authored portable field directly. `DrillRecordPortableMapper` preserves non-legacy fields by embedding a `portablePayload` token in cue-config metadata so package round-trips are explicit and non-lossy.
+
+
+## Studio implementation note (PR 2)
+
+For the local web Studio package IO implementation details, see [`docs/package-spec.md`](package-spec.md).

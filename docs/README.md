@@ -13,6 +13,9 @@ Use this index as the entry point for repo documentation.
 
 - [`drill-package-contract.md`](drill-package-contract.md)
 - [`studio-android-compatibility.md`](studio-android-compatibility.md)
+- [`package-spec.md`](package-spec.md)
+- [`android-compatibility.md`](android-compatibility.md)
+- [`pr-plan.md`](pr-plan.md)
 
 ## Architecture
 

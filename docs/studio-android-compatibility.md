@@ -36,3 +36,8 @@ Expected path:
 - Portable pose joints are canonicalized to avoid source-specific naming drift, and portable camera perspective is neutralized (no LEFT/RIGHT laterality in portable view).
 - Portable model keeps extension key/value metadata for additive compatibility.
 - Conversion preserves authored portable fields by storing a portable payload bridge in legacy cue-config metadata when legacy tables cannot represent all contract fields directly.
+
+
+## PR 2 status
+
+A local import/validate/preview/export Studio workflow is now documented in [`docs/android-compatibility.md`](android-compatibility.md).

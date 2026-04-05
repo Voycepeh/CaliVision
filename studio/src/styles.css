@@ -1,0 +1,28 @@
+:root {
+  font-family: Inter, system-ui, sans-serif;
+  color: #e9ecf1;
+  background: #0f1320;
+}
+body { margin: 0; }
+button { cursor: pointer; }
+.app { display: grid; grid-template-rows: auto 1fr; min-height: 100vh; }
+.topbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 12px;
+  border-bottom: 1px solid #2c3752;
+  background: #171f33;
+}
+.topbar .status { margin-left: auto; color: #9ea9c8; font-size: 12px; }
+.layout { display: grid; grid-template-columns: 280px 1fr 320px; min-height: 0; }
+.panel { padding: 12px; border-right: 1px solid #2c3752; overflow: auto; }
+.panel:last-child { border-right: none; }
+.card { border: 1px solid #2c3752; border-radius: 8px; padding: 10px; margin-bottom: 8px; background: #141b2c; }
+.card.selected { border-color: #7aa5ff; }
+.issue-error { color: #ff8f8f; }
+.issue-warning { color: #ffd28a; }
+.list { display: flex; flex-direction: column; gap: 8px; }
+.phase-row { display: flex; justify-content: space-between; gap: 8px; }
+.muted { color: #a9b3cd; font-size: 12px; }
+pre { white-space: pre-wrap; word-break: break-word; }

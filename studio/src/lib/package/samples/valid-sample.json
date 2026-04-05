@@ -1,0 +1,83 @@
+{
+  "schemaVersion": "1.0.0",
+  "manifest": {
+    "packageId": "sample.handstand.foundations",
+    "title": "Handstand Foundations",
+    "description": "Starter package for wall handstand progressions",
+    "author": "CaliVision Studio",
+    "createdAt": "2026-04-05T00:00:00Z",
+    "updatedAt": "2026-04-05T00:00:00Z"
+  },
+  "drills": [
+    {
+      "drillId": "drill.wall_handstand_hold",
+      "name": "Wall Handstand Hold",
+      "description": "Stacking and bracing practice",
+      "viewType": "SIDE",
+      "phases": [
+        {
+          "phaseId": "entry",
+          "name": "Kick-up and lock",
+          "order": 1,
+          "durationMs": 1200,
+          "pose": {
+            "joints": {
+              "nose": { "x": 0.52, "y": 0.11 },
+              "left_shoulder": { "x": 0.45, "y": 0.22 },
+              "right_shoulder": { "x": 0.56, "y": 0.22 },
+              "left_elbow": { "x": 0.43, "y": 0.31 },
+              "right_elbow": { "x": 0.58, "y": 0.31 },
+              "left_wrist": { "x": 0.42, "y": 0.41 },
+              "right_wrist": { "x": 0.59, "y": 0.41 },
+              "left_hip": { "x": 0.47, "y": 0.47 },
+              "right_hip": { "x": 0.55, "y": 0.47 },
+              "left_knee": { "x": 0.48, "y": 0.68 },
+              "right_knee": { "x": 0.56, "y": 0.68 },
+              "left_ankle": { "x": 0.49, "y": 0.88 },
+              "right_ankle": { "x": 0.57, "y": 0.88 }
+            }
+          },
+          "assetRefs": {
+            "sourceImage": {
+              "uri": "assets://wall_handstand_entry.png",
+              "width": 1080,
+              "height": 1920,
+              "mimeType": "image/png"
+            }
+          }
+        },
+        {
+          "phaseId": "hold",
+          "name": "Maintain line",
+          "order": 2,
+          "durationMs": 4000,
+          "pose": {
+            "joints": {
+              "nose": { "x": 0.51, "y": 0.1 },
+              "left_shoulder": { "x": 0.46, "y": 0.2 },
+              "right_shoulder": { "x": 0.55, "y": 0.2 },
+              "left_elbow": { "x": 0.45, "y": 0.29 },
+              "right_elbow": { "x": 0.56, "y": 0.29 },
+              "left_wrist": { "x": 0.45, "y": 0.39 },
+              "right_wrist": { "x": 0.56, "y": 0.39 },
+              "left_hip": { "x": 0.48, "y": 0.45 },
+              "right_hip": { "x": 0.54, "y": 0.45 },
+              "left_knee": { "x": 0.49, "y": 0.66 },
+              "right_knee": { "x": 0.55, "y": 0.66 },
+              "left_ankle": { "x": 0.5, "y": 0.87 },
+              "right_ankle": { "x": 0.56, "y": 0.87 }
+            }
+          },
+          "assetRefs": {
+            "sourceImage": {
+              "uri": "assets://wall_handstand_hold.png",
+              "width": 1080,
+              "height": 1920,
+              "mimeType": "image/png"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

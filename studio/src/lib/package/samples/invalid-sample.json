@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "",
+  "manifest": {
+    "packageId": "",
+    "title": ""
+  },
+  "drills": [
+    {
+      "drillId": "",
+      "name": "",
+      "viewType": "LEFT",
+      "phases": [
+        {
+          "phaseId": "",
+          "name": "",
+          "order": 1,
+          "durationMs": -200,
+          "pose": {
+            "joints": {
+              "left_hand": { "x": 1.2, "y": -0.1 }
+            }
+          }
+        },
+        {
+          "phaseId": "dup-order",
+          "name": "duplicate",
+          "order": 1,
+          "durationMs": 100,
+          "pose": {
+            "joints": {
+              "nose": { "x": 0.5, "y": 0.5 }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
