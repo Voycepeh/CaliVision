@@ -41,13 +41,13 @@ object LiveCoachingPreferenceCodec {
                 val parts = token.split(VALUE_SEPARATOR)
                 if (parts.size != 2) return@mapNotNull null
                 val camera = LiveCameraFacing.entries.firstOrNull { it.encoded == parts[0] } ?: return@mapNotNull null
-                val zoom = parts[1].toFloatOrNull() ?: return@mapNotNull null
+                val zoom = parts[1].toFloatOrNull() ?: parts[1].replace(',', '.').toFloatOrNull() ?: return@mapNotNull null
                 camera to zoom
             }.toMap()
 
     fun encodeZoomByCamera(zoomByCamera: Map<LiveCameraFacing, Float>): String =
         zoomByCamera.entries.joinToString(separator = CAMERA_SEPARATOR.toString()) { (camera, ratio) ->
-            "${camera.encoded}$VALUE_SEPARATOR${"%.2f".format(ratio)}"
+            "${camera.encoded}$VALUE_SEPARATOR${ratio.toString()}"
         }
 }
 

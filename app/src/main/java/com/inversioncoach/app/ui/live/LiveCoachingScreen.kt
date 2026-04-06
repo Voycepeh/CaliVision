@@ -264,7 +264,6 @@ fun LiveCoachingScreen(drillType: DrillType, options: LiveSessionOptions, onStop
             LaunchedEffect(
                 uiState.cameraPermissionGranted,
                 uiState.liveCameraFacing,
-                uiState.selectedZoomRatio,
                 previewViewState.value,
             ) {
                 val preview = previewViewState.value ?: return@LaunchedEffect
@@ -435,7 +434,10 @@ private fun LiveControlsBar(
             if (uiState.availableCameraFacings.size > 1) {
                 AssistChip(
                     onClick = onSwitchCamera,
-                    label = { Text(if (uiState.liveCameraFacing == "FRONT") "Front camera" else "Back camera") },
+                    label = {
+                        val nextLabel = if (uiState.liveCameraFacing == "FRONT") "Switch to back" else "Switch to front"
+                        Text(nextLabel)
+                    },
                     colors = AssistChipDefaults.assistChipColors(containerColor = Color.White.copy(alpha = 0.15f)),
                     modifier = Modifier.semantics { contentDescription = "Switch live camera" },
                 )
