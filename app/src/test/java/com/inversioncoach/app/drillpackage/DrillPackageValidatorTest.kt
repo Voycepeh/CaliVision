@@ -83,4 +83,32 @@ class DrillPackageValidatorTest {
         assertTrue(errors.any { it.contains("Primary camera view") })
     }
 
+    @Test
+    fun rejectsUnsupportedSchemaMajor() {
+        val pkg = DrillPackage(
+            manifest = DrillManifest("test", SchemaVersion(2, 0), "test", 1),
+            drills = listOf(
+                PortableDrill(
+                    id = "drill",
+                    title = "Drill",
+                    description = "",
+                    family = "core",
+                    movementType = "HOLD",
+                    cameraView = PortableViewType.SIDE,
+                    supportedViews = listOf(PortableViewType.SIDE),
+                    comparisonMode = "POSE_TIMELINE",
+                    normalizationBasis = "HIPS",
+                    keyJoints = listOf("left_shoulder"),
+                    tags = emptyList(),
+                    phases = listOf(PortablePhase(id = "setup", label = "Setup", order = 0)),
+                    poses = emptyList(),
+                    metricThresholds = emptyMap(),
+                ),
+            ),
+        )
+
+        val report = DrillPackageValidator.validateDetailed(pkg)
+        assertTrue(report.errors.any { it.contains("Unsupported schema major") })
+    }
+
 }

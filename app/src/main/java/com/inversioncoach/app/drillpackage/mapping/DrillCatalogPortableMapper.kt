@@ -37,7 +37,7 @@ object DrillCatalogPortableMapper {
         supportedViews = drill.supportedViews.map { it.toPortableView() }.ifEmpty { listOf(drill.cameraView.toPortableView()) }.distinct(),
         comparisonMode = drill.comparisonMode.name,
         normalizationBasis = drill.normalizationBasis.name,
-        keyJoints = drill.keyJoints.map(PortableJointNames::canonicalize),
+        keyJoints = drill.keyJoints.map(PortablePoseSemantics::canonicalJointName),
         tags = drill.tags,
         phases = drill.phases.map(::toPortablePhase),
         poses = drill.skeletonTemplate.phasePoses.map { it.toPortablePose(drill.cameraView.toPortableView()) },
@@ -131,7 +131,7 @@ object DrillCatalogPortableMapper {
     )
 
     private fun PhasePoseTemplate.toPortablePose(defaultView: PortableViewType): PortablePose {
-        val canonicalJoints = joints.mapKeys { (joint, _) -> PortableJointNames.canonicalize(joint) }
+        val canonicalJoints = PortablePoseSemantics.canonicalizeJointMap(joints)
         return PortablePose(
             phaseId = phaseId,
             name = name,
