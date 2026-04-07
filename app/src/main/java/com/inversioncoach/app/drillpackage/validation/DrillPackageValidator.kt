@@ -14,7 +14,7 @@ object DrillPackageValidator {
         if (pkg.manifest.packageId.isBlank()) errors += "Manifest packageId is required."
         if (pkg.manifest.schemaVersion.major <= 0) errors += "Schema version presence is required (major > 0)."
         if (!DrillPackageContract.isSchemaSupported(pkg.manifest.schemaVersion)) {
-            warnings += "Schema ${pkg.manifest.schemaVersion.token} is outside Android's current tested major version ${DrillPackageContract.CURRENT_SCHEMA_MAJOR}."
+            errors += "Unsupported schema major ${pkg.manifest.schemaVersion.major}. Android supports major ${DrillPackageContract.CURRENT_SCHEMA_MAJOR}."
         }
 
         pkg.manifest.assets.forEach { asset ->

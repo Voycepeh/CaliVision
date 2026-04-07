@@ -1,7 +1,6 @@
 package com.inversioncoach.app.drillpackage.mapping
 
 import com.inversioncoach.app.drillpackage.model.DrillManifest
-import com.inversioncoach.app.drillpackage.model.DrillPackageContract
 import com.inversioncoach.app.drillpackage.model.DrillPackage
 import com.inversioncoach.app.drillpackage.model.PortableDrill
 import com.inversioncoach.app.drillpackage.model.PortableJoint2D
@@ -21,7 +20,7 @@ object DrillCatalogPortableMapper {
     fun toPortablePackage(catalog: DrillCatalog, source: String = "android_catalog"): DrillPackage = DrillPackage(
         manifest = DrillManifest(
             packageId = catalog.catalogId,
-            schemaVersion = SchemaVersion(major = DrillPackageContract.CURRENT_SCHEMA_MAJOR, minor = DrillPackageContract.CURRENT_SCHEMA_MINOR),
+            schemaVersion = SchemaVersion(major = catalog.schemaVersion),
             source = source,
             exportedAtMs = System.currentTimeMillis(),
         ),

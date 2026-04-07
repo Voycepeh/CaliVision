@@ -63,7 +63,7 @@ Left/right laterality remains an Android-internal compatibility concern and is n
 
 - required manifest/drill fields
 - schema version presence (`major > 0`)
-- schema compatibility warnings for out-of-band versions
+- schema major mismatch is a hard validation error (fail-fast import boundary)
 - unique phase ordering per drill
 - pose phase references must point to declared phases
 - normalized coordinates and confidence/visibility ranges
@@ -78,7 +78,7 @@ Left/right laterality remains an Android-internal compatibility concern and is n
 3. map into Android runtime catalog (`DrillCatalogPortableMapper`)
 4. return structured result (`Success`, `DecodeFailure`, `ValidationFailure`, `MappingFailure`)
 
-UI flows should consume this boundary result type instead of spreading parse/validate/map logic across screens.
+UI flows should consume this boundary result type instead of spreading parse/validate/map logic across screens. Transitional Drill Studio draft import now falls back to this seam when portable package files are provided.
 
 ## Mapping boundaries
 

@@ -25,11 +25,11 @@ Android now keeps the package boundary in one explicit seam:
 `DrillPackageImportPipeline.parseAndValidate(rawJson)`
 
 - decode with `DrillPackageJsonCodec`
-- validate with `DrillPackageValidator`
+- validate with `DrillPackageValidator` (unsupported schema majors fail fast)
 - map to runtime-ready catalog via `DrillCatalogPortableMapper`
 - return structured outcome (`Success`, decode/validation/mapping failure)
 
-This avoids scattering parse/validate/map logic across UI flows.
+This avoids scattering parse/validate/map logic across UI flows. Drill Studio draft import now uses this seam as a fallback for portable package files.
 
 ## Runtime consumption sequence
 

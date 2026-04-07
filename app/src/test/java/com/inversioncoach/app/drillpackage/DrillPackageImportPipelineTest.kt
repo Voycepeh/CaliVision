@@ -21,6 +21,28 @@ class DrillPackageImportPipelineTest {
         assertTrue(result is DrillPackageImportResult.Success)
     }
 
+
+    @Test
+    fun parseAndValidateReturnsDecodeFailureForMalformedJson() {
+        val result = DrillPackageImportPipeline.parseAndValidate("{not-json")
+        assertTrue(result is DrillPackageImportResult.DecodeFailure)
+    }
+
+    @Test
+    fun parseAndValidateReturnsMappingFailureWhenPortableViewCannotMapToCatalog() {
+        val mappingFailurePackage = validPackage().copy(
+            drills = validPackage().drills.map { drill ->
+                drill.copy(
+                    cameraView = PortableViewType.BACK,
+                    supportedViews = listOf(PortableViewType.BACK),
+                )
+            },
+        )
+
+        val result = DrillPackageImportPipeline.parseAndValidate(DrillPackageJsonCodec.encode(mappingFailurePackage))
+        assertTrue(result is DrillPackageImportResult.MappingFailure)
+    }
+
     @Test
     fun parseAndValidateReturnsValidationFailureForUnknownPhaseReference() {
         val invalid = validPackage().copy(
