@@ -51,6 +51,7 @@ import com.inversioncoach.app.model.AppSettingsPolicy
 import com.inversioncoach.app.model.SessionRecord
 import com.inversioncoach.app.model.UserSettings
 import com.inversioncoach.app.storage.ServiceLocator
+import com.inversioncoach.app.storage.repository.isReviewableSession
 import com.inversioncoach.app.ui.common.computeSessionDurationMs
 import com.inversioncoach.app.ui.common.formatSessionDateTime
 import com.inversioncoach.app.ui.common.formatSessionDuration
@@ -173,7 +174,7 @@ private fun Content(
     onUploadVideo: () -> Unit,
     sessionSummaries: List<SessionRecord>,
 ) {
-    val historySummary = remember(sessionSummaries) { sessionSummaries.toHistorySummary() }
+    val historySummary = remember(sessionSummaries) { sessionSummaries.filter { it.isReviewableSession() }.toHistorySummary() }
 
     Column(
         modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),

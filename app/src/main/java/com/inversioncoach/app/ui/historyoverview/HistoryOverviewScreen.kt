@@ -36,6 +36,7 @@ import com.inversioncoach.app.model.DrillType
 import com.inversioncoach.app.model.SessionRecord
 import com.inversioncoach.app.model.UserSettings
 import com.inversioncoach.app.storage.ServiceLocator
+import com.inversioncoach.app.storage.repository.isReviewableSession
 import com.inversioncoach.app.ui.common.computeSessionDurationMs
 import com.inversioncoach.app.ui.common.canOpenResultsRoute
 import com.inversioncoach.app.ui.common.formatPrimaryPerformance
@@ -73,7 +74,8 @@ fun HistoryOverviewScreen(onBack: () -> Unit, onOpenSession: (Long) -> Unit) {
         sessions.filter { session ->
             val meetsDuration = computeSessionDurationMs(session.startedAtMs, session.completedAtMs) >= minimumDurationMs
             val matchesDrill = selectedDrill == null || session.drillType == selectedDrill
-            meetsDuration && matchesDrill
+            val reviewable = session.isReviewableSession()
+            meetsDuration && matchesDrill && reviewable
         }
     }
 

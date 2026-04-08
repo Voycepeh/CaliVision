@@ -37,6 +37,8 @@ sequenceDiagram
     Export-->>Worker: success/failure/degraded quality gate
     Worker->>Resolver: Resolve best replay asset
     Worker->>Repo: Persist artifact state + selected replay
+    Repo-->>UI: Expose reviewable-only history by default
+    UI->>UI: Hide non-reviewable failed attempts unless debug toggle enabled
     App->>WM: Query unique upload work state
     App->>Repo: Reconcile stalled uploads (worker-aware)
     Coord-->>VM: DB-observed active upload state stream

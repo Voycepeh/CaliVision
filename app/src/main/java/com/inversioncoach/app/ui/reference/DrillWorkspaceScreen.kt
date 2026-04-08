@@ -26,6 +26,7 @@ import com.inversioncoach.app.drills.DrillDefinitionResolver
 import com.inversioncoach.app.drills.DrillStatus
 import com.inversioncoach.app.model.DrillType
 import com.inversioncoach.app.storage.ServiceLocator
+import com.inversioncoach.app.storage.repository.isReviewableSession
 import com.inversioncoach.app.ui.components.ScaffoldedScreen
 import com.inversioncoach.app.ui.history.DrillSessionsSection
 import com.inversioncoach.app.ui.history.HistorySort
@@ -63,12 +64,16 @@ fun DrillWorkspaceScreen(
     val sessionSizes = remember { mutableStateMapOf<Long, Long>() }
     var selectedSort by remember { mutableStateOf(HistorySort.RECENCY) }
     var sortAscending by remember { mutableStateOf(false) }
+    var showFailedAttempts by remember { mutableStateOf(false) }
     var totalStorageBytes by remember { mutableLongStateOf(0L) }
-    val sortedSessions = remember(filteredSessions, selectedSort, sortAscending, sessionSizes.toMap()) {
+    val visibleSessions = remember(filteredSessions, showFailedAttempts) {
+        if (showFailedAttempts) filteredSessions else filteredSessions.filter { it.isReviewableSession() }
+    }
+    val sortedSessions = remember(visibleSessions, selectedSort, sortAscending, sessionSizes.toMap()) {
         val sorted = when (selectedSort) {
-            HistorySort.RECENCY -> filteredSessions.sortedBy { it.startedAtMs }
-            HistorySort.STORAGE_SIZE -> filteredSessions.sortedBy { sessionSizes[it.id] ?: 0L }
-            HistorySort.SESSION_DURATION -> filteredSessions.sortedBy {
+            HistorySort.RECENCY -> visibleSessions.sortedBy { it.startedAtMs }
+            HistorySort.STORAGE_SIZE -> visibleSessions.sortedBy { sessionSizes[it.id] ?: 0L }
+            HistorySort.SESSION_DURATION -> visibleSessions.sortedBy {
                 com.inversioncoach.app.ui.common.computeSessionDurationMs(it.startedAtMs, it.completedAtMs)
             }
         }
@@ -150,12 +155,14 @@ fun DrillWorkspaceScreen(
                 sortedSessions = sortedSessions,
                 selectedSort = selectedSort,
                 sortAscending = sortAscending,
+                showFailedAttempts = showFailedAttempts,
                 sessionSizes = sessionSizes,
                 totalStorageBytes = totalStorageBytes,
                 maxStorageBytes = settings.maxStorageMb.toLong() * 1024L * 1024L,
                 comparedSessionIds = comparedSessionIds,
                 latestComparisonScores = latestComparisonScores,
                 onSortSelected = ::onSortSelected,
+                onShowFailedAttemptsChanged = { showFailedAttempts = it },
                 onOpenSession = onOpenSession,
                 compareSelection = compareSelection,
                 onOpenComparisonTools = { onCompareAttempts(drillId) },

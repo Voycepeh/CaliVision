@@ -17,10 +17,13 @@ Session History is the drill-aware detailed history surface (`session-history?..
 
 ## User-facing behavior
 
-- Show prior sessions in drill-relevant context.
+- Show prior **reviewable** sessions in drill-relevant context by default.
 - Open replay using resolved best media source.
 - Uploaded sessions become Results-navigable only after terminal completion (`ANNOTATED_READY` or raw-only terminal fallback).
 - Preserve truthful status when annotated export failed but raw replay exists.
+- Hide failed/incomplete upload attempts from the primary list when they have no playable media and no meaningful analysis output.
+- Keep optional debug visibility through a simple "Show failed attempts" toggle.
+- If no reviewable sessions exist, show a clear user-facing empty state instead of a noisy failed-attempt list.
 
 ## Cross-workflow role
 

@@ -37,6 +37,7 @@ import com.inversioncoach.app.model.AnnotatedExportStatus
 import com.inversioncoach.app.model.RawPersistStatus
 import com.inversioncoach.app.media.SessionMediaOwnership
 import com.inversioncoach.app.storage.ServiceLocator
+import com.inversioncoach.app.storage.repository.isReviewableSession
 import com.inversioncoach.app.storage.repository.resolvedDrillId
 import com.inversioncoach.app.ui.common.canOpenResultsRoute
 import com.inversioncoach.app.ui.common.computeSessionDurationMs
@@ -64,6 +65,7 @@ fun HistoryScreen(
     val lastRefreshSignatures = remember { mutableStateMapOf<Long, String>() }
     var selectedSort by remember { mutableStateOf(HistorySort.RECENCY) }
     var sortAscending by remember { mutableStateOf(false) }
+    var showFailedAttempts by remember { mutableStateOf(false) }
     var totalStorageBytes by remember { mutableLongStateOf(0L) }
 
     LaunchedEffect(sessions) {
@@ -102,7 +104,9 @@ fun HistoryScreen(
     }
 
     val maxStorageBytes = settings.maxStorageMb.toLong() * 1024L * 1024L
-    val filteredSessions = sessions
+    val filteredSessions = remember(sessions, showFailedAttempts) {
+        if (showFailedAttempts) sessions else sessions.filter { it.isReviewableSession() }
+    }
 
     val sortedSessions = remember(filteredSessions, selectedSort, sortAscending, sessionSizes.toMap()) {
         val sorted = when (selectedSort) {
@@ -139,12 +143,14 @@ fun HistoryScreen(
             sortedSessions = sortedSessions,
             selectedSort = selectedSort,
             sortAscending = sortAscending,
+            showFailedAttempts = showFailedAttempts,
             sessionSizes = sessionSizes,
             totalStorageBytes = totalStorageBytes,
             maxStorageBytes = maxStorageBytes,
             comparedSessionIds = comparedSessionIds,
             latestComparisonScores = latestComparisonScores,
             onSortSelected = ::onSortSelected,
+            onShowFailedAttemptsChanged = { showFailedAttempts = it },
             onOpenSession = onOpenSession,
             compareSelection = compareSelection,
         )
@@ -160,12 +166,14 @@ fun DrillSessionsSection(
     sortedSessions: List<com.inversioncoach.app.model.SessionRecord>,
     selectedSort: HistorySort,
     sortAscending: Boolean,
+    showFailedAttempts: Boolean,
     sessionSizes: Map<Long, Long>,
     totalStorageBytes: Long,
     maxStorageBytes: Long,
     comparedSessionIds: List<Long>,
     latestComparisonScores: Map<Long, Int>,
     onSortSelected: (HistorySort) -> Unit,
+    onShowFailedAttemptsChanged: (Boolean) -> Unit,
     onOpenSession: (Long) -> Unit,
     compareSelection: CompareAttemptSelection = CompareAttemptSelection(emptySet(), null, hasEnoughCandidates = false),
     onOpenComparisonTools: (() -> Unit)? = null,
@@ -179,7 +187,7 @@ fun DrillSessionsSection(
         }
         Text(
             if (comparisonMode) "Select sessions to compare or open one to review results."
-            else "Review session history and open any session for details.",
+            else "Review your usable sessions and open any one for details.",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (comparisonMode && !compareSelection.hasEnoughCandidates) {
@@ -199,6 +207,11 @@ fun DrillSessionsSection(
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = showFailedAttempts,
+                onClick = { onShowFailedAttemptsChanged(!showFailedAttempts) },
+                label = { Text(if (showFailedAttempts) "Hide failed attempts" else "Show failed attempts") },
+            )
             HistorySort.entries.forEach { sort ->
                 FilterChip(
                     selected = selectedSort == sort,
@@ -212,6 +225,23 @@ fun DrillSessionsSection(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            if (sortedSessions.isEmpty()) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        ),
+                    ) {
+                        Text(
+                            text = "No usable sessions yet. Finish an upload or live run to review it here.",
+                            modifier = Modifier.padding(14.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
             items(sortedSessions) { session ->
                 val sizeGb = formatGb(sessionSizes[session.id] ?: 0L)
                 val status = videoStatus(session)
